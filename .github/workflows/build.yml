@@ -35,15 +35,25 @@ jobs:
         run: |
           cd openwrt
           dts_path="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
-          # Copy the upstream generic extswitch dts
-          cp target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-ap.dk01.1-extswitch.dts "$dts_path"
+          mkdir -p $(dirname "$dts_path")
           
-          # Patch model name
-          sed -i 's/model = .*/model = "Horus 9200";/' "$dts_path"
-          sed -i 's/compatible = .*/compatible = "h1radio,ti04-708hp", "qcom,ipq4019";/' "$dts_path"
+          # Generate a minimal custom DTS inheriting from the standard DK01.1 base
+          cat << 'EOF' > "$dts_path"
+          #include "qcom-ipq4019-ap.dk01.1.dtsi"
           
-          # Inject ath10k calibration variant
-          sed -i 's/\(compatible = "qcom,ath10k";\)/qcom,ath10k-calibration-variant = "8devices-Jalapeno";\n\t\t\t\1/g' "$dts_path"
+          / {
+              model = "Horus 9200";
+              compatible = "h1radio,ti04-708hp", "qcom,ipq4019";
+          };
+          
+          &wifi0 {
+              qcom,ath10k-calibration-variant = "8devices-Jalapeno";
+          };
+          
+          &wifi1 {
+              qcom,ath10k-calibration-variant = "8devices-Jalapeno";
+          };
+          EOF
           
           # Patch rootfs partition size to 128MB across all dtsi files
           python3 << 'PYEOF'
