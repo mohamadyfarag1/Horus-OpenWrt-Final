@@ -67,14 +67,9 @@ EOF
 chmod +x /etc/init.d/smp_affinity
 /etc/init.d/smp_affinity enable
 
-# 6. rc.local: 5GHz Bitrates Lock + CPU Performance
+# 6. rc.local: CPU Performance Mode
 cat << 'RCEOF' > /etc/rc.local
 #!/bin/sh
-# Force 5GHz to high bitrates to prevent slow connections
-for iface in $(iw dev | grep -B 1 "phy#1" -A 2 | grep Interface | awk '{print $2}'); do
-    iw dev "$iface" set bitrates vht-mcs-5 1:2-9 2:1-9 3:1-9 4:0-9
-done
-
 # CPU Performance Mode
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
     echo "performance" > $cpu 2>/dev/null

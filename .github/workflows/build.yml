@@ -31,56 +31,40 @@ jobs:
         run: |
           git clone --depth 1 --branch v24.10.8 https://git.openwrt.org/openwrt/openwrt.git openwrt
 
-      - name: Decompile and Patch Original Device Tree (DTS)
+      - name: Create Custom Device Tree for Horus
         run: |
           cd openwrt
-          # We use the original router.dtb from the repo which contains the correct 128MB SPI NAND layout
           dts_path="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
-          mkdir -p $(dirname "$dts_path")
-          dtc -I dtb -O dts -o "$dts_path" ../router.dtb
+          # Copy the upstream generic extswitch dts
+          cp target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-ap.dk01.1-extswitch.dts "$dts_path"
           
-          # Patch the DTS to add the ath10k calibration variant for Wi-Fi
+          # Patch model name
+          sed -i 's/model = .*/model = "Horus 9200";/' "$dts_path"
+          sed -i 's/compatible = .*/compatible = "h1radio,ti04-708hp", "qcom,ipq4019";/' "$dts_path"
+          
+          # Inject ath10k calibration variant
+          sed -i 's/\(compatible = "qcom,ath10k";\)/qcom,ath10k-calibration-variant = "8devices-Jalapeno";\n\t\t\t\1/g' "$dts_path"
+          
+          # Patch rootfs partition size to 128MB across all dtsi files
           python3 << 'PYEOF'
-          import re
-          path = "target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
-          with open(path, "r") as f:
-              content = f.read()
-              
-          # Inject variant above compatible = "qcom,ath10k"
-          content = re.sub(
-              r'(compatible\s*=\s*"qcom,ath10k";)', 
-              r'qcom,ath10k-calibration-variant = "8devices-Jalapeno";\n\t\t\t\1', 
-              content
-          )
-          
-          # Fix NAND flash partition size (from 32MB to 128MB) safely
-          def patch_partition(match):
-              block = match.group(0)
-              if "rootfs" in block.lower() or "ubi" in block.lower() or "firmware" in block.lower() or "nand" in block.lower():
-                  block = re.sub(r'0x0*2000000', '0x08000000', block)
-                  block = re.sub(r'33554432', '134217728', block)
-              return block
-              
-          content = re.sub(r'(partition@[0-9a-fA-F]+\s*\{[^}]*\})', patch_partition, content)
-
-          
-          # Change Model Name
-          content = re.sub(
-              r'model\s*=\s*".*";', 
-              r'model = "Horus 9200";', 
-              content
-          )
-          
-          with open(path, "w") as f:
-              f.write(content)
+          import os, re, glob
+          for path in glob.glob("target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/*.dts*"):
+              with open(path, 'r') as f:
+                  content = f.read()
+              def repl_rootfs(m):
+                  block = m.group(0)
+                  def repl_reg(m_reg):
+                      offset = m_reg.group(1)
+                      offset_int = int(offset, 16)
+                      new_size = 0x8000000 - offset_int
+                      return f"reg = <{offset} 0x{new_size:08x}>"
+                  return re.sub(r'reg\s*=\s*<([^ ]+)\s+[^>]+>', repl_reg, block)
+              new_content = re.sub(r'partition@[0-9a-fA-F]+\s*\{[^}]*label\s*=\s*"(rootfs|rootfs_data)"[^}]*\}', repl_rootfs, content)
+              if new_content != content:
+                  with open(path, 'w') as f:
+                      f.write(new_content)
+                  print(f"Patched NAND size in {path}")
           PYEOF
-          
-          # Also write to main dts dir to be safe
-          main_dts="target/linux/ipq40xx/dts/qcom"
-          mkdir -p "$main_dts"
-          cp "$dts_path" "$main_dts/"
-          
-          echo "Original DTB decompiled and patched successfully."
 
       - name: Patch Makefiles for Custom Device
         run: |
@@ -96,7 +80,7 @@ jobs:
             printf '\tDEVICE_TITLE := H1Radio TI04-708HP\n'
             printf '\tSUPPORTED_DEVICES := H1Radio,ti04-708hp h1radio,ti04-708hp qcom,ipq4019-h1radio-ti04-708hp\n'
             printf '\tIMAGE_SIZE := 32768k\n'
-            printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands\n'
+            printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands -luci-app-samba4 -samba4-server -luci-i18n-samba4-en\n'
             printf 'endef\n'
             printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
           } >> target/linux/ipq40xx/image/generic.mk
