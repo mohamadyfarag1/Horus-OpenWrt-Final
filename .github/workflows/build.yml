@@ -1,0 +1,529 @@
+name: Build Custom OpenWrt for H1Radio TI04-708HP
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Extra packages to install (e.g., luci luci-app-wireguard)'
+        required: false
+        default: 'luci'
+
+jobs:
+  build:
+    name: Build OpenWrt
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Linux Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev python3-distutils python3-setuptools rsync unzip zlib1g-dev \
+            file wget device-tree-compiler python3-pip python3-m2crypto swig libelf-dev
+
+      - name: Clone OpenWrt Source
+        run: |
+          git clone --depth 1 --branch v24.10.8 https://git.openwrt.org/openwrt/openwrt.git openwrt
+
+      - name: Decompile and Patch Original Device Tree (DTS)
+        run: |
+          cd openwrt
+          # We use the original router.dtb from the repo which contains the correct 128MB SPI NAND layout
+          dts_path="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
+          mkdir -p $(dirname "$dts_path")
+          dtc -I dtb -O dts -o "$dts_path" ../router.dtb
+          
+          # Patch the DTS to add the ath10k calibration variant for Wi-Fi
+          python3 << 'PYEOF'
+          import re
+          path = "target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
+          with open(path, "r") as f:
+              content = f.read()
+              
+          # Inject variant above compatible = "qcom,ath10k"
+          content = re.sub(
+              r'(compatible\s*=\s*"qcom,ath10k";)', 
+              r'qcom,ath10k-calibration-variant = "8devices-Jalapeno";\n\t\t\t\1', 
+              content
+          )
+          
+          # Fix NAND flash partition size (from 32MB to 128MB) safely
+          def patch_partition(match):
+              block = match.group(0)
+              if "rootfs" in block.lower() or "ubi" in block.lower() or "firmware" in block.lower() or "nand" in block.lower():
+                  block = re.sub(r'0x0*2000000', '0x08000000', block)
+                  block = re.sub(r'33554432', '134217728', block)
+              return block
+              
+          content = re.sub(r'(partition@[0-9a-fA-F]+\s*\{[^}]*\})', patch_partition, content)
+
+          
+          # Change Model Name
+          content = re.sub(
+              r'model\s*=\s*".*";', 
+              r'model = "Horus 9200";', 
+              content
+          )
+          
+          with open(path, "w") as f:
+              f.write(content)
+          PYEOF
+          
+          # Also write to main dts dir to be safe
+          main_dts="target/linux/ipq40xx/dts/qcom"
+          mkdir -p "$main_dts"
+          cp "$dts_path" "$main_dts/"
+          
+          echo "Original DTB decompiled and patched successfully."
+
+      - name: Patch Makefiles for Custom Device
+        run: |
+          cd openwrt
+          {
+            printf '\n'
+            printf 'define Device/h1radio_ti04-708hp\n'
+            printf '\t$(call Device/FitImage)\n'
+            printf '\t$(call Device/UbiFit)\n'
+            printf '\tDEVICE_DTS := qcom-ipq4019-h1radio-ti04-708hp\n'
+            printf '\tBLOCKSIZE := 128k\n'
+            printf '\tPAGESIZE := 2048\n'
+            printf '\tDEVICE_TITLE := H1Radio TI04-708HP\n'
+            printf '\tSUPPORTED_DEVICES := H1Radio,ti04-708hp h1radio,ti04-708hp qcom,ipq4019-h1radio-ti04-708hp\n'
+            printf '\tIMAGE_SIZE := 32768k\n'
+            printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands\n'
+            printf 'endef\n'
+            printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
+          } >> target/linux/ipq40xx/image/generic.mk
+
+
+      - name: Patch platform.sh for sysupgrade support
+        run: |
+          cd openwrt
+          python3 << 'PYEOF'
+          path = "target/linux/ipq40xx/base-files/lib/upgrade/platform.sh"
+          with open(path, "r") as f:
+              content = f.read()
+          content = content.replace(
+              "wallys,dr40x9)",
+              "H1Radio,ti04-708hp |\\\n\twallys,dr40x9)"
+          )
+          with open(path, "w") as f:
+              f.write(content)
+          print("OK: h1radio added to nand_do_upgrade in platform.sh")
+          PYEOF
+          
+
+      - name: Compile the Firmware
+        run: |
+          grep -B 1 -A 1 'H1Radio' target/linux/ipq40xx/base-files/lib/upgrade/platform.sh || true
+
+      - name: Create Superchannel Unlock Script
+        run: |
+          cat > /tmp/unlock-superchannel.sh << 'SEDSCRIPT'
+          #!/bin/bash
+          echo "============================================"
+          echo "=== SUPERCHANNEL UNLOCK - Full Spectrum ==="
+          echo "============================================"
+
+          #############################################
+          # PATCH 1: ath/regd.c (Kernel Regulatory)
+          # Based on forum post #3 by anarchy99
+          # Expands 2GHz to 2192-2732 MHz
+          # Expands 5GHz to 4900-6100 MHz
+          # Removes NO_IR and NO_OFDM restrictions
+          #############################################
+          for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
+            echo "[PATCH 1] Patching: $REGD"
+            # 2GHz CH01-11 rule: expand to full 2.3GHz band
+            sed -i 's/REG_RULE(2412-10, 2462+10, 40, 0, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 0, 33, 0)/g' "$REGD"
+            # 2GHz CH12-13 rule: expand to full band
+            sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2192-10, 2732+10, 40, 0, 33,/g' "$REGD"
+            # 2GHz CH14 rule: increase power
+            sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2484-10, 2484+10, 40, 0, 33,/g' "$REGD"
+            # 5GHz first range: expand to full 5GHz
+            sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
+            # 5GHz second range: expand to full 5GHz
+            sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
+            # 5GHz third range: expand to full 5GHz
+            sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
+            # Remove NO_IR (No Initiate Radiation) - allow active scan
+            sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
+            # Remove NO_OFDM restriction - allow OFDM on all channels
+            sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
+            echo "  -> ath/regd.c patched OK"
+          done
+
+          #############################################
+          # PATCH 2: net/wireless/reg.c
+          # Based on forum post #3
+          # Expands world regdomain 00
+          # Removes is_valid_rd() checks completely
+          #############################################
+          for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
+            echo "[PATCH 2] Patching: $REG"
+            # Expand world regdomain 00 - 2GHz
+            sed -i 's/REG_RULE(2412-10, 2462+10, 40, 6, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 6, 33, 0)/g' "$REG"
+            # Remove CH12-13 separate rule (now covered by expanded range)
+            sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2192-10, 2732+10, 40, 6, 33,/g' "$REG"
+            # Expand CH14 power
+            sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2484-10, 2484+10, 40, 6, 33,/g' "$REG"
+            # Remove ALL is_valid_rd() validation blocks (3 locations in the forum patch)
+            # Location 1: reg_set_rd_user
+            sed -i '/if (!is_valid_rd(rd)) {/{N;N;N;N;d}' "$REG"
+            # Location 2: WARN version
+            sed -i '/if (WARN(!is_valid_rd(rd)/{N;N;N;d}' "$REG"
+            # Remove NO_IR flags from world regdomain
+            sed -i 's/NL80211_RRF_NO_IR | NL80211_RRF_AUTO_BW/0/g' "$REG"
+            sed -i 's/NL80211_RRF_NO_IR/0/g' "$REG"
+            sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REG"
+            echo "  -> net/wireless/reg.c patched OK"
+          done
+
+          #############################################
+          # PATCH 3: net/wireless/util.c
+          # CRITICAL for 2.3GHz support!
+          # Adds support for channel numbers > 127
+          # Without this, extended channels won't work
+          #############################################
+          for UTIL in $(find . -path "*/net/wireless/util.c" 2>/dev/null); do
+            echo "[PATCH 3] Patching: $UTIL"
+            # Add signed char cast for extended channel numbers
+            # This allows channels 213-255 (2.3GHz band) to work
+            sed -i '/case NL80211_BAND_2GHZ:/a\\t\tchan = (int)(char)chan;' "$UTIL"
+            echo "  -> net/wireless/util.c patched OK"
+          done
+
+          #############################################
+          # PATCH 4: hostapd - hw_features.c
+          # Allow OFDM/HT/VHT on channel 14
+          # Without this, channel 14 is B-only
+          #############################################
+          for HWF in $(find . -path "*/hostapd*/src/ap/hw_features.c" -o -path "*/wpad*/src/ap/hw_features.c" 2>/dev/null); do
+            echo "[PATCH 4] Patching: $HWF"
+            # Remove the block that disables OFDM/HT/VHT on channel 14
+            sed -i 's/wpa_printf(MSG_INFO, "Disable OFDM\/HT\/VHT on channel 14");//g' "$HWF"
+            sed -i 's/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211B;/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211G;/g' "$HWF"
+            sed -i '/iface->conf->ieee80211n = 0;/d' "$HWF"
+            sed -i '/iface->conf->ieee80211ac = 0;/d' "$HWF"
+            echo "  -> hostapd/hw_features.c patched OK"
+          done
+
+          echo "============================================"
+          echo "=== SUPERCHANNEL UNLOCK COMPLETE ==="
+          echo "============================================"
+          SEDSCRIPT
+          chmod +x /tmp/unlock-superchannel.sh
+
+      - name: Generate Custom Unlocked Regulatory DB
+        run: |
+          git clone https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git || true
+          cd wireless-regdb
+          python3 -c "
+          # Generate db.txt with ALL countries unlocked
+          countries = [
+              '00',
+              'AD','AE','AF','AL','AM','AN','AR','AT','AU','AW','AZ',
+              'BA','BB','BD','BE','BG','BH','BL','BN','BO','BR','BY',
+              'CA','CF','CH','CI','CL','CN','CO','CR','CY','CZ',
+              'DE','DK','DO','DZ',
+              'EC','EE','EG','ES','ET',
+              'FI','FR',
+              'GB','GE','GH','GL','GP','GR','GT','GU','GY',
+              'HK','HN','HR','HT','HU',
+              'ID','IE','IL','IN','IQ','IR','IS','IT',
+              'JM','JO','JP',
+              'KE','KH','KN','KP','KR','KW','KY','KZ',
+              'LB','LC','LI','LK','LS','LT','LU','LV',
+              'MA','MC','MD','ME','MF','MH','MK','MN','MO','MP','MQ','MR','MT','MU','MW','MX','MY',
+              'NG','NI','NL','NO','NP','NZ',
+              'OM',
+              'PA','PE','PF','PG','PH','PK','PL','PM','PR','PT','PW','PY',
+              'QA',
+              'RE','RO','RS','RU','RW',
+              'SA','SE','SG','SI','SK','SN','SR','SV','SY',
+              'TC','TD','TG','TH','TN','TR','TT','TW','TZ',
+              'UA','UG','US','UY','UZ',
+              'VC','VE','VI','VN','VU',
+              'WF','WS',
+              'YE','YT',
+              'ZA','ZW'
+          ]
+          with open('db.txt', 'w') as f:
+              for c in countries:
+                  if c == '00':
+                      f.write('country 00:\n')
+                  else:
+                      f.write(f'country {c}:\n')
+                  f.write('\t(2192 - 2732 @ 40), (33)\n')
+                  f.write('\t(4900 - 6100 @ 160), (33)\n')
+                  f.write('\n')
+          print(f'Generated db.txt with {len(countries)} countries')
+          "
+          openssl ecparam -name prime256v1 -genkey -noout -out key.priv.pem
+          make || echo "WARNING: regulatory.db build failed, using repo copy"
+
+      - name: Inject Custom Board Data and Regulatory and UCI Defaults
+        run: |
+          cd openwrt
+          mkdir -p files/lib/firmware/ath10k/QCA4019/hw1.0/
+          cp ../board-2.bin files/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
+          
+          # Copy our generated regulatory database
+          if [ -f ../wireless-regdb/regulatory.db ]; then
+            cp ../wireless-regdb/regulatory.db files/lib/firmware/regulatory.db
+            echo "Using freshly built regulatory.db"
+          elif [ -f ../regulatory.db ]; then
+            cp ../regulatory.db files/lib/firmware/regulatory.db
+            echo "Using existing regulatory.db from repo"
+          fi
+          cp -r ../files_ap/* files/
+          # CRITICAL: Strip Windows CRLF line endings - without this, shell scripts fail silently on Linux
+          find files/ -type f -exec sed -i 's/\r$//' {} +
+          chmod +x files/etc/uci-defaults/*
+
+          # ============================================
+          # Passive ARP Sniffer (UBNT-like IP+Host discovery)
+          # ============================================
+          mkdir -p files/usr/bin files/etc/init.d files/etc/uci-defaults
+          cat << 'EOF' > files/usr/bin/passive-ip-helper.sh
+          #!/bin/sh
+          mac="$1"
+          ip="$2"
+          ip neigh replace "$ip" lladdr "$mac" dev br-lan nud permanent 2>/dev/null
+          if [ ! -f "/tmp/dhcp-host-$mac" ] && [ ! -f "/tmp/http-host-$mac" ]; then
+              title=$(wget -qO- -T 2 "http://$ip/" 2>/dev/null | grep -i '<title>' | sed -n 's/.*<title>\(.*\)<\/title>.*/\1/ip' | head -1 | tr -d '\r\n')
+              if [ -n "$title" ]; then
+                  echo "$title" > "/tmp/http-host-$mac"
+              fi
+          fi
+          > /tmp/dhcp.leases.new
+          for f in /tmp/arp-ip-*; do
+              [ -f "$f" ] || continue
+              m="${f##*-}"
+              i=$(cat "$f")
+              h="*"
+              if [ -f "/tmp/dhcp-host-$m" ]; then
+                  h=$(cat "/tmp/dhcp-host-$m")
+              elif [ -f "/tmp/http-host-$m" ]; then
+                  h=$(cat "/tmp/http-host-$m")
+              fi
+              echo "1999999999 $m $i $h *" >> /tmp/dhcp.leases.new
+          done
+          mv /tmp/dhcp.leases.new /tmp/dhcp.leases
+          EOF
+          chmod +x files/usr/bin/passive-ip-helper.sh
+
+          cat << 'EOF' > files/usr/bin/passive-ip-sniffer.sh
+          #!/bin/sh
+          LEASES="/tmp/dhcp.leases"
+          touch "$LEASES"
+          killall tcpdump 2>/dev/null
+
+          # A) Master Sniffer (Captures IP <-> MAC from ARP & ICMP/Ping)
+          tcpdump -i br-lan -l -n -e -t 'arp or icmp' 2>/dev/null | awk '
+          {
+              mac = tolower($1);
+              ip = "";
+              if ($4 == "IPv4" || $5 == "IPv4") {
+                  for(i=1; i<=NF; i++) {
+                      if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(>|:)/ || $(i+1) == ">") {
+                          ip = $i; sub(/:$/, "", ip); sub(/\.[0-9]+$/, "", ip); break;
+                      }
+                  }
+              } else {
+                  for(i=1; i<=NF; i++) {
+                      if ($i == "tell") { ip = $(i+1); gsub(/,/, "", ip); break; }
+                      if ($i == "Reply") { ip = $(i+1); break; }
+                  }
+              }
+              if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && mac ~ /^[0-9a-f]{2}:/) {
+                  if (!seen[mac]) {
+                      seen[mac] = 1
+                      system("echo " ip " > /tmp/arp-ip-" mac)
+                      system("/usr/bin/passive-ip-helper.sh " mac " " ip " &")
+                  }
+              }
+          }
+          ' &
+
+          # B) DHCP Sniffer (Captures Hostnames)
+          tcpdump -i br-lan -l -n -e -v udp port 67 or port 68 2>/dev/null | awk '
+          /^[0-9a-fA-F]{2}:/ { current_mac = tolower($1) }
+          /Hostname/ && /"/ {
+              s = $0; start = index(s, "\""); end = index(substr(s, start+1), "\"")
+              if (start > 0 && end > 0 && current_mac != "") {
+                  host = substr(s, start+1, end-1)
+                  system("echo \"" host "\" > /tmp/dhcp-host-" current_mac)
+                  system("ip=\"$(cat /tmp/arp-ip-" current_mac " 2>/dev/null)\"; [ -n \"$ip\" ] && /usr/bin/passive-ip-helper.sh " current_mac " $ip &")
+              }
+          }
+          ' &
+          EOF
+          chmod +x files/usr/bin/passive-ip-sniffer.sh
+          
+          cat << 'EOF' > files/etc/init.d/passive-arp
+          #!/bin/sh /etc/rc.common
+          START=99
+          USE_PROCD=1
+          PROG=/usr/bin/passive-ip-sniffer.sh
+          start_service() {
+              procd_open_instance
+              procd_set_param command "$PROG"
+              procd_set_param respawn 3600 5 0
+              procd_close_instance
+          }
+          EOF
+          chmod +x files/etc/init.d/passive-arp
+          
+          echo '#!/bin/sh' > files/etc/uci-defaults/99-enable-passive-arp
+          echo '/etc/init.d/passive-arp enable' >> files/etc/uci-defaults/99-enable-passive-arp
+          echo 'exit 0' >> files/etc/uci-defaults/99-enable-passive-arp
+          chmod +x files/etc/uci-defaults/99-enable-passive-arp
+
+          # Create helper script to extract real EEPROM calibration data after first boot
+          mkdir -p files/usr/sbin
+          cat > files/usr/sbin/extract-board-data << 'EXTRACTEOF'
+          #!/bin/sh
+          # Run this script via SSH after first boot to extract
+          # the real calibration data from your device's flash
+          echo "=== H1Radio Board Data Extractor ==="
+
+          # Find the ART (calibration) partition
+          ART_MTD=$(grep -i "art\|caldata\|radio\|0:ART" /proc/mtd | head -1 | cut -d: -f1)
+          if [ -z "$ART_MTD" ]; then
+            echo "ERROR: Could not find calibration partition!"
+            echo "Available partitions:"
+            cat /proc/mtd
+            exit 1
+          fi
+
+          echo "Found calibration partition: /dev/$ART_MTD"
+          dd if=/dev/$ART_MTD of=/tmp/art_backup.bin 2>/dev/null
+          echo "Calibration data saved to /tmp/art_backup.bin"
+          echo "Size: $(wc -c < /tmp/art_backup.bin) bytes"
+          echo ""
+          echo "To download it to your PC, use:"
+          echo "  scp root@192.168.1.1:/tmp/art_backup.bin ."
+          echo ""
+          echo "=== Done ==="
+          EXTRACTEOF
+          chmod +x files/usr/sbin/extract-board-data
+
+      - name: Update Feeds and Configure
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a || true
+          ./scripts/feeds install -a || true
+          
+          # Inject Custom UI JS for MAC Click-to-Copy and IP Click
+          cat << 'JSEOF' >> feeds/luci/modules/luci-base/htdocs/luci-static/resources/luci.js
+          document.addEventListener('DOMContentLoaded', function() {
+              setInterval(function() {
+                  document.querySelectorAll('td, .td').forEach(function(cell) {
+                      if (cell.dataset.macDone) return;
+                      var text = cell.innerText || '';
+                      var macMatch = text.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
+                      if (macMatch) {
+                          var mac = macMatch[0];
+                          var span = document.createElement('span');
+                          span.textContent = mac;
+                          span.style.cursor = 'pointer';
+                          span.style.borderBottom = '1px dashed #999';
+                          span.title = 'Click to copy MAC';
+                          span.onclick = function() {
+                              navigator.clipboard.writeText(mac);
+                              span.style.color = '#4caf50';
+                              span.style.fontWeight = 'bold';
+                              setTimeout(function(){ span.style.color = ''; span.style.fontWeight = ''; }, 1500);
+                          };
+                          cell.innerHTML = cell.innerHTML.replace(mac, span.outerHTML);
+                          cell.dataset.macDone = 'true';
+                      }
+                      var ipMatch = text.match(/\b([0-9]{1,3}\.){3}[0-9]{1,3}\b/);
+                      if (ipMatch && !cell.querySelector('a[href*="http"]')) {
+                          var ip = ipMatch[0];
+                          cell.innerHTML = cell.innerHTML.replace(ip, '<a href="http://' + ip + '" target="_blank" style="font-weight:bold; color:#0069d6; text-decoration:underline;">' + ip + '</a>');
+                      }
+                  });
+              }, 2000);
+          });
+          JSEOF
+          
+          # The target uses -ct by default or we specify it in .config, no need to sed Makefile
+          cat > .config << 'CFGEOF'
+          CONFIG_TARGET_ipq40xx=y
+          CONFIG_TARGET_ipq40xx_generic=y
+          CONFIG_TARGET_ipq40xx_generic_DEVICE_h1radio_ti04-708hp=y
+          CONFIG_PACKAGE_luci=y
+          CONFIG_PACKAGE_irqbalance=y
+          CONFIG_PACKAGE_luci-app-irqbalance=y
+          CONFIG_PACKAGE_kmod-ath=y
+          CONFIG_PACKAGE_kmod-ath10k-ct=y
+          CONFIG_PACKAGE_ath10k-firmware-qca4019-ct=y
+          # CONFIG_PACKAGE_kmod-ath10k is not set
+          # CONFIG_PACKAGE_ath10k-firmware-qca4019 is not set
+          CONFIG_ATH_USER_REGD=y
+          CONFIG_PACKAGE_ATH_USER_REGD=y
+          CONFIG_PACKAGE_kmod-mac80211=y
+          CONFIG_MAC80211_USER_REGD=y
+          CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=n
+          CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS=y
+          CONFIG_PACKAGE_wireless-regdb=y
+          CONFIG_PACKAGE_tcpdump-mini=y
+          CONFIG_PACKAGE_ip-full=y
+          CONFIG_PACKAGE_luci-theme-openwrt-2020=y
+          CONFIG_PACKAGE_ca-certificates=y
+          CONFIG_PACKAGE_ca-bundle=y
+          CFGEOF
+          make defconfig
+
+      - name: Copy Custom Files (files_ap)
+        run: |
+          cd openwrt
+          mkdir -p files
+          find ../files_ap -type f -exec sed -i 's/\r$//' {} +
+          cp -r ../files_ap/* files/
+
+      - name: Download Dependencies
+        run: |
+          cd openwrt
+          make download -j8
+
+      - name: Compile Firmware with Superchannel Patches
+        run: |
+          cd openwrt
+          echo "======================================="
+          echo "Step 1: Preparing kernel source..."
+          echo "======================================="
+          make target/linux/prepare V=s -j$(nproc) 2>&1 || true
+
+          echo "======================================="
+          echo "Step 1.5: Injecting DTS into kernel build tree..."
+          echo "======================================="
+          # DTS injection is now handled cleanly via files/ overlay.
+
+          echo "======================================="
+          echo "Step 2: Applying Superchannel Patches..."
+          echo "======================================="
+          cd build_dir
+          bash /tmp/unlock-superchannel.sh
+          cd ..
+
+          echo "======================================="
+          echo "Step 3: Starting Full Compilation..."
+          echo "======================================="
+          make -j$(nproc) || { make -j1 V=s 2>&1 | tee build.log; exit ${PIPESTATUS[0]}; }
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: H1Radio_TI04-708HP_SuperFirmware
+          path: |
+            openwrt/bin/targets/ipq40xx/generic/*
+            openwrt/build.log

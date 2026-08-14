@@ -1,0 +1,97 @@
+#!/bin/sh
+
+# =============================================
+# Horus 9200 - First Boot Configuration
+# =============================================
+
+# 1. Firewall Software Offloading
+uci set firewall.@defaults[0].flow_offloading='1'
+uci set firewall.@defaults[0].flow_offloading_hw='0'
+
+# 2. Disable IPv6 DHCP/RA in case default dhcp config exists
+uci -q set dhcp.lan.dhcpv6='disabled'
+uci -q set dhcp.lan.ra='disabled'
+uci -q set dhcp.lan.ndp='disabled'
+
+# 3. Dynamic MAC Address Assignment
+BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
+if [ -n "$BASE_MAC" ]; then
+    prefix=$(echo "$BASE_MAC" | cut -d: -f1-5)
+    last_byte=$(echo "$BASE_MAC" | cut -d: -f6)
+    
+    wan_hex=$(printf "%02x" $(((0x$last_byte + 1) % 256)))
+    WAN_MAC="${prefix}:${wan_hex}"
+    
+    wlan5_hex=$(printf "%02x" $(((0x$last_byte + 2) % 256)))
+    WLAN5_MAC="${prefix}:${wlan5_hex}"
+    
+    uci set network.wan.macaddr="$WAN_MAC"
+    uci set wireless.radio1.macaddr="$WLAN5_MAC"
+fi
+
+# 4. Enable irqbalance
+uci set irqbalance.irqbalance.enabled='1'
+
+# 5. Create LuCI Extroot Button
+uci set luci.extroot=command
+uci set luci.extroot.name='Format USB & Expand Space (Extroot)'
+uci set luci.extroot.command='/usr/bin/auto-extroot.sh'
+
+# Commit all UCI changes ONCE (Extremely Fast)
+uci commit
+
+# 5. SMP IRQ Affinity (distribute interrupts across CPU cores)
+cat << 'EOF' > /etc/init.d/smp_affinity
+#!/bin/sh /etc/rc.common
+START=99
+
+start() {
+    ETH_IRQS=$(grep -E 'eth|edma' /proc/interrupts | awk -F: '{print $1}' | tr -d ' ')
+    for irq in $ETH_IRQS; do
+        [ -f "/proc/irq/$irq/smp_affinity" ] && echo 1 > "/proc/irq/$irq/smp_affinity"
+    done
+
+    WIFI_IRQS=$(grep -E 'ath10k|wifi' /proc/interrupts | awk -F: '{print $1}' | tr -d ' ')
+    IDX=0
+    for irq in $WIFI_IRQS; do
+        if [ "$IDX" -eq 0 ]; then
+            [ -f "/proc/irq/$irq/smp_affinity" ] && echo 4 > "/proc/irq/$irq/smp_affinity"
+        else
+            [ -f "/proc/irq/$irq/smp_affinity" ] && echo 8 > "/proc/irq/$irq/smp_affinity"
+        fi
+        IDX=$((IDX + 1))
+    done
+}
+EOF
+
+chmod +x /etc/init.d/smp_affinity
+/etc/init.d/smp_affinity enable
+
+# 6. rc.local: 5GHz Bitrates Lock + CPU Performance
+cat << 'RCEOF' > /etc/rc.local
+#!/bin/sh
+# Force 5GHz to high bitrates to prevent slow connections
+for iface in $(iw dev | grep -B 1 "phy#1" -A 2 | grep Interface | awk '{print $2}'); do
+    iw dev "$iface" set bitrates vht-mcs-5 1:2-9 2:1-9 3:1-9 4:0-9
+done
+
+# CPU Performance Mode
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    echo "performance" > $cpu 2>/dev/null
+done
+
+exit 0
+RCEOF
+
+# 7. Fix permissions and start services
+chmod +x /etc/init.d/*
+chmod +x /etc/rc.local
+chmod +x /usr/bin/auto-extroot.sh
+/etc/init.d/irqbalance enable 2>/dev/null
+/etc/init.d/irqbalance start 2>/dev/null
+/etc/init.d/odhcpd disable 2>/dev/null || true
+
+# 8. Replace https with http in opkg feeds
+sed -i 's/https/http/g' /etc/opkg/distfeeds.conf
+
+exit 0

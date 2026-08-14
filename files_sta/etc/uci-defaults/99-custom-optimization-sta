@@ -1,0 +1,33 @@
+#!/bin/sh
+# 99-custom-optimization-ap
+
+# CPU Performance
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do 
+    echo "performance" > $cpu 
+done
+sed -i '/exit 0/i for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo "performance" > $cpu; done' /etc/rc.local
+
+# Firewall Hardware/Software Offloading
+uci set firewall.@defaults[0].flow_offloading='1'
+uci set firewall.@defaults[0].flow_offloading_hw='0'
+uci commit firewall
+
+# Wireless AP Configuration
+uci set wireless.radio0.noscan='1'
+uci set wireless.radio0.distance='5000'
+
+uci set wireless.default_radio0.mode='ap'
+uci set wireless.default_radio0.wds='1'
+
+# Lock Minstrel rate control drops
+uci set wireless.default_radio0.mcast_rate='24000'
+uci delete wireless.default_radio0.basic_rate
+uci add_list wireless.default_radio0.basic_rate='24000'
+uci add_list wireless.default_radio0.basic_rate='54000'
+
+uci commit wireless
+
+# irqbalance is handled by its own init script, just make sure it's enabled
+/etc/init.d/irqbalance enable
+
+exit 0
