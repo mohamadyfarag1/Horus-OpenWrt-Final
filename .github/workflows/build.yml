@@ -45,11 +45,11 @@ jobs:
           # Generate custom DTS based on exact Jalapeno hardware layout
           cat << 'EOF' > "$dts_path_66"
           // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-          #include "qcom-ipq4018-jalapeno.dtsi"
+          #include "qcom-ipq4018-nbg6617.dtsi"
           
           / {
               model = "Horus 9200";
-              compatible = "h1radio,ti04-708hp", "8dev,jalapeno", "qcom,ipq4019";
+              compatible = "h1radio,ti04-708hp", "zyxel,nbg6617", "qcom,ipq4019";
           
               chosen {
                   bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
