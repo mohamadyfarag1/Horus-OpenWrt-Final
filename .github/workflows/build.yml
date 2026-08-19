@@ -406,25 +406,29 @@ jobs:
               }
           }
           ' &
+
+          wait
           EOF
           chmod +x files/usr/bin/passive-ip-sniffer.sh
           
           cat << 'EOF' > files/etc/init.d/passive-arp
           #!/bin/sh /etc/rc.common
           START=99
-          USE_PROCD=1
-          PROG=/usr/bin/passive-ip-sniffer.sh
-          start_service() {
-              procd_open_instance
-              procd_set_param command "$PROG"
-              procd_set_param respawn 3600 5 0
-              procd_close_instance
+
+          start() {
+              killall tcpdump 2>/dev/null
+              /usr/bin/passive-ip-sniffer.sh &
+          }
+
+          stop() {
+              killall tcpdump 2>/dev/null
           }
           EOF
           chmod +x files/etc/init.d/passive-arp
           
           echo '#!/bin/sh' > files/etc/uci-defaults/99-enable-passive-arp
           echo '/etc/init.d/passive-arp enable' >> files/etc/uci-defaults/99-enable-passive-arp
+          echo '/etc/init.d/passive-arp start' >> files/etc/uci-defaults/99-enable-passive-arp
           echo 'exit 0' >> files/etc/uci-defaults/99-enable-passive-arp
           chmod +x files/etc/uci-defaults/99-enable-passive-arp
 
