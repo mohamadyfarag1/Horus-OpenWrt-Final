@@ -271,148 +271,7 @@ jobs:
           find files/ -type f -exec sed -i 's/\r$//' {} +
           chmod +x files/etc/uci-defaults/*
 
-          # ============================================
-          # Passive ARP Sniffer (UBNT-like IP+Host discovery)
-          # Passive ARP & Hostname Sniffer (UBNT-like IP+Host discovery in Bridge mode)
-          # ============================================
-          mkdir -p files/usr/bin files/etc/init.d files/etc/uci-defaults
-          cat << 'EOF' > files/usr/bin/passive-ip-helper.sh
-          #!/bin/sh
-          mac="$1"
-          ip="$2"
-          [ -n "$mac" ] && [ -n "$ip" ] || exit 0
 
-          ip neigh replace "$ip" lladdr "$mac" dev br-lan nud permanent 2>/dev/null
-
-          # Try reverse DNS lookup from MikroTik if hostname not yet captured
-          if [ ! -f "/tmp/dhcp-host-$mac" ]; then
-              rdns=$(nslookup "$ip" 2>/dev/null | grep 'name =' | awk '{print $NF}' | sed 's/\.$//' | head -1)
-              [ -n "$rdns" ] && echo "$rdns" > "/tmp/dhcp-host-$mac"
-          fi
-
-          # Try HTTP Title for connected OpenWrt APs, Ubiquiti, MikroTik, Cameras
-          if [ ! -f "/tmp/dhcp-host-$mac" ]; then
-              title=$(wget -qO- -T 1 "http://$ip/" 2>/dev/null | grep -i '<title>' | sed -n 's/.*<title>\(.*\)<\/title>.*/\1/ip' | head -1 | tr -d '\r\n' | tr -d ' ' | cut -c1-20)
-              [ -n "$title" ] && echo "$title" > "/tmp/dhcp-host-$mac"
-          fi
-
-          > /tmp/dhcp.leases.new
-          for f in /tmp/arp-ip-*; do
-              [ -f "$f" ] || continue
-              m="${f##*-}"
-              i=$(cat "$f")
-              h="*"
-              if [ -f "/tmp/dhcp-host-$m" ]; then
-                  h=$(cat "/tmp/dhcp-host-$m")
-              fi
-              echo "1999999999 $m $i $h *" >> /tmp/dhcp.leases.new
-          done
-          mv /tmp/dhcp.leases.new /tmp/dhcp.leases
-          EOF
-          chmod +x files/usr/bin/passive-ip-helper.sh
-
-          cat << 'EOF' > files/usr/bin/passive-ip-sniffer.sh
-          #!/bin/sh
-          LEASES="/tmp/dhcp.leases"
-          touch "$LEASES"
-          killall tcpdump 2>/dev/null
-
-          # A) ARP & Ping Sniffer (Discovers IP <-> MAC immediately for ALL connected devices & APs)
-          tcpdump -i br-lan -l -n -e -t 'arp or icmp' 2>/dev/null | awk '
-          {
-              mac = tolower($1);
-              ip = "";
-              if ($4 == "IPv4" || $5 == "IPv4") {
-                  for(i=1; i<=NF; i++) {
-                      if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(>|:)/ || $(i+1) == ">") {
-                          ip = $i; sub(/:$/, "", ip); sub(/\.[0-9]+$/, "", ip); break;
-                      }
-                  }
-              } else {
-                  for(i=1; i<=NF; i++) {
-                      if ($i == "tell") { ip = $(i+1); gsub(/,/, "", ip); break; }
-                      if ($i == "Reply") { ip = $(i+1); break; }
-                  }
-              }
-              if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && mac ~ /^[0-9a-f]{2}:/) {
-                  if (!seen[mac]) {
-                      seen[mac] = 1
-                      system("echo " ip " > /tmp/arp-ip-" mac)
-                      system("/usr/bin/passive-ip-helper.sh " mac " " ip " &")
-                  }
-              }
-          }
-          ' &
-
-          # B) DHCP Sniffer with -t (Discovers Hostnames from DHCP Requests)
-          tcpdump -i br-lan -l -n -e -t -v 'udp port 67 or port 68' 2>/dev/null | awk '
-          /^[0-9a-fA-F]{2}:/ { current_mac = tolower($1) }
-          /Hostname/ && /"/ {
-              s = $0; start = index(s, "\""); end = index(substr(s, start+1), "\"")
-              if (start > 0 && end > 0 && current_mac != "") {
-                  host = substr(s, start+1, end-1)
-                  system("echo \"" host "\" > /tmp/dhcp-host-" current_mac)
-                  system("ip=\"$(cat /tmp/arp-ip-" current_mac " 2>/dev/null)\"; [ -n \"$ip\" ] && /usr/bin/passive-ip-helper.sh " current_mac " $ip &")
-              }
-          }
-          ' &
-
-          # C) mDNS & NetBIOS Sniffer (Discovers names for phones/PCs with MAC Randomization)
-          tcpdump -i br-lan -l -n -e -t 'udp port 137 or udp port 5353 or udp port 5355' 2>/dev/null | awk '
-          /^[0-9a-fA-F]{2}:/ {
-              mac = tolower($1)
-              for(i=1; i<=NF; i++) {
-                  if ($i ~ /\.local/ || $i ~ /^[A-Za-z0-9_-]+\.local/) {
-                      h = $i; sub(/\.local.*/, "", h); sub(/.*\./, "", h);
-                      if (length(h) > 2 && length(h) < 32) {
-                          system("echo \"" h "\" > /tmp/dhcp-host-" mac)
-                          system("ip=\"$(cat /tmp/arp-ip-" mac " 2>/dev/null)\"; [ -n \"$ip\" ] && /usr/bin/passive-ip-helper.sh " mac " $ip &")
-                      }
-                  }
-              }
-          }
-          ' &
-
-          # D) Ubiquiti (UDP 10001) & MikroTik (UDP 5678) Discovery Sniffer
-          tcpdump -i br-lan -l -n -e -t -s 0 -A 'udp port 10001 or udp port 5678' 2>/dev/null | awk '
-          /^[0-9a-fA-F]{2}:/ { current_mac = tolower($1) }
-          {
-              for(i=1; i<=NF; i++) {
-                  if ($i ~ /^AirOS/ || $i ~ /^NanoStation/ || $i ~ /^LiteBeam/ || $i ~ /^PowerBeam/ || $i ~ /^MikroTik/ || $i ~ /^RouterOS/) {
-                      host = $i;
-                      if (current_mac != "") {
-                          system("echo \"" host "\" > /tmp/dhcp-host-" current_mac)
-                          system("ip=\"$(cat /tmp/arp-ip-" current_mac " 2>/dev/null)\"; [ -n \"$ip\" ] && /usr/bin/passive-ip-helper.sh " current_mac " $ip &")
-                      }
-                  }
-              }
-          }
-          ' &
-
-          wait
-          EOF
-          chmod +x files/usr/bin/passive-ip-sniffer.sh
-          
-          cat << 'EOF' > files/etc/init.d/passive-arp
-          #!/bin/sh /etc/rc.common
-          START=99
-
-          start() {
-              killall tcpdump 2>/dev/null
-              /usr/bin/passive-ip-sniffer.sh &
-          }
-
-          stop() {
-              killall tcpdump 2>/dev/null
-          }
-          EOF
-          chmod +x files/etc/init.d/passive-arp
-          
-          echo '#!/bin/sh' > files/etc/uci-defaults/99-enable-passive-arp
-          echo '/etc/init.d/passive-arp enable' >> files/etc/uci-defaults/99-enable-passive-arp
-          echo '/etc/init.d/passive-arp start' >> files/etc/uci-defaults/99-enable-passive-arp
-          echo 'exit 0' >> files/etc/uci-defaults/99-enable-passive-arp
-          chmod +x files/etc/uci-defaults/99-enable-passive-arp
 
           # Create helper script to extract real EEPROM calibration data after first boot
           mkdir -p files/usr/sbin
@@ -586,10 +445,18 @@ jobs:
           make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
 
           echo "======================================="
-          echo "Step 2: Applying Superchannel Patches..."
+          echo "Step 2: Applying Superchannel & PSGMII Patches..."
           echo "======================================="
           cd build_dir
           bash /tmp/unlock-superchannel.sh
+          
+          # Patch QCA8k switch driver to completely skip the 100-retry PSGMII loop (fixes 3-minute boot delay)
+          for f in $(find . -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
+              sed -i 's/retries < 100/retries < 1/g' "$f"
+              sed -i 's/retries < 10 /retries < 1 /g' "$f"
+              echo "Patched PSGMII boot delay loop in: $f"
+          done
+          
           cd ..
 
           echo "======================================="
