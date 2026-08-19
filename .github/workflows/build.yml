@@ -100,9 +100,7 @@ jobs:
           PYEOF
           
 
-      - name: Compile the Firmware
-        run: |
-          grep -B 1 -A 1 'H1Radio' target/linux/ipq40xx/base-files/lib/upgrade/platform.sh || true
+
 
       - name: Create Superchannel Unlock Script
         run: |
