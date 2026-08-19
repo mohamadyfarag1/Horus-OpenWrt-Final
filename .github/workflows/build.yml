@@ -47,6 +47,10 @@ jobs:
           / {
               model = "Horus 9200";
               compatible = "h1radio,ti04-708hp", "qcom,ipq4019";
+          
+              chosen {
+                  bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
+              };
           };
           
           &wifi0 {
