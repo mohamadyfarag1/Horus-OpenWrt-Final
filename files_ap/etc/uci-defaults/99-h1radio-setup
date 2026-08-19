@@ -13,8 +13,8 @@ uci -q set dhcp.lan.dhcpv6='disabled'
 uci -q set dhcp.lan.ra='disabled'
 uci -q set dhcp.lan.ndp='disabled'
 
-# 3. Dynamic MAC Address Assignment
-BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
+# 3. Dynamic MAC Address Assignment (Unique BSSIDs for 2.4G and 5G)
+BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null || cat /sys/class/net/lan1/address 2>/dev/null || cat /sys/class/net/br-lan/address 2>/dev/null)
 if [ -n "$BASE_MAC" ]; then
     prefix=$(echo "$BASE_MAC" | cut -d: -f1-5)
     last_byte=$(echo "$BASE_MAC" | cut -d: -f6)
@@ -26,7 +26,8 @@ if [ -n "$BASE_MAC" ]; then
     WLAN5_MAC="${prefix}:${wlan5_hex}"
     
     uci set network.wan.macaddr="$WAN_MAC"
-    uci set wireless.radio1.macaddr="$WLAN5_MAC"
+    uci set wireless.default_radio0.macaddr="$BASE_MAC"
+    uci set wireless.default_radio1.macaddr="$WLAN5_MAC"
 fi
 
 # 4. Enable irqbalance
