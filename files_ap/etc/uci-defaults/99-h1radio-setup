@@ -48,25 +48,6 @@ uci set luci.eject.command='/usr/bin/safe-eject-usb.sh'
 # Commit all UCI changes ONCE (Extremely Fast)
 uci commit
 
-# 5. Multi-Core Packet Steering (RPS/XPS on all 4 CPU Cores)
-cat << 'EOF' > /etc/init.d/smp_affinity
-#!/bin/sh /etc/rc.common
-START=99
-
-start() {
-    # Distribute packet processing across all 4 CPU cores (Core 0,1,2,3 - Mask: f)
-    for rps in /sys/class/net/*/queues/rx-*/rps_cpus; do
-        [ -f "$rps" ] && echo "f" > "$rps" 2>/dev/null
-    done
-    for xps in /sys/class/net/*/queues/tx-*/xps_cpus; do
-        [ -f "$xps" ] && echo "f" > "$xps" 2>/dev/null
-    done
-}
-EOF
-
-chmod +x /etc/init.d/smp_affinity
-/etc/init.d/smp_affinity enable
-
 # 6. rc.local: CPU Performance Mode
 cat << 'RCEOF' > /etc/rc.local
 #!/bin/sh
