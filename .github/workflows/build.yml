@@ -499,8 +499,13 @@ jobs:
           CONFIG_PACKAGE_luci-theme-openwrt-2020=y
           CONFIG_PACKAGE_ca-certificates=y
           CONFIG_PACKAGE_ca-bundle=y
+          # CONFIG_PACKAGE_luci-app-samba4 is not set
           CFGEOF
           make defconfig
+          sed -i '/CONFIG_PACKAGE_luci-app-samba/d' .config
+          sed -i '/CONFIG_PACKAGE_samba/d' .config
+          echo "# CONFIG_PACKAGE_luci-app-samba4 is not set" >> .config
+          echo "# CONFIG_PACKAGE_samba4-server is not set" >> .config
 
       - name: Copy Custom Files (files_ap)
         run: |

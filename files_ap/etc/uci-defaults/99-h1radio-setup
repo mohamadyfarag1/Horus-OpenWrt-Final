@@ -32,10 +32,14 @@ fi
 # 4. Enable irqbalance
 uci set irqbalance.irqbalance.enabled='1'
 
-# 5. Create LuCI Extroot Button
+# 5. Create LuCI Extroot & Eject Buttons
 uci set luci.extroot=command
 uci set luci.extroot.name='Format USB & Expand Space (Extroot)'
 uci set luci.extroot.command='/usr/bin/auto-extroot.sh'
+
+uci set luci.eject=command
+uci set luci.eject.name='Safely Eject USB (Reboot to NAND)'
+uci set luci.eject.command='/usr/bin/safe-eject-usb.sh'
 
 # Commit all UCI changes ONCE (Extremely Fast)
 uci commit
