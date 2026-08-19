@@ -39,47 +39,17 @@ jobs:
           mkdir -p $(dirname "$dts_path_66")
           mkdir -p $(dirname "$dts_path_base")
           
-          # Generate custom DTS with 128MB SPI NAND definition
+          # Generate custom DTS based on exact Jalapeno hardware layout
           cat << 'EOF' > "$dts_path_66"
           // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-          #include "qcom-ipq4019-ap.dk01.1.dtsi"
+          #include "qcom-ipq4018-jalapeno.dtsi"
           
           / {
               model = "Horus 9200";
-              compatible = "h1radio,ti04-708hp", "qcom,ipq4019";
+              compatible = "h1radio,ti04-708hp", "8dev,jalapeno", "qcom,ipq4019";
           
               chosen {
                   bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
-              };
-          };
-          
-          &wifi0 {
-              qcom,ath10k-calibration-variant = "8devices-Jalapeno";
-          };
-          
-          &wifi1 {
-              qcom,ath10k-calibration-variant = "8devices-Jalapeno";
-          };
-
-          &blsp1_spi1 {
-              status = "okay";
-
-              spi-nand@1 {
-                  status = "okay";
-                  compatible = "spi-nand";
-                  reg = <1>;
-                  spi-max-frequency = <24000000>;
-
-                  partitions {
-                      compatible = "fixed-partitions";
-                      #address-cells = <1>;
-                      #size-cells = <1>;
-
-                      partition@0 {
-                          label = "ubi";
-                          reg = <0x00000000 0x08000000>;
-                      };
-                  };
               };
           };
           EOF
