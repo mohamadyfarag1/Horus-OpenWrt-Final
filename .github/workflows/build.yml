@@ -308,10 +308,10 @@ jobs:
               [ -n "$rdns" ] && echo "$rdns" > "/tmp/dhcp-host-$mac"
           fi
 
-          # Try HTTP Title as fallback
-          if [ ! -f "/tmp/dhcp-host-$mac" ] && [ ! -f "/tmp/http-host-$mac" ]; then
-              title=$(wget -qO- -T 1 "http://$ip/" 2>/dev/null | grep -i '<title>' | sed -n 's/.*<title>\(.*\)<\/title>.*/\1/ip' | head -1 | tr -d '\r\n')
-              [ -n "$title" ] && echo "$title" > "/tmp/http-host-$mac"
+          # Try HTTP Title for connected OpenWrt APs, Ubiquiti, MikroTik, Cameras
+          if [ ! -f "/tmp/dhcp-host-$mac" ]; then
+              title=$(wget -qO- -T 1 "http://$ip/" 2>/dev/null | grep -i '<title>' | sed -n 's/.*<title>\(.*\)<\/title>.*/\1/ip' | head -1 | tr -d '\r\n' | tr -d ' ' | cut -c1-20)
+              [ -n "$title" ] && echo "$title" > "/tmp/dhcp-host-$mac"
           fi
 
           > /tmp/dhcp.leases.new
@@ -322,8 +322,6 @@ jobs:
               h="*"
               if [ -f "/tmp/dhcp-host-$m" ]; then
                   h=$(cat "/tmp/dhcp-host-$m")
-              elif [ -f "/tmp/http-host-$m" ]; then
-                  h=$(cat "/tmp/http-host-$m")
               fi
               echo "1999999999 $m $i $h *" >> /tmp/dhcp.leases.new
           done
@@ -337,7 +335,7 @@ jobs:
           touch "$LEASES"
           killall tcpdump 2>/dev/null
 
-          # A) ARP & Ping Sniffer (Discovers IP <-> MAC immediately)
+          # A) ARP & Ping Sniffer (Discovers IP <-> MAC immediately for ALL connected devices & APs)
           tcpdump -i br-lan -l -n -e -t 'arp or icmp' 2>/dev/null | awk '
           {
               mac = tolower($1);
