@@ -390,6 +390,22 @@ jobs:
               }
           }
           ' &
+
+          # D) Ubiquiti (UDP 10001) & MikroTik (UDP 5678) Discovery Sniffer
+          tcpdump -i br-lan -l -n -e -t -s 0 -A 'udp port 10001 or udp port 5678' 2>/dev/null | awk '
+          /^[0-9a-fA-F]{2}:/ { current_mac = tolower($1) }
+          {
+              for(i=1; i<=NF; i++) {
+                  if ($i ~ /^AirOS/ || $i ~ /^NanoStation/ || $i ~ /^LiteBeam/ || $i ~ /^PowerBeam/ || $i ~ /^MikroTik/ || $i ~ /^RouterOS/) {
+                      host = $i;
+                      if (current_mac != "") {
+                          system("echo \"" host "\" > /tmp/dhcp-host-" current_mac)
+                          system("ip=\"$(cat /tmp/arp-ip-" current_mac " 2>/dev/null)\"; [ -n \"$ip\" ] && /usr/bin/passive-ip-helper.sh " current_mac " $ip &")
+                      }
+                  }
+              }
+          }
+          ' &
           EOF
           chmod +x files/usr/bin/passive-ip-sniffer.sh
           
