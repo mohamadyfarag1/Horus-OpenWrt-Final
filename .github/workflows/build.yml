@@ -42,7 +42,7 @@ jobs:
           mkdir -p $(dirname "$dts_path_66")
           mkdir -p $(dirname "$dts_path_base")
           
-          # Generate custom DTS based on exact Jalapeno hardware layout
+          # Generate custom DTS based on exact NBG6617 hardware layout for switch, but with 128MB NAND
           cat << 'EOF' > "$dts_path_66"
           // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
           #include "qcom-ipq4018-nbg6617.dtsi"
@@ -53,6 +53,22 @@ jobs:
           
               chosen {
                   bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
+              };
+          };
+
+          &nand {
+              status = "okay";
+              nand@0 {
+                  partitions {
+                      compatible = "fixed-partitions";
+                      #address-cells = <1>;
+                      #size-cells = <1>;
+
+                      partition@0 {
+                          label = "ubi";
+                          reg = <0x0000000 0x8000000>; /* 128MB */
+                      };
+                  };
               };
           };
           EOF
@@ -71,7 +87,7 @@ jobs:
             printf '\tPAGESIZE := 2048\n'
             printf '\tDEVICE_TITLE := Horus 9200\n'
             printf '\tSUPPORTED_DEVICES := H1Radio,ti04-708hp h1radio,ti04-708hp qcom,ipq4019-h1radio-ti04-708hp\n'
-            printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands -luci-app-samba4 -samba4-server -luci-i18n-samba4-en\n'
+            printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands -luci-app-samba -luci-app-samba4 -samba36-server -samba4-server -luci-i18n-samba-en -luci-i18n-samba4-en\n'
             printf 'endef\n'
             printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
           } >> target/linux/ipq40xx/image/generic.mk
@@ -417,9 +433,10 @@ jobs:
           # CONFIG_PACKAGE_luci-app-samba4 is not set
           CFGEOF
           make defconfig
-          sed -i '/CONFIG_PACKAGE_luci-app-samba/d' .config
-          sed -i '/CONFIG_PACKAGE_samba/d' .config
+          sed -i '/samba/d' .config
+          echo "# CONFIG_PACKAGE_luci-app-samba is not set" >> .config
           echo "# CONFIG_PACKAGE_luci-app-samba4 is not set" >> .config
+          echo "# CONFIG_PACKAGE_samba36-server is not set" >> .config
           echo "# CONFIG_PACKAGE_samba4-server is not set" >> .config
 
       - name: Copy Custom Files (files_ap)
