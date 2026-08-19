@@ -361,6 +361,7 @@ jobs:
           # Inject 5MHz frequency step generator into LuCI view/network/wireless.js for 200+ Superchannels
           python3 << 'PYEOF'
           import os
+          import re
           path = "feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js"
           if os.path.exists(path):
               with open(path, "r") as f:
@@ -395,12 +396,16 @@ jobs:
                       }
                   }
               """
-              target = "const hwmodelist=L.toArray(wifidevs?wifidevs.getHWModes():null)"
-              if target in code:
-                  code = code.replace(target, injection + "\n\t\t" + target)
+              target_pattern = r"const\s+hwmodelist\s*=\s*L\.toArray\(wifidevs\s*\?\s*wifidevs\.getHWModes\(\)\s*:\s*null\)"
+              match = re.search(target_pattern, code)
+              if match:
+                  target = match.group(0)
+                  code = code.replace(target, injection + "\n\t\t\t" + target)
                   with open(path, "w") as f:
                       f.write(code)
                   print("OK: Injected over 200+ 5MHz Superchannel channels into LuCI wireless.js")
+              else:
+                  print("ERROR: Could not find hwmodelist anchor in wireless.js")
           PYEOF
           
           # The target uses -ct by default or we specify it in .config, no need to sed Makefile
