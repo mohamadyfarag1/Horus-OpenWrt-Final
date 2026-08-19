@@ -34,11 +34,14 @@ jobs:
       - name: Create Custom Device Tree for Horus
         run: |
           cd openwrt
-          dts_path="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
-          mkdir -p $(dirname "$dts_path")
+          dts_path_66="target/linux/ipq40xx/files-6.6/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
+          dts_path_base="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
+          mkdir -p $(dirname "$dts_path_66")
+          mkdir -p $(dirname "$dts_path_base")
           
-          # Generate a minimal custom DTS inheriting from the standard DK01.1 base
-          cat << 'EOF' > "$dts_path"
+          # Generate custom DTS with 128MB SPI NAND definition
+          cat << 'EOF' > "$dts_path_66"
+          // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
           #include "qcom-ipq4019-ap.dk01.1.dtsi"
           
           / {
@@ -53,28 +56,25 @@ jobs:
           &wifi1 {
               qcom,ath10k-calibration-variant = "8devices-Jalapeno";
           };
+
+          &nand {
+              status = "okay";
+
+              nand@0 {
+                  partitions {
+                      compatible = "fixed-partitions";
+                      #address-cells = <1>;
+                      #size-cells = <1>;
+
+                      partition@0 {
+                          label = "ubi";
+                          reg = <0x00000000 0x08000000>;
+                      };
+                  };
+              };
+          };
           EOF
-          
-          # Patch rootfs partition size to 128MB across all dtsi files
-          python3 << 'PYEOF'
-          import os, re, glob
-          for path in glob.glob("target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/*.dts*"):
-              with open(path, 'r') as f:
-                  content = f.read()
-              def repl_rootfs(m):
-                  block = m.group(0)
-                  def repl_reg(m_reg):
-                      offset = m_reg.group(1)
-                      offset_int = int(offset, 16)
-                      new_size = 0x8000000 - offset_int
-                      return f"reg = <{offset} 0x{new_size:08x}>"
-                  return re.sub(r'reg\s*=\s*<([^ ]+)\s+[^>]+>', repl_reg, block)
-              new_content = re.sub(r'partition@[0-9a-fA-F]+\s*\{[^}]*label\s*=\s*"(rootfs|rootfs_data)"[^}]*\}', repl_rootfs, content)
-              if new_content != content:
-                  with open(path, 'w') as f:
-                      f.write(new_content)
-                  print(f"Patched NAND size in {path}")
-          PYEOF
+          cp "$dts_path_66" "$dts_path_base"
 
       - name: Patch Makefiles for Custom Device
         run: |
@@ -87,9 +87,8 @@ jobs:
             printf '\tDEVICE_DTS := qcom-ipq4019-h1radio-ti04-708hp\n'
             printf '\tBLOCKSIZE := 128k\n'
             printf '\tPAGESIZE := 2048\n'
-            printf '\tDEVICE_TITLE := H1Radio TI04-708HP\n'
+            printf '\tDEVICE_TITLE := Horus 9200\n'
             printf '\tSUPPORTED_DEVICES := H1Radio,ti04-708hp h1radio,ti04-708hp qcom,ipq4019-h1radio-ti04-708hp\n'
-            printf '\tIMAGE_SIZE := 32768k\n'
             printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands -luci-app-samba4 -samba4-server -luci-i18n-samba4-en\n'
             printf 'endef\n'
             printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
@@ -493,14 +492,11 @@ jobs:
         run: |
           cd openwrt
           echo "======================================="
-          echo "Step 1: Preparing kernel source..."
+          echo "Step 1: Preparing kernel and wireless sources..."
           echo "======================================="
           make target/linux/prepare V=s -j$(nproc) 2>&1 || true
-
-          echo "======================================="
-          echo "Step 1.5: Injecting DTS into kernel build tree..."
-          echo "======================================="
-          # DTS injection is now handled cleanly via files/ overlay.
+          make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
+          make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
 
           echo "======================================="
           echo "Step 2: Applying Superchannel Patches..."
