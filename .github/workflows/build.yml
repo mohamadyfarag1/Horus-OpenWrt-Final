@@ -363,56 +363,6 @@ jobs:
           });
           JSEOF
           
-          # Inject 5MHz frequency step generator into LuCI view/network/wireless.js for 200+ Superchannels
-          python3 << 'PYEOF'
-          import os
-          import re
-          path = "feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js"
-          if os.path.exists(path):
-              with open(path, "r") as f:
-                  code = f.read()
-              injection = """
-                  if (this.channels['5g']) {
-                      var existing_5g = this.channels['5g'];
-                      for (var f_mhz = 4920; f_mhz <= 6000; f_mhz += 5) {
-                          var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
-                          var label = ch + ' (' + f_mhz + ' MHz)';
-                          var found = false;
-                          for (var j = 0; j < existing_5g.length; j += 3) {
-                              if (existing_5g[j] == ch || existing_5g[j] == f_mhz) { found = true; break; }
-                          }
-                          if (!found) {
-                              this.channels['5g'].push(ch, label, {available: true});
-                          }
-                      }
-                  }
-                  if (this.channels['2g']) {
-                      var existing_2g = this.channels['2g'];
-                      for (var f_2g = 2312; f_2g <= 2484; f_2g += 5) {
-                          var ch_2g = Math.round((f_2g - 2407) / 5);
-                          var label_2g = ch_2g + ' (' + f_2g + ' MHz)';
-                          var found_2g = false;
-                          for (var k = 0; k < existing_2g.length; k += 3) {
-                              if (existing_2g[k] == ch_2g || existing_2g[k] == f_2g) { found_2g = true; break; }
-                          }
-                          if (!found_2g) {
-                              this.channels['2g'].push(ch_2g, label_2g, {available: true});
-                          }
-                      }
-                  }
-              """
-              target_pattern = r"const\s+hwmodelist\s*=\s*L\.toArray\(wifidevs\s*\?\s*wifidevs\.getHWModes\(\)\s*:\s*null\)"
-              match = re.search(target_pattern, code)
-              if match:
-                  target = match.group(0)
-                  code = code.replace(target, injection + "\n\t\t\t" + target)
-                  with open(path, "w") as f:
-                      f.write(code)
-                  print("OK: Injected over 200+ 5MHz Superchannel channels into LuCI wireless.js")
-              else:
-                  print("ERROR: Could not find hwmodelist anchor in wireless.js")
-          PYEOF
-          
           # The target uses -ct by default or we specify it in .config, no need to sed Makefile
           cat > .config << 'CFGEOF'
           CONFIG_TARGET_ipq40xx=y
