@@ -118,6 +118,17 @@ jobs:
           with open(path, "w") as f:
               f.write(content)
           print("OK: h1radio added to nand_do_upgrade in platform.sh")
+
+          path_net = "target/linux/ipq40xx/base-files/etc/board.d/02_network"
+          with open(path_net, "r") as f:
+              net_content = f.read()
+          net_content = net_content.replace(
+              "zyxel,nbg6617)",
+              "h1radio,ti04-708hp |\\\n\tzyxel,nbg6617)"
+          )
+          with open(path_net, "w") as f:
+              f.write(net_content)
+          print("OK: h1radio added to 02_network")
           PYEOF
           
 
