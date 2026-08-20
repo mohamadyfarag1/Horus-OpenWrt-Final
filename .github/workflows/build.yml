@@ -53,22 +53,23 @@ jobs:
           fi
 
           echo "Patching 128MB SPI NAND capacity and model strings into factory DTS..."
-          python3 -c '
-import re, sys
-with open(sys.argv[1], "r") as f:
-    dts = f.read()
+          cat << 'PYEOF' > patch_dts.py
+          import re, sys
+          with open(sys.argv[1], "r") as f:
+              dts = f.read()
 
-# Replace model and compatible in the root node
-dts = re.sub(r"model\s*=\s*\"[^\"]+\";", "model = \"Horus 9200\";", dts, count=1)
-dts = re.sub(r"compatible\s*=\s*\"[^\"]+\"(.*?);", "compatible = \"h1radio,ti04-708hp\", \"qcom,ipq4019\";", dts, count=1)
+          # Replace model and compatible in the root node
+          dts = re.sub(r"model\s*=\s*\"[^\"]+\";", "model = \"Horus 9200\";", dts, count=1)
+          dts = re.sub(r"compatible\s*=\s*\"[^\"]+\"(.*?);", "compatible = \"h1radio,ti04-708hp\", \"qcom,ipq4019\";", dts, count=1)
 
-# Find rootfs or ubi partition and force size to 128MB (0x8000000)
-# We match label = "rootfs" and the following reg = <offset size>
-dts = re.sub(r"(label\s*=\s*\"rootfs\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
-dts = re.sub(r"(label\s*=\s*\"ubi\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
-with open(sys.argv[1], "w") as f:
-    f.write(dts)
-' "$dts_path_66"
+          # Find rootfs or ubi partition and force size to 128MB (0x8000000)
+          # We match label = "rootfs" and the following reg = <offset size>
+          dts = re.sub(r"(label\s*=\s*\"rootfs\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
+          dts = re.sub(r"(label\s*=\s*\"ubi\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
+          with open(sys.argv[1], "w") as f:
+              f.write(dts)
+          PYEOF
+          python3 patch_dts.py "$dts_path_66"
 
           cp "$dts_path_66" "$dts_path_base"
 
