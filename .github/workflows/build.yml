@@ -42,35 +42,36 @@ jobs:
           mkdir -p $(dirname "$dts_path_66")
           mkdir -p $(dirname "$dts_path_base")
           
-          echo "Decompiling original factory router.dtb to preserve perfect LAN/WAN/Switch config..."
-          # Decompile the original dtb that has the correct switch and GPIO settings
-          dtc -I dtb -O dts -o "$dts_path_66" ../router.dtb || true
+          # Generate custom DTS based on exact NBG6617 hardware layout for switch, but with 128MB NAND
+          cat << 'EOF' > "$dts_path_66"
+          // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+          #include "qcom-ipq4018-nbg6617.dtsi"
           
-          # If dtc fails, we install it
-          if [ ! -f "$dts_path_66" ]; then
-              sudo apt-get install -y device-tree-compiler
-              dtc -I dtb -O dts -o "$dts_path_66" ../router.dtb
-          fi
+          / {
+              model = "Horus 9200";
+              compatible = "h1radio,ti04-708hp", "zyxel,nbg6617", "qcom,ipq4019";
+          
+              chosen {
+                  bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
+              };
+          };
 
-          echo "Patching 128MB SPI NAND capacity and model strings into factory DTS..."
-          cat << 'PYEOF' > patch_dts.py
-          import re, sys
-          with open(sys.argv[1], "r") as f:
-              dts = f.read()
+          &nand {
+              status = "okay";
+              nand@0 {
+                  partitions {
+                      compatible = "fixed-partitions";
+                      #address-cells = <1>;
+                      #size-cells = <1>;
 
-          # Replace model and compatible in the root node
-          dts = re.sub(r"model\s*=\s*\"[^\"]+\";", "model = \"Horus 9200\";", dts, count=1)
-          dts = re.sub(r"compatible\s*=\s*\"[^\"]+\"(.*?);", "compatible = \"h1radio,ti04-708hp\", \"qcom,ipq4019\";", dts, count=1)
-
-          # Find rootfs or ubi partition and force size to 128MB (0x8000000)
-          # We match label = "rootfs" and the following reg = <offset size>
-          dts = re.sub(r"(label\s*=\s*\"rootfs\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
-          dts = re.sub(r"(label\s*=\s*\"ubi\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
-          with open(sys.argv[1], "w") as f:
-              f.write(dts)
-          PYEOF
-          python3 patch_dts.py "$dts_path_66"
-
+                      partition@0 {
+                          label = "ubi";
+                          reg = <0x0000000 0x8000000>; /* 128MB */
+                      };
+                  };
+              };
+          };
+          EOF
           cp "$dts_path_66" "$dts_path_base"
 
       - name: Patch Makefiles for Custom Device
@@ -357,6 +358,56 @@ jobs:
           });
           JSEOF
           
+          # Inject 5MHz frequency step generator into LuCI view/network/wireless.js for 200+ Superchannels
+          python3 << 'PYEOF'
+          import os
+          import re
+          path = "feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js"
+          if os.path.exists(path):
+              with open(path, "r") as f:
+                  code = f.read()
+              injection = """
+                  if (this.channels['5g']) {
+                      var existing_5g = this.channels['5g'];
+                      for (var f_mhz = 4920; f_mhz <= 6000; f_mhz += 5) {
+                          var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
+                          var label = ch + ' (' + f_mhz + ' MHz)';
+                          var found = false;
+                          for (var j = 0; j < existing_5g.length; j += 3) {
+                              if (existing_5g[j] == ch || existing_5g[j] == f_mhz) { found = true; break; }
+                          }
+                          if (!found) {
+                              this.channels['5g'].push(ch, label, {available: true});
+                          }
+                      }
+                  }
+                  if (this.channels['2g']) {
+                      var existing_2g = this.channels['2g'];
+                      for (var f_2g = 2312; f_2g <= 2484; f_2g += 5) {
+                          var ch_2g = Math.round((f_2g - 2407) / 5);
+                          var label_2g = ch_2g + ' (' + f_2g + ' MHz)';
+                          var found_2g = false;
+                          for (var k = 0; k < existing_2g.length; k += 3) {
+                              if (existing_2g[k] == ch_2g || existing_2g[k] == f_2g) { found_2g = true; break; }
+                          }
+                          if (!found_2g) {
+                              this.channels['2g'].push(ch_2g, label_2g, {available: true});
+                          }
+                      }
+                  }
+              """
+              target_pattern = r"const\s+hwmodelist\s*=\s*L\.toArray\(wifidevs\s*\?\s*wifidevs\.getHWModes\(\)\s*:\s*null\)"
+              match = re.search(target_pattern, code)
+              if match:
+                  target = match.group(0)
+                  code = code.replace(target, injection + "\n\t\t\t" + target)
+                  with open(path, "w") as f:
+                      f.write(code)
+                  print("OK: Injected over 200+ 5MHz Superchannel channels into LuCI wireless.js")
+              else:
+                  print("ERROR: Could not find hwmodelist anchor in wireless.js")
+          PYEOF
+          
           # The target uses -ct by default or we specify it in .config, no need to sed Makefile
           cat > .config << 'CFGEOF'
           CONFIG_TARGET_ipq40xx=y
@@ -414,26 +465,23 @@ jobs:
           make target/linux/prepare V=s -j$(nproc) 2>&1 || true
           make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
           make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
-          
+
           echo "======================================="
-          echo "Step 1.5: Preparing Kernel and Patching PSGMII loop..."
+          echo "Step 2: Applying Superchannel & PSGMII Patches..."
           echo "======================================="
-          make target/linux/prepare V=s -j$(nproc)
+          cd build_dir
+          bash /tmp/unlock-superchannel.sh
           
-          # Now that the kernel is extracted, patch the qca8k driver to completely skip the 100-retry PSGMII loop
-          for f in $(find build_dir/ -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
+          # Patch QCA8k switch driver to completely skip the 100-retry PSGMII loop (fixes 3-minute boot delay)
+          for f in $(find . -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
               sed -i 's/retries < 100/retries < 1/g' "$f"
               sed -i 's/retries < 10 /retries < 1 /g' "$f"
               echo "Patched PSGMII boot delay loop in: $f"
           done
+          
+          cd ..
 
           echo "======================================="
-          echo "Step 2: Applying Superchannel Patches..."
-          echo "======================================="
-          cd build_dir
-          bash /tmp/unlock-superchannel.sh
-          cd ..
-          
           echo "Step 3: Starting Full Compilation..."
           echo "======================================="
           make -j$(nproc) || { make -j1 V=s 2>&1 | tee build.log; exit ${PIPESTATUS[0]}; }
