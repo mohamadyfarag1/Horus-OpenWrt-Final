@@ -42,48 +42,34 @@ jobs:
           mkdir -p $(dirname "$dts_path_66")
           mkdir -p $(dirname "$dts_path_base")
           
-          # Generate custom DTS based on Jalapeno (internal switch), but with 128MB SPI NAND and Pin 42 PSGMII reset
-          cat << 'EOF' > "$dts_path_66"
-          // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-          #include "qcom-ipq4018-jalapeno.dtsi"
+          echo "Decompiling original factory router.dtb to preserve perfect LAN/WAN/Switch config..."
+          # Decompile the original dtb that has the correct switch and GPIO settings
+          dtc -I dtb -O dts -o "$dts_path_66" ../router.dtb || true
           
-          / {
-              model = "Horus 9200";
-              compatible = "h1radio,ti04-708hp", "8dev,jalapeno", "qcom,ipq4019";
-          
-              chosen {
-                  bootargs-append = " ubi.mtd=rootfs root=/dev/ubiblock0_1";
-              };
-          };
+          # If dtc fails, we install it
+          if [ ! -f "$dts_path_66" ]; then
+              sudo apt-get install -y device-tree-compiler
+              dtc -I dtb -O dts -o "$dts_path_66" ../router.dtb
+          fi
 
-          &mdio {
-              /* H1Radio (NBG6617 clone) uses Pin 42 for switch reset, not Jalapeno's Pin 58 */
-              reset-gpios = <&tlmm 42 GPIO_ACTIVE_LOW>;
-          };
+          echo "Patching 128MB SPI NAND capacity and model strings into factory DTS..."
+          python3 -c '
+import re, sys
+with open(sys.argv[1], "r") as f:
+    dts = f.read()
 
-          &blsp1_spi1 {
-              status = "okay";
-              flash@1 {
-                  partitions {
-                      compatible = "fixed-partitions";
-                      #address-cells = <1>;
-                      #size-cells = <1>;
-                      
-                      /* Delete old 32MB rootfs partition if it exists */
-                      /delete-node/ partition@0;
-                      /delete-node/ partition@1;
-                      /delete-node/ partition@2;
-                      /delete-node/ partition@3;
-                      /delete-node/ partition@4;
+# Replace model and compatible in the root node
+dts = re.sub(r"model\s*=\s*\"[^\"]+\";", "model = \"Horus 9200\";", dts, count=1)
+dts = re.sub(r"compatible\s*=\s*\"[^\"]+\"(.*?);", "compatible = \"h1radio,ti04-708hp\", \"qcom,ipq4019\";", dts, count=1)
 
-                      partition@0 {
-                          label = "rootfs";
-                          reg = <0x0000000 0x8000000>; /* 128MB */
-                      };
-                  };
-              };
-          };
-          EOF
+# Find rootfs or ubi partition and force size to 128MB (0x8000000)
+# We match label = "rootfs" and the following reg = <offset size>
+dts = re.sub(r"(label\s*=\s*\"rootfs\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
+dts = re.sub(r"(label\s*=\s*\"ubi\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
+with open(sys.argv[1], "w") as f:
+    f.write(dts)
+' "$dts_path_66"
+
           cp "$dts_path_66" "$dts_path_base"
 
       - name: Patch Makefiles for Custom Device
