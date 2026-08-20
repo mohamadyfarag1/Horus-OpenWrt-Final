@@ -42,7 +42,7 @@ jobs:
           mkdir -p $(dirname "$dts_path_66")
           mkdir -p $(dirname "$dts_path_base")
           
-          # Generate custom DTS based on Jalapeno (internal switch), but with 128MB NAND and fix PSGMII reset
+          # Generate custom DTS based on Jalapeno (internal switch), but with 128MB SPI NAND and Pin 42 PSGMII reset
           cat << 'EOF' > "$dts_path_66"
           // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
           #include "qcom-ipq4018-jalapeno.dtsi"
@@ -52,25 +52,32 @@ jobs:
               compatible = "h1radio,ti04-708hp", "8dev,jalapeno", "qcom,ipq4019";
           
               chosen {
-                  bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
+                  bootargs-append = " ubi.mtd=rootfs root=/dev/ubiblock0_1";
               };
           };
 
           &mdio {
-              /* Remove reset-gpios to prevent OpenWrt from breaking bootloader PSGMII calibration */
-              /delete-property/ reset-gpios;
+              /* H1Radio (NBG6617 clone) uses Pin 42 for switch reset, not Jalapeno's Pin 58 */
+              reset-gpios = <&tlmm 42 GPIO_ACTIVE_LOW>;
           };
 
-          &nand {
+          &blsp1_spi1 {
               status = "okay";
-              nand@0 {
+              flash@1 {
                   partitions {
                       compatible = "fixed-partitions";
                       #address-cells = <1>;
                       #size-cells = <1>;
+                      
+                      /* Delete old 32MB rootfs partition if it exists */
+                      /delete-node/ partition@0;
+                      /delete-node/ partition@1;
+                      /delete-node/ partition@2;
+                      /delete-node/ partition@3;
+                      /delete-node/ partition@4;
 
                       partition@0 {
-                          label = "ubi";
+                          label = "rootfs";
                           reg = <0x0000000 0x8000000>; /* 128MB */
                       };
                   };
@@ -420,23 +427,26 @@ jobs:
           make target/linux/prepare V=s -j$(nproc) 2>&1 || true
           make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
           make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
-
-          echo "======================================="
-          echo "Step 2: Applying Superchannel & PSGMII Patches..."
-          echo "======================================="
-          cd build_dir
-          bash /tmp/unlock-superchannel.sh
           
-          # Patch QCA8k switch driver to completely skip the 100-retry PSGMII loop (fixes 3-minute boot delay)
-          for f in $(find . -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
+          echo "======================================="
+          echo "Step 1.5: Preparing Kernel and Patching PSGMII loop..."
+          echo "======================================="
+          make target/linux/prepare V=s -j$(nproc)
+          
+          # Now that the kernel is extracted, patch the qca8k driver to completely skip the 100-retry PSGMII loop
+          for f in $(find build_dir/ -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
               sed -i 's/retries < 100/retries < 1/g' "$f"
               sed -i 's/retries < 10 /retries < 1 /g' "$f"
               echo "Patched PSGMII boot delay loop in: $f"
           done
-          
-          cd ..
 
           echo "======================================="
+          echo "Step 2: Applying Superchannel Patches..."
+          echo "======================================="
+          cd build_dir
+          bash /tmp/unlock-superchannel.sh
+          cd ..
+          
           echo "Step 3: Starting Full Compilation..."
           echo "======================================="
           make -j$(nproc) || { make -j1 V=s 2>&1 | tee build.log; exit ${PIPESTATUS[0]}; }
