@@ -622,6 +622,9 @@ jobs:
           # Secure serial console
           uci set system.@system[0].ttylogin='1'
           uci commit system
+          # Enable STP (Spanning Tree Protocol) to prevent network loops
+          uci set network.@device[0].stp='1'
+          uci commit network
               # Enable radios by default (if they are disabled)
               uci set wireless.radio0.disabled='0'
               uci set wireless.radio1.disabled='0'
@@ -696,6 +699,7 @@ chmod +x files_ap/etc/uci-defaults/99-fix-macs
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
