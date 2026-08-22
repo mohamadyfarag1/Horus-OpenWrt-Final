@@ -582,7 +582,7 @@ jobs:
           if [ -n "$BASE_MAC" ]; then
               # Fix MAC Addresses
               uci set network.lan.macaddr="$BASE_MAC"
-              MAC5=$(maccalc add "$BASE_MAC" 1)
+              MAC5=$(maccalc add "$BASE_MAC" 2)
               uci set wireless.radio1.macaddr="$MAC5"
               uci set wireless.radio0.macaddr="$BASE_MAC"
               
@@ -705,6 +705,7 @@ chmod +x files_ap/etc/uci-defaults/99-fix-macs
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
