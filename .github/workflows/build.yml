@@ -459,6 +459,12 @@ jobs:
               uci set wireless.radio1.country='US'
               uci set wireless.radio1.txpower='30'
               
+              # Prevent 802.11d hostapd crash
+              uci delete wireless.radio0.country_ie 2>/dev/null
+              uci delete wireless.radio1.country_ie 2>/dev/null
+              uci set wireless.radio0.ieee80211d='1'
+              uci set wireless.radio1.ieee80211d='1'
+              
               # Enable radios by default (if they are disabled)
               uci set wireless.radio0.disabled='0'
               uci set wireless.radio1.disabled='0'
@@ -468,8 +474,7 @@ jobs:
           fi
           exit 0
           MACEOF
-          chmod +x files_ap/etc/uci-defaults/99-fix-macs
-      - name: Copy Custom Files (files_ap)
+          chmod +x files_ap/etc/uci-defaults/99-fix-macs      - name: Copy Custom Files (files_ap)
         run: |
           cd openwrt
           mkdir -p files
@@ -519,5 +524,6 @@ jobs:
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
