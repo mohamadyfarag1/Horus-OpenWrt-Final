@@ -454,40 +454,6 @@ jobs:
           });
           JSEOF
           
-          # Inject Custom UI JS for MAC Click-to-Copy and IP Click
-          cat << 'JSEOF' >> feeds/luci/modules/luci-base/htdocs/luci-static/resources/luci.js
-          document.addEventListener('DOMContentLoaded', function() {
-              setInterval(function() {
-                  document.querySelectorAll('td, .td').forEach(function(cell) {
-                      if (cell.dataset.macDone) return;
-                      var text = cell.innerText || '';
-                      var macMatch = text.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
-                      if (macMatch) {
-                          var mac = macMatch[0];
-                          var span = document.createElement('span');
-                          span.textContent = mac;
-                          span.style.cursor = 'pointer';
-                          span.style.borderBottom = '1px dashed #999';
-                          span.title = 'Click to copy MAC';
-                          span.onclick = function() {
-                              navigator.clipboard.writeText(mac);
-                              span.style.color = '#4caf50';
-                              span.style.fontWeight = 'bold';
-                              setTimeout(function(){ span.style.color = ''; span.style.fontWeight = ''; }, 1500);
-                          };
-                          cell.innerHTML = cell.innerHTML.replace(mac, span.outerHTML);
-                          cell.dataset.macDone = 'true';
-                      }
-                      var ipMatch = text.match(/\b([0-9]{1,3}\.){3}[0-9]{1,3}\b/);
-                      if (ipMatch && !cell.querySelector('a[href*="http"]')) {
-                          var ip = ipMatch[0];
-                          cell.innerHTML = cell.innerHTML.replace(ip, '<a href="http://' + ip + '" target="_blank" style="font-weight:bold; color:#0069d6; text-decoration:underline;">' + ip + '</a>');
-                      }
-                  });
-              }, 2000);
-          });
-          JSEOF
-          
           # Inject 5MHz frequency step generator into LuCI view/network/wireless.js for 200+ Superchannels
           python3 << 'PYEOF'
           import os
@@ -578,29 +544,43 @@ jobs:
           mkdir -p files_ap/etc/uci-defaults
           cat << 'MACEOF' > files_ap/etc/uci-defaults/99-fix-macs
           #!/bin/sh
+          . /lib/functions.sh
           BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
           if [ -n "$BASE_MAC" ]; then
-              # Fix MAC Addresses
+              # === MAC Address Assignment ===
+              # br-lan / 2.4G = BASE (b7)
+              # WAN           = BASE+1 (b8)
+              # 5G            = BASE+2 (b9)
+              WAN_MAC=$(macaddr_add "$BASE_MAC" 1)
+              WIFI5_MAC=$(macaddr_add "$BASE_MAC" 2)
               uci set network.lan.macaddr="$BASE_MAC"
-              MAC5=$(maccalc add "$BASE_MAC" 2)
-              uci set wireless.radio1.macaddr="$MAC5"
+              uci set network.wan.macaddr="$WAN_MAC"
               uci set wireless.radio0.macaddr="$BASE_MAC"
-              # Disable DHCP Server on LAN (Let MikroTik handle it)
+              uci set wireless.radio1.macaddr="$WIFI5_MAC"
+
+              # === Disable DHCP Server (Dumb AP - MikroTik handles DHCP) ===
               uci set dhcp.lan.ignore='1'
+              uci set dhcp.lan.dhcpv6='disabled'
+              uci set dhcp.lan.ra='disabled'
               uci commit dhcp
-              # Unleash Maximum Hardware Power & Set Country
+
+              # === Country & Power (country_ie=1 enables 802.11d for hostapd) ===
               uci set wireless.radio0.country='US'
               uci set wireless.radio0.country_ie='1'
               uci set wireless.radio0.txpower='30'
               uci set wireless.radio1.country='US'
               uci set wireless.radio1.country_ie='1'
               uci set wireless.radio1.txpower='30'
-              
-              # Prevent 802.11d hostapd crash
-              uci delete wireless.radio0.country_ie 2>/dev/null
-              uci delete wireless.radio1.country_ie 2>/dev/null
-              uci set wireless.radio0.ieee80211d='1'
-              uci set wireless.radio1.ieee80211d='1'
+
+              # === Enable radios ===
+              uci set wireless.radio0.disabled='0'
+              uci set wireless.radio1.disabled='0'
+
+              uci commit network
+              uci commit wireless
+          fi
+
+          # === Board JSON (LuCI port display) ===
           cat << 'BOARDJSON' > /etc/board.json
           {
           	"model": {
@@ -622,37 +602,34 @@ jobs:
           	}
           }
           BOARDJSON
-          # Add STP Status Check Button to LuCI Custom Commands
+
+          # === STP Check Button in LuCI ===
           uci set luci.stp_check=command
           uci set luci.stp_check.name='Check Network Loops (STP)'
           uci set luci.stp_check.command='brctl showstp br-lan'
           uci commit luci
-          # Secure serial console
+
+          # === Secure serial console (require password on TTL) ===
           uci set system.@system[0].ttylogin='1'
           uci commit system
-          # Enable STP (Spanning Tree Protocol) to prevent network loops
+
+          # === Enable STP to prevent network loops ===
           uci set network.@device[0].stp='1'
           uci commit network
-              # Enable radios by default (if they are disabled)
-              uci set wireless.radio0.disabled='0'
-              uci set wireless.radio1.disabled='0'
-              
-              uci commit network
-              uci commit wireless
-          fi
+
           exit 0
           MACEOF
-chmod +x files_ap/etc/uci-defaults/99-fix-macs
+          chmod +x files_ap/etc/uci-defaults/99-fix-macs
           cat << 'RCEOF' > files_ap/etc/rc.local
           # Put your custom commands here that should be executed once
           # the system init finished. By default this file does nothing.
-          
+
           # Ultimate Wi-Fi SMP Optimization (Pin 2.4G to CPU1, 5G to CPU2)
           IRQ0=$(grep -m1 -i ath10k /proc/interrupts | awk '{print $1}' | tr -d ':')
           IRQ1=$(grep -m2 -i ath10k /proc/interrupts | tail -n1 | awk '{print $1}' | tr -d ':')
           [ -n "$IRQ0" ] && echo 2 > /proc/irq/$IRQ0/smp_affinity
           [ -n "$IRQ1" ] && echo 4 > /proc/irq/$IRQ1/smp_affinity
-          
+
           exit 0
           RCEOF
           chmod +x files_ap/etc/rc.local
@@ -707,9 +684,6 @@ chmod +x files_ap/etc/uci-defaults/99-fix-macs
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
-
-
-
 
 
 
