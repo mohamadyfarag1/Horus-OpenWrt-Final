@@ -42,52 +42,29 @@ jobs:
           mkdir -p $(dirname "$dts_path_66")
           mkdir -p $(dirname "$dts_path_base")
           
-          # Generate custom DTS based on exact NBG6617 hardware layout for switch, but with 128MB NAND
-          cat << 'EOF' > "$dts_path_66"
-          // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-          #include "qcom-ipq4018-nbg6617.dts"
+          # Decompile the original working router.dtb
+          dtc -I dtb -O dts -o "$dts_path_66" ../router.dtb
           
-          / {
-              model = "Horus 9200";
-              compatible = "h1radio,ti04-708hp", "zyxel,nbg6617", "qcom,ipq4019";
+          # Patch the DTS safely to upgrade NAND rootfs partition to 128MB
+          python3 << 'PYEOF'
+          import re
+          path = "target/linux/ipq40xx/files-6.6/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
+          with open(path, "r") as f:
+              content = f.read()
+              
+          def patch_rootfs(match):
+              block = match.group(0)
+              block = re.sub(r'0x0*2000000', '0x08000000', block)
+              block = re.sub(r'33554432', '134217728', block)
+              return block
+              
+          content = re.sub(r'(partition@[0-9a-fA-F]+\s*\{[^}]*label\s*=\s*"rootfs";[^}]*\})', patch_rootfs, content, flags=re.DOTALL)
+          content = re.sub(r'model\s*=\s*".*";', r'model = "Horus 9200";', content)
           
-              chosen {
-                  bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
-              };
-          };
-
-          &swport1 {
-              label = "wan";
-          };
-          &swport2 {
-              label = "lan4";
-          };
-          &swport3 {
-              label = "lan3";
-          };
-          &swport4 {
-              label = "lan2";
-          };
-          &swport5 {
-              label = "lan1";
-          };
-
-          &nand {
-              status = "okay";
-              nand@0 {
-                  partitions {
-                      compatible = "fixed-partitions";
-                      #address-cells = <1>;
-                      #size-cells = <1>;
-
-                      partition@0 {
-                          label = "ubi";
-                          reg = <0x0000000 0x8000000>; /* 128MB */
-                      };
-                  };
-              };
-          };
-          EOF
+          with open(path, "w") as f:
+              f.write(content)
+          PYEOF
+          
           cp "$dts_path_66" "$dts_path_base"
 
       - name: Patch Makefiles for Custom Device
