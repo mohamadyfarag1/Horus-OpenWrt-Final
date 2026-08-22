@@ -544,8 +544,8 @@ jobs:
           CONFIG_TARGET_ipq40xx_generic=y
           CONFIG_TARGET_ipq40xx_generic_DEVICE_h1radio_ti04-708hp=y
           CONFIG_PACKAGE_luci=y
-          CONFIG_PACKAGE_irqbalance=y
-          CONFIG_PACKAGE_luci-app-irqbalance=y
+          # CONFIG_PACKAGE_irqbalance is not set
+          # CONFIG_PACKAGE_luci-app-irqbalance is not set
           CONFIG_PACKAGE_kmod-ath=y
           CONFIG_PACKAGE_kmod-ath10k-ct=y
           CONFIG_PACKAGE_ath10k-firmware-qca4019-ct=y
@@ -683,6 +683,7 @@ jobs:
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
