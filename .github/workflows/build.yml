@@ -585,7 +585,9 @@ jobs:
               MAC5=$(maccalc add "$BASE_MAC" 2)
               uci set wireless.radio1.macaddr="$MAC5"
               uci set wireless.radio0.macaddr="$BASE_MAC"
-              
+              # Disable DHCP Server on LAN (Let MikroTik handle it)
+              uci set dhcp.lan.ignore='1'
+              uci commit dhcp
               # Unleash Maximum Hardware Power & Set Country
               uci set wireless.radio0.country='US'
               uci set wireless.radio0.country_ie='1'
@@ -705,6 +707,7 @@ chmod +x files_ap/etc/uci-defaults/99-fix-macs
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
