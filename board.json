@@ -1,0 +1,27 @@
+{
+	"model": {
+		"id": "H1Radio,ti04-708hp",
+		"name": "Horus 9200"
+	},
+	"system": {
+		"compat_version": "1.1"
+	},
+	"network": {
+		"wan": {
+			"ports": ["wan"],
+			"protocol": "dhcp"
+		},
+		"lan": {
+			"ports": ["lan1", "lan2", "lan3", "lan4"],
+			"protocol": "static"
+		}
+	},
+	"wlan": {
+		"phy0": {
+			"path": "platform/soc/a000000.wifi"
+		},
+		"phy1": {
+			"path": "platform/soc/a800000.wifi"
+		}
+	}
+}
