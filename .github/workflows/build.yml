@@ -578,8 +578,7 @@ jobs:
           echo "# CONFIG_PACKAGE_luci-app-samba4 is not set" >> .config
           echo "# CONFIG_PACKAGE_samba36-server is not set" >> .config
           echo "# CONFIG_PACKAGE_samba4-server is not set" >> .config
-
-            - name: Inject MAC & WiFi Auto-Fix Script
+      - name: Inject MAC & WiFi Auto-Fix Script
         run: |
           mkdir -p files_ap/etc/uci-defaults
           cat << 'MACEOF' > files_ap/etc/uci-defaults/99-fix-macs
@@ -613,7 +612,9 @@ jobs:
           fi
           exit 0
           MACEOF
-          chmod +x files_ap/etc/uci-defaults/99-fix-macs      - name: Copy Custom Files (files_ap)
+          chmod +x files_ap/etc/uci-defaults/99-fix-macs
+
+      - name: Copy Custom Files (files_ap)
         run: |
           cd openwrt
           mkdir -p files
@@ -663,6 +664,7 @@ jobs:
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
