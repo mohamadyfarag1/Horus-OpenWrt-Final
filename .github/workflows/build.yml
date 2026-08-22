@@ -618,7 +618,11 @@ jobs:
           	}
           }
           BOARDJSON
-          
+          # Add STP Status Check Button to LuCI Custom Commands
+          uci set luci.stp_check=command
+          uci set luci.stp_check.name='Check Network Loops (STP)'
+          uci set luci.stp_check.command='brctl showstp br-lan | grep -E "^[a-z]|state"'
+          uci commit luci
           # Secure serial console
           uci set system.@system[0].ttylogin='1'
           uci commit system
@@ -699,6 +703,7 @@ chmod +x files_ap/etc/uci-defaults/99-fix-macs
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
