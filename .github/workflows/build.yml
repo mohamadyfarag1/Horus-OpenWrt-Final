@@ -126,150 +126,7 @@ jobs:
 
 
 
-      - name: Create Superchannel Unlock Script
-        run: |
-          cat > /tmp/unlock-superchannel.sh << 'SEDSCRIPT'
-          #!/bin/bash
-          echo "============================================"
-          echo "=== SUPERCHANNEL UNLOCK - Full Spectrum ==="
-          echo "============================================"
 
-          #############################################
-          # PATCH 1: ath/regd.c (Kernel Regulatory)
-          # Based on forum post #3 by anarchy99
-          # Expands 2GHz to 2192-2732 MHz
-          # Expands 5GHz to 4900-6100 MHz
-          # Removes NO_IR and NO_OFDM restrictions
-          #############################################
-          for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
-            echo "[PATCH 1] Patching: $REGD"
-            # 2GHz CH01-11 rule: expand to full 2.3GHz band
-            sed -i 's/REG_RULE(2412-10, 2462+10, 40, 0, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 0, 33, 0)/g' "$REGD"
-            # 2GHz CH12-13 rule: expand to full band
-            sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2192-10, 2732+10, 40, 0, 33,/g' "$REGD"
-            # 2GHz CH14 rule: increase power
-            sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2484-10, 2484+10, 40, 0, 33,/g' "$REGD"
-            # 5GHz first range: expand to full 5GHz
-            sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
-            # 5GHz second range: expand to full 5GHz
-            sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
-            # 5GHz third range: expand to full 5GHz
-            sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
-            # Remove NO_IR (No Initiate Radiation) - allow active scan
-            sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
-            # Remove NO_OFDM restriction - allow OFDM on all channels
-            sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
-            echo "  -> ath/regd.c patched OK"
-          done
-
-          #############################################
-          # PATCH 2: net/wireless/reg.c
-          # Based on forum post #3
-          # Expands world regdomain 00
-          # Removes is_valid_rd() checks completely
-          #############################################
-          for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
-            echo "[PATCH 2] Patching: $REG"
-            # Expand world regdomain 00 - 2GHz
-            sed -i 's/REG_RULE(2412-10, 2462+10, 40, 6, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 6, 33, 0)/g' "$REG"
-            # Remove CH12-13 separate rule (now covered by expanded range)
-            sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2192-10, 2732+10, 40, 6, 33,/g' "$REG"
-            # Expand CH14 power
-            sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2484-10, 2484+10, 40, 6, 33,/g' "$REG"
-            # Remove ALL is_valid_rd() validation blocks (3 locations in the forum patch)
-            # Location 1: reg_set_rd_user
-            sed -i '/if (!is_valid_rd(rd)) {/{N;N;N;N;d}' "$REG"
-            # Location 2: WARN version
-            sed -i '/if (WARN(!is_valid_rd(rd)/{N;N;N;d}' "$REG"
-            # Remove NO_IR flags from world regdomain
-            sed -i 's/NL80211_RRF_NO_IR | NL80211_RRF_AUTO_BW/0/g' "$REG"
-            sed -i 's/NL80211_RRF_NO_IR/0/g' "$REG"
-            sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REG"
-            echo "  -> net/wireless/reg.c patched OK"
-          done
-
-          #############################################
-          # PATCH 3: net/wireless/util.c
-          # CRITICAL for 2.3GHz support!
-          # Adds support for channel numbers > 127
-          # Without this, extended channels won't work
-          #############################################
-          for UTIL in $(find . -path "*/net/wireless/util.c" 2>/dev/null); do
-            echo "[PATCH 3] Patching: $UTIL"
-            # Add signed char cast for extended channel numbers
-            # This allows channels 213-255 (2.3GHz band) to work
-            sed -i '/case NL80211_BAND_2GHZ:/a\\t\tchan = (int)(char)chan;' "$UTIL"
-            echo "  -> net/wireless/util.c patched OK"
-          done
-
-          #############################################
-          # PATCH 4: hostapd - hw_features.c
-          # Allow OFDM/HT/VHT on channel 14
-          # Without this, channel 14 is B-only
-          #############################################
-          for HWF in $(find . -path "*/hostapd*/src/ap/hw_features.c" -o -path "*/wpad*/src/ap/hw_features.c" 2>/dev/null); do
-            echo "[PATCH 4] Patching: $HWF"
-            # Remove the block that disables OFDM/HT/VHT on channel 14
-            sed -i 's/wpa_printf(MSG_INFO, "Disable OFDM\/HT\/VHT on channel 14");//g' "$HWF"
-            sed -i 's/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211B;/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211G;/g' "$HWF"
-            sed -i '/iface->conf->ieee80211n = 0;/d' "$HWF"
-            sed -i '/iface->conf->ieee80211ac = 0;/d' "$HWF"
-            echo "  -> hostapd/hw_features.c patched OK"
-          done
-
-          echo "============================================"
-          echo "=== SUPERCHANNEL UNLOCK COMPLETE ==="
-          echo "============================================"
-          SEDSCRIPT
-          chmod +x /tmp/unlock-superchannel.sh
-
-      - name: Generate Custom Unlocked Regulatory DB
-        run: |
-          git clone https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git || true
-          cd wireless-regdb
-          python3 -c "
-          # Generate db.txt with ALL countries unlocked
-          countries = [
-              '00',
-              'AD','AE','AF','AL','AM','AN','AR','AT','AU','AW','AZ',
-              'BA','BB','BD','BE','BG','BH','BL','BN','BO','BR','BY',
-              'CA','CF','CH','CI','CL','CN','CO','CR','CY','CZ',
-              'DE','DK','DO','DZ',
-              'EC','EE','EG','ES','ET',
-              'FI','FR',
-              'GB','GE','GH','GL','GP','GR','GT','GU','GY',
-              'HK','HN','HR','HT','HU',
-              'ID','IE','IL','IN','IQ','IR','IS','IT',
-              'JM','JO','JP',
-              'KE','KH','KN','KP','KR','KW','KY','KZ',
-              'LB','LC','LI','LK','LS','LT','LU','LV',
-              'MA','MC','MD','ME','MF','MH','MK','MN','MO','MP','MQ','MR','MT','MU','MW','MX','MY',
-              'NG','NI','NL','NO','NP','NZ',
-              'OM',
-              'PA','PE','PF','PG','PH','PK','PL','PM','PR','PT','PW','PY',
-              'QA',
-              'RE','RO','RS','RU','RW',
-              'SA','SE','SG','SI','SK','SN','SR','SV','SY',
-              'TC','TD','TG','TH','TN','TR','TT','TW','TZ',
-              'UA','UG','US','UY','UZ',
-              'VC','VE','VI','VN','VU',
-              'WF','WS',
-              'YE','YT',
-              'ZA','ZW'
-          ]
-          with open('db.txt', 'w') as f:
-              for c in countries:
-                  if c == '00':
-                      f.write('country 00:\n')
-                  else:
-                      f.write(f'country {c}:\n')
-                  f.write('\t(2192 - 2732 @ 40), (33)\n')
-                  f.write('\t(4900 - 6100 @ 160), (33)\n')
-                  f.write('\n')
-          print(f'Generated db.txt with {len(countries)} countries')
-          "
-          openssl ecparam -name prime256v1 -genkey -noout -out key.priv.pem
-          make || echo "WARNING: regulatory.db build failed, using repo copy"
 
       - name: Inject Custom Board Data and Regulatory and UCI Defaults
         run: |
@@ -454,56 +311,6 @@ jobs:
           });
           JSEOF
           
-          # Inject 5MHz frequency step generator into LuCI view/network/wireless.js for 200+ Superchannels
-          python3 << 'PYEOF'
-          import os
-          import re
-          path = "feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js"
-          if os.path.exists(path):
-              with open(path, "r") as f:
-                  code = f.read()
-              injection = """
-                  if (this.channels['5g']) {
-                      var existing_5g = this.channels['5g'];
-                      for (var f_mhz = 4920; f_mhz <= 6000; f_mhz += 5) {
-                          var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
-                          var label = ch + ' (' + f_mhz + ' MHz)';
-                          var found = false;
-                          for (var j = 0; j < existing_5g.length; j += 3) {
-                              if (existing_5g[j] == ch || existing_5g[j] == f_mhz) { found = true; break; }
-                          }
-                          if (!found) {
-                              this.channels['5g'].push(ch, label, {available: true});
-                          }
-                      }
-                  }
-                  if (this.channels['2g']) {
-                      var existing_2g = this.channels['2g'];
-                      for (var f_2g = 2312; f_2g <= 2484; f_2g += 5) {
-                          var ch_2g = Math.round((f_2g - 2407) / 5);
-                          var label_2g = ch_2g + ' (' + f_2g + ' MHz)';
-                          var found_2g = false;
-                          for (var k = 0; k < existing_2g.length; k += 3) {
-                              if (existing_2g[k] == ch_2g || existing_2g[k] == f_2g) { found_2g = true; break; }
-                          }
-                          if (!found_2g) {
-                              this.channels['2g'].push(ch_2g, label_2g, {available: true});
-                          }
-                      }
-                  }
-              """
-              target_pattern = r"const\s+hwmodelist\s*=\s*L\.toArray\(wifidevs\s*\?\s*wifidevs\.getHWModes\(\)\s*:\s*null\)"
-              match = re.search(target_pattern, code)
-              if match:
-                  target = match.group(0)
-                  code = code.replace(target, injection + "\n\t\t\t" + target)
-                  with open(path, "w") as f:
-                      f.write(code)
-                  print("OK: Injected over 200+ 5MHz Superchannel channels into LuCI wireless.js")
-              else:
-                  print("ERROR: Could not find hwmodelist anchor in wireless.js")
-          PYEOF
-          
           # The target uses -ct by default or we specify it in .config, no need to sed Makefile
           cat > .config << 'CFGEOF'
           CONFIG_TARGET_ipq40xx=y
@@ -613,8 +420,9 @@ jobs:
           uci set system.@system[0].ttylogin='1'
           uci commit system
 
-          # === Enable STP to prevent network loops ===
+          # === Enable STP to prevent network loops & Disable IPv6 ===
           uci set network.@device[0].stp='1'
+          uci set network.@device[0].ipv6='0'
           uci commit network
 
           exit 0
@@ -657,10 +465,9 @@ jobs:
           make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
 
           echo "======================================="
-          echo "Step 2: Applying Superchannel & PSGMII Patches..."
+          echo "Step 2: Applying PSGMII Patches..."
           echo "======================================="
           cd build_dir
-          bash /tmp/unlock-superchannel.sh
           
           # Patch QCA8k switch driver to completely skip the 100-retry PSGMII loop (fixes 3-minute boot delay)
           for f in $(find . -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
