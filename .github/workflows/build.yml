@@ -597,7 +597,31 @@ jobs:
               uci delete wireless.radio1.country_ie 2>/dev/null
               uci set wireless.radio0.ieee80211d='1'
               uci set wireless.radio1.ieee80211d='1'
-              
+          cat << 'BOARDJSON' > /etc/board.json
+          {
+          	"model": {
+          		"id": "H1Radio,ti04-708hp",
+          		"name": "Horus 9200"
+          	},
+          	"system": {
+          		"compat_version": "1.1"
+          	},
+          	"network": {
+          		"wan": {
+          			"ports": ["wan"],
+          			"protocol": "dhcp"
+          		},
+          		"lan": {
+          			"ports": ["lan1", "lan2", "lan3", "lan4"],
+          			"protocol": "static"
+          		}
+          	}
+          }
+          BOARDJSON
+          
+          # Secure serial console
+          uci set system.@system[0].ttylogin='1'
+          uci commit system
               # Enable radios by default (if they are disabled)
               uci set wireless.radio0.disabled='0'
               uci set wireless.radio1.disabled='0'
@@ -659,6 +683,8 @@ jobs:
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
+
 
 
 
