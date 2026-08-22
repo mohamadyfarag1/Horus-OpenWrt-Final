@@ -1,0 +1,1 @@
+sed -i '/Copy Custom Files (files_ap)/i       - name: Inject MAC Address Auto-Fix Script\n        run: |\n          mkdir -p files_ap/etc/uci-defaults\n          cat << '\''MACEOF'\'' > files_ap/etc/uci-defaults/99-fix-macs\n          #!/bin/sh\n          BASE_MAC=\n          if [ -n \

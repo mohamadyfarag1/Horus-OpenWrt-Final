@@ -45,6 +45,10 @@ uci set luci.eject=command
 uci set luci.eject.name='Safely Eject USB (Reboot to NAND)'
 uci set luci.eject.command='/usr/bin/safe-eject-usb.sh'
 
+uci set luci.reconnect=command
+uci set luci.reconnect.name='Re-enable Existing USB (No Format)'
+uci set luci.reconnect.command='/usr/bin/enable-extroot.sh'
+
 # Commit all UCI changes ONCE (Extremely Fast)
 uci commit
 
@@ -63,6 +67,8 @@ RCEOF
 chmod +x /etc/init.d/*
 chmod +x /etc/rc.local
 chmod +x /usr/bin/auto-extroot.sh
+chmod +x /usr/bin/safe-eject-usb.sh
+chmod +x /usr/bin/enable-extroot.sh
 /etc/init.d/irqbalance enable 2>/dev/null
 /etc/init.d/irqbalance start 2>/dev/null
 /etc/init.d/odhcpd disable 2>/dev/null || true
@@ -71,3 +77,5 @@ chmod +x /usr/bin/auto-extroot.sh
 sed -i 's/https/http/g' /etc/opkg/distfeeds.conf
 
 exit 0
+
+
