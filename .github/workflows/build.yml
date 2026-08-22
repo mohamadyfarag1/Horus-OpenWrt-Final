@@ -45,7 +45,7 @@ jobs:
           # Generate custom DTS based on exact NBG6617 hardware layout for switch, but with 128MB NAND
           cat << 'EOF' > "$dts_path_66"
           // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-          #include "qcom-ipq4018-nbg6617.dtsi"
+          #include "qcom-ipq4018-nbg6617.dts"
           
           / {
               model = "Horus 9200";
@@ -54,6 +54,22 @@ jobs:
               chosen {
                   bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";
               };
+          };
+
+          &swport1 {
+              label = "wan";
+          };
+          &swport2 {
+              label = "lan4";
+          };
+          &swport3 {
+              label = "lan3";
+          };
+          &swport4 {
+              label = "lan2";
+          };
+          &swport5 {
+              label = "lan1";
           };
 
           &nand {
