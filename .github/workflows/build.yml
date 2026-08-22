@@ -440,24 +440,35 @@ jobs:
           echo "# CONFIG_PACKAGE_samba36-server is not set" >> .config
           echo "# CONFIG_PACKAGE_samba4-server is not set" >> .config
 
-            - name: Inject MAC Address Auto-Fix Script
+            - name: Inject MAC & WiFi Auto-Fix Script
         run: |
           mkdir -p files_ap/etc/uci-defaults
           cat << 'MACEOF' > files_ap/etc/uci-defaults/99-fix-macs
           #!/bin/sh
           BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
           if [ -n "$BASE_MAC" ]; then
+              # Fix MAC Addresses
               uci set network.lan.macaddr="$BASE_MAC"
               MAC5=$(maccalc add "$BASE_MAC" 1)
               uci set wireless.radio1.macaddr="$MAC5"
               uci set wireless.radio0.macaddr="$BASE_MAC"
+              
+              # Unleash Maximum Hardware Power & Set Country
+              uci set wireless.radio0.country='US'
+              uci set wireless.radio0.txpower='30'
+              uci set wireless.radio1.country='US'
+              uci set wireless.radio1.txpower='30'
+              
+              # Enable radios by default (if they are disabled)
+              uci set wireless.radio0.disabled='0'
+              uci set wireless.radio1.disabled='0'
+              
               uci commit network
               uci commit wireless
           fi
           exit 0
           MACEOF
           chmod +x files_ap/etc/uci-defaults/99-fix-macs
-
       - name: Copy Custom Files (files_ap)
         run: |
           cd openwrt
@@ -508,4 +519,5 @@ jobs:
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
