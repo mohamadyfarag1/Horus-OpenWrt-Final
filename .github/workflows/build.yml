@@ -588,8 +588,10 @@ jobs:
               
               # Unleash Maximum Hardware Power & Set Country
               uci set wireless.radio0.country='US'
+              uci set wireless.radio0.country_ie='1'
               uci set wireless.radio0.txpower='30'
               uci set wireless.radio1.country='US'
+              uci set wireless.radio1.country_ie='1'
               uci set wireless.radio1.txpower='30'
               
               # Prevent 802.11d hostapd crash
@@ -703,6 +705,7 @@ chmod +x files_ap/etc/uci-defaults/99-fix-macs
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
