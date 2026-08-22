@@ -631,7 +631,20 @@ jobs:
           fi
           exit 0
           MACEOF
-          chmod +x files_ap/etc/uci-defaults/99-fix-macs
+chmod +x files_ap/etc/uci-defaults/99-fix-macs
+          cat << 'RCEOF' > files_ap/etc/rc.local
+          # Put your custom commands here that should be executed once
+          # the system init finished. By default this file does nothing.
+          
+          # Ultimate Wi-Fi SMP Optimization (Pin 2.4G to CPU1, 5G to CPU2)
+          IRQ0=$(grep -m1 -i ath10k /proc/interrupts | awk '{print $1}' | tr -d ':')
+          IRQ1=$(grep -m2 -i ath10k /proc/interrupts | tail -n1 | awk '{print $1}' | tr -d ':')
+          [ -n "$IRQ0" ] && echo 2 > /proc/irq/$IRQ0/smp_affinity
+          [ -n "$IRQ1" ] && echo 4 > /proc/irq/$IRQ1/smp_affinity
+          
+          exit 0
+          RCEOF
+          chmod +x files_ap/etc/rc.local
 
       - name: Copy Custom Files (files_ap)
         run: |
@@ -683,6 +696,7 @@ jobs:
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
 
 
 
