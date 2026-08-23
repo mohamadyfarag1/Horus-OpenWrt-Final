@@ -214,11 +214,11 @@ jobs:
           EOF
           
           # 5. Daemon Script (Does the heavy lifting)
-          cat << 'EOF' > files/usr/bin/cloud-daemon.sh
+          cat << 'CLOUDEOF' > files/usr/bin/cloud-daemon.sh
           #!/bin/sh
           
           # ========================================================
-          # CLOUDFLARE API CREDENTIALS - FILL THESE BEFORE BUILDING!
+          # CLOUDFLARE API CREDENTIALS
           # ========================================================
           CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
           CF_ZONE="cc802f55a41b79336afc874b43c19c47"
@@ -226,29 +226,40 @@ jobs:
           CF_DOMAIN="opsegypt.com"
           # ========================================================
           
-          echo "🟡 Checking space..." > /tmp/cloud.status
+          STATUS_FILE="/tmp/cloud.status"
+          URL_FILE="/tmp/cloud.url"
+          
+          echo "🟡 Checking space..." > "$STATUS_FILE"
+          
           FREE_KB=$(df -k / | awk 'NR==2 {print $4}')
           if [ "$FREE_KB" -lt 20000 ]; then
-              echo "🔴 Error: Not enough space (Need 20MB)! Please format USB." > /tmp/cloud.status
+              echo "🔴 Error: Not enough space (Need 20MB)! Please format USB first." > "$STATUS_FILE"
               exit 1
           fi
           
-          if ! command -v cloudflared >/dev/null; then
-              echo "🟡 Installing Packages (Takes 1-2 minutes)..." > /tmp/cloud.status
+          # Check internet connectivity
+          if ! ping -c 1 -W 3 1.1.1.1 >/dev/null 2>&1; then
+              echo "🔴 Error: No Internet! Connect WAN cable first." > "$STATUS_FILE"
+              exit 1
+          fi
+          
+          if ! command -v cloudflared >/dev/null 2>&1; then
+              echo "🟡 Installing cloudflared (Takes 1-2 minutes)..." > "$STATUS_FILE"
               opkg update >/dev/null 2>&1
               opkg install cloudflared >/dev/null 2>&1
-              if ! command -v cloudflared >/dev/null; then
-                  echo "🔴 Error: Installation failed! Check internet." > /tmp/cloud.status
+              if ! command -v cloudflared >/dev/null 2>&1; then
+                  echo "🔴 Error: Installation failed! Check internet." > "$STATUS_FILE"
                   exit 1
               fi
           fi
           
-          echo "🟡 Connecting to Cloudflare API..." > /tmp/cloud.status
-          > /tmp/cloud.url
+          echo "🟡 Connecting to Cloudflare API..." > "$STATUS_FILE"
+          > "$URL_FILE"
           
-          MAC=$(ip link show eth0 | awk '/ether/ {print $2}' | sed 's/://g')
-          TUNNEL_NAME="Horus-$MAC"
-          FQDN="$MAC.$CF_DOMAIN"
+          # Get MAC address for unique naming
+          MAC=$(cat /sys/class/net/eth0/address | sed 's/://g')
+          TUNNEL_NAME="Horus-${MAC}"
+          FQDN="${MAC}.${CF_DOMAIN}"
           
           mkdir -p /etc/cloudflared
           CRED_FILE="/etc/cloudflared/cert.json"
@@ -257,80 +268,109 @@ jobs:
           # Generate a random 32-byte secret for this tunnel
           SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
           
-          # 1. Delete old tunnel with same name (if exists) to avoid conflicts
-          OLD_TUNNELS=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/cfd_tunnel?name=$TUNNEL_NAME" -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json")
+          # Step 1: Delete old tunnel with same name (cleanup)
+          OLD_TUNNELS=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel?name=${TUNNEL_NAME}&is_deleted=false" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json")
           OLD_ID=$(echo "$OLD_TUNNELS" | jsonfilter -e '@.result[0].id' 2>/dev/null)
           if [ -n "$OLD_ID" ]; then
-              curl -s -X DELETE "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/cfd_tunnel/$OLD_ID" -H "Authorization: Bearer $CF_TOKEN" >/dev/null
+              # Must clean connections first
+              curl -s -X DELETE \
+                "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel/${OLD_ID}/connections" \
+                -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
+              sleep 2
+              curl -s -X DELETE \
+                "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel/${OLD_ID}" \
+                -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
           fi
           
-          # 2. Create New Tunnel
-          RES=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/cfd_tunnel" \
-               -H "Authorization: Bearer $CF_TOKEN" \
-               -H "Content-Type: application/json" \
-               --data '{"name":"'"$TUNNEL_NAME"'", "tunnel_secret":"'"$SECRET"'"}')
+          # Step 2: Create New Tunnel
+          echo "🟡 Creating Tunnel..." > "$STATUS_FILE"
+          RES=$(curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"name\":\"${TUNNEL_NAME}\", \"tunnel_secret\":\"${SECRET}\"}")
           
           TUNNEL_ID=$(echo "$RES" | jsonfilter -e '@.result.id' 2>/dev/null)
           
           if [ -z "$TUNNEL_ID" ]; then
-              echo "🔴 Error: API Failed (Check Token)." > /tmp/cloud.status
+              ERROR_MSG=$(echo "$RES" | jsonfilter -e '@.errors[0].message' 2>/dev/null)
+              echo "🔴 Error: API Failed - ${ERROR_MSG:-Unknown}" > "$STATUS_FILE"
               exit 1
           fi
           
-          # 3. Create Local Credentials & Config
-          echo '{"AccountTag":"'"$CF_ACCOUNT"'","TunnelSecret":"'"$SECRET"'","TunnelID":"'"$TUNNEL_ID"'"}' > "$CRED_FILE"
+          # Step 3: Create Local Credentials
+          printf '{"AccountTag":"%s","TunnelSecret":"%s","TunnelID":"%s"}' \
+            "$CF_ACCOUNT" "$SECRET" "$TUNNEL_ID" > "$CRED_FILE"
           
-          cat << EOY > "$CONF_FILE"
-          tunnel: $TUNNEL_ID
-          credentials-file: $CRED_FILE
-          ingress:
-            - hostname: $FQDN
-              service: http://127.0.0.1
-            - service: http_status:404
-          EOY
+          # Step 4: Create Config File
+          printf 'tunnel: %s\ncredentials-file: %s\ningress:\n  - hostname: %s\n    service: http://127.0.0.1:80\n  - service: http_status:404\n' \
+            "$TUNNEL_ID" "$CRED_FILE" "$FQDN" > "$CONF_FILE"
           
-          # 4. Route DNS (Delete old CNAME if exists, then create new)
-          DNS_RES=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_records?name=$FQDN" -H "Authorization: Bearer $CF_TOKEN")
+          # Step 5: Route DNS (Delete old CNAME if exists, then create new)
+          echo "🟡 Setting up DNS..." > "$STATUS_FILE"
+          DNS_RES=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?name=${FQDN}" \
+            -H "Authorization: Bearer ${CF_TOKEN}")
           DNS_ID=$(echo "$DNS_RES" | jsonfilter -e '@.result[0].id' 2>/dev/null)
           if [ -n "$DNS_ID" ]; then
-              curl -s -X DELETE "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_records/$DNS_ID" -H "Authorization: Bearer $CF_TOKEN" >/dev/null
+              curl -s -X DELETE \
+                "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records/${DNS_ID}" \
+                -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
           fi
           
-          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_records" \
-               -H "Authorization: Bearer $CF_TOKEN" \
-               -H "Content-Type: application/json" \
-               --data '{"type":"CNAME","name":"'"$FQDN"'","content":"'"$TUNNEL_ID"'.cfargotunnel.com","proxied":true}' >/dev/null
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"CNAME\",\"name\":\"${FQDN}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}" >/dev/null 2>&1
           
-          echo "🟡 Starting Tunnel..." > /tmp/cloud.status
+          # Step 6: Run Tunnel (foreground, procd monitors it)
+          echo "🟡 Starting Tunnel..." > "$STATUS_FILE"
           
-          # 5. Run Tunnel in foreground
-          cloudflared tunnel --config "$CONF_FILE" run 2>&1 | while read line; do
-              # Once it connects, update UI
+          cloudflared tunnel --config "$CONF_FILE" run 2>&1 | while IFS= read -r line; do
               if echo "$line" | grep -q 'Registered tunnel connection'; then
-                  echo "🟢 Online" > /tmp/cloud.status
-                  echo "https://$FQDN" > /tmp/cloud.url
+                  echo "🟢 Online" > "$STATUS_FILE"
+                  echo "https://${FQDN}" > "$URL_FILE"
+              fi
+              if echo "$line" | grep -q 'ERR'; then
+                  echo "🔴 Error: Tunnel disconnected" > "$STATUS_FILE"
               fi
           done
-          EOF
+          CLOUDEOF
           chmod +x files/usr/bin/cloud-daemon.sh
           
-          # 6. Init Script (Procd supervision)
+          # 6. Init Script (Procd supervision with triggers)
           cat << 'EOF' > files/etc/init.d/cloud
           #!/bin/sh /etc/rc.common
           START=99
+          STOP=10
           USE_PROCD=1
           start_service() {
-              local enabled=$(uci -q get cloud.@settings[0].enabled)
+              local enabled
+              config_load cloud
+              config_get enabled main enabled 0
               if [ "$enabled" = "1" ]; then
                   procd_open_instance
                   procd_set_param command /usr/bin/cloud-daemon.sh
                   procd_set_param respawn 3600 5 0
+                  procd_set_param stdout 1
+                  procd_set_param stderr 1
                   procd_close_instance
               else
                   echo "🔴 Offline" > /tmp/cloud.status
                   > /tmp/cloud.url
-                  killall cloudflared 2>/dev/null
               fi
+          }
+          stop_service() {
+              echo "🔴 Offline" > /tmp/cloud.status
+              > /tmp/cloud.url
+              killall cloudflared 2>/dev/null
+          }
+          service_triggers() {
+              procd_add_reload_trigger "cloud"
           }
           reload_service() {
               stop
