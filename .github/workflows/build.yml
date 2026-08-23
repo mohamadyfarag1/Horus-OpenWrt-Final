@@ -137,6 +137,138 @@ jobs:
           # Copy our generated regulatory database
           # Superchannel regulatory.db injection disabled to prevent 0 dBm crash on 5GHz
           cp -r ../files_ap/* files/
+
+      - name: Inject Custom LuCI Cloud App
+        run: |
+          cd openwrt
+          mkdir -p files/usr/lib/lua/luci/controller
+          mkdir -p files/usr/lib/lua/luci/model/cbi/cloud
+          mkdir -p files/usr/lib/lua/luci/view/cloud
+          mkdir -p files/etc/config
+          mkdir -p files/etc/init.d
+          mkdir -p files/usr/bin
+          
+          # 1. Controller (Creates the "Cloud" button in the menu)
+          cat << 'EOF' > files/usr/lib/lua/luci/controller/cloud.lua
+          module("luci.controller.cloud", package.seeall)
+          function index()
+              entry({"admin", "cloud"}, cbi("cloud/settings"), _("Cloud"), 60).dependent = true
+              entry({"admin", "cloud", "status"}, call("action_status"))
+          end
+          function action_status()
+              local fs = require "nixio.fs"
+              local status = fs.readfile("/tmp/cloud.status") or "🔴 Offline"
+              local url = fs.readfile("/tmp/cloud.url") or ""
+              luci.http.prepare_content("application/json")
+              luci.http.write_json({status = status, url = url})
+          end
+          EOF
+          
+          # 2. Model (Creates the Enable checkbox and Status page)
+          cat << 'EOF' > files/usr/lib/lua/luci/model/cbi/cloud/settings.lua
+          m = Map("cloud", translate("Cloud Access"), translate("Enable secure remote access to this router via Cloudflare Tunnel."))
+          s = m:section(TypedSection, "settings", translate("General Settings"))
+          s.anonymous = true
+          e = s:option(Flag, "enabled", translate("Enable Cloud Access"))
+          e.rmempty = false
+          status = s:option(DummyValue, "_status", translate("Status"))
+          status.template = "cloud/status"
+          return m
+          EOF
+          
+          # 3. View (AJAX script to update status without refreshing)
+          cat << 'EOF' > files/usr/lib/lua/luci/view/cloud/status.htm
+          <div id="cloud-status-container">
+              <span id="cloud-status" style="font-weight:bold; padding:5px 10px; border-radius:3px;">Checking status...</span>
+              <div id="cloud-url" style="margin-top:10px; font-size:16px;"></div>
+          </div>
+          <script type="text/javascript">
+              setInterval(function() {
+                  XHR.get('<%=luci.dispatcher.build_url("admin", "cloud", "status")%>', null, function(x, data) {
+                      if (data && data.status) {
+                          var el = document.getElementById('cloud-status');
+                          el.innerHTML = data.status;
+                          if (data.status.indexOf('Online') !== -1) {
+                              el.style.backgroundColor = '#dff0d8'; el.style.color = '#3c763d';
+                          } else if (data.status.indexOf('Offline') !== -1 || data.status.indexOf('Error') !== -1) {
+                              el.style.backgroundColor = '#f2dede'; el.style.color = '#a94442';
+                          } else {
+                              el.style.backgroundColor = '#fcf8e3'; el.style.color = '#8a6d3b';
+                          }
+                          var urlEl = document.getElementById('cloud-url');
+                          if (data.url && data.url !== '') {
+                              urlEl.innerHTML = '<b>Access URL:</b> <a href="' + data.url + '" target="_blank" style="color:#0055ff;">' + data.url + '</a>';
+                          } else {
+                              urlEl.innerHTML = '';
+                          }
+                      }
+                  });
+              }, 2000);
+          </script>
+          EOF
+          
+          # 4. Default Config
+          cat << 'EOF' > files/etc/config/cloud
+          config settings 'main'
+              option enabled '0'
+          EOF
+          
+          # 5. Daemon Script (Does the heavy lifting)
+          cat << 'EOF' > files/usr/bin/cloud-daemon.sh
+          #!/bin/sh
+          echo "🟡 Checking space..." > /tmp/cloud.status
+          FREE_KB=$(df -k / | awk 'NR==2 {print $4}')
+          if [ "$FREE_KB" -lt 20000 ]; then
+              echo "🔴 Error: Not enough space (Need 20MB)! Please format USB." > /tmp/cloud.status
+              exit 1
+          fi
+          if ! command -v cloudflared >/dev/null; then
+              echo "🟡 Installing Packages (Takes 1-2 minutes)..." > /tmp/cloud.status
+              opkg update >/dev/null 2>&1
+              opkg install cloudflared >/dev/null 2>&1
+              if ! command -v cloudflared >/dev/null; then
+                  echo "🔴 Error: Installation failed! Check internet." > /tmp/cloud.status
+                  exit 1
+              fi
+          fi
+          echo "🟡 Starting Tunnel..." > /tmp/cloud.status
+          > /tmp/cloud.url
+          
+          # Run in foreground, grep the URL, and block
+          cloudflared tunnel --url http://127.0.0.1 2>&1 | while read line; do
+              URL=$(echo "$line" | grep -o 'https://.*\.trycloudflare\.com' | head -1)
+              if [ -n "$URL" ]; then
+                  echo "🟢 Online" > /tmp/cloud.status
+                  echo "$URL" > /tmp/cloud.url
+              fi
+          done
+          EOF
+          chmod +x files/usr/bin/cloud-daemon.sh
+          
+          # 6. Init Script (Procd supervision)
+          cat << 'EOF' > files/etc/init.d/cloud
+          #!/bin/sh /etc/rc.common
+          START=99
+          USE_PROCD=1
+          start_service() {
+              local enabled=$(uci -q get cloud.@settings[0].enabled)
+              if [ "$enabled" = "1" ]; then
+                  procd_open_instance
+                  procd_set_param command /usr/bin/cloud-daemon.sh
+                  procd_set_param respawn 3600 5 0
+                  procd_close_instance
+              else
+                  echo "🔴 Offline" > /tmp/cloud.status
+                  > /tmp/cloud.url
+                  killall cloudflared 2>/dev/null
+              fi
+          }
+          reload_service() {
+              stop
+              start
+          }
+          EOF
+          chmod +x files/etc/init.d/cloud
                     # ============================================
           # Passive ARP Sniffer (UBNT-like IP+Host discovery)
           # ============================================
