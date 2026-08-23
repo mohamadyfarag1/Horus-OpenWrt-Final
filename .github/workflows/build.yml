@@ -457,8 +457,8 @@ jobs:
           # === 12. Disable odhcpd (IPv6 removed) ===
           /etc/init.d/odhcpd disable 2>/dev/null || true
 
-          # === 13. Set Default Password (horus9200) ===
-          (echo "horus9200"; sleep 0.1; echo "horus9200") | passwd root >/dev/null 2>&1
+          # === 13. No Password (open access) ===
+          passwd -d root >/dev/null 2>&1
 
           # === 14. CPU Temperature Button in LuCI ===
           uci set luci.temp=command
