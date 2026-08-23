@@ -378,11 +378,9 @@ jobs:
           uci commit dhcp
 
           # === 3. Country & Power (country_ie=1 enables 802.11d for hostapd) ===
-          uci set wireless.radio0.country='US'
-          uci set wireless.radio0.country_ie='1'
+          uci set wireless.radio0.country='YE'
           uci set wireless.radio0.txpower='30'
-          uci set wireless.radio1.country='US'
-          uci set wireless.radio1.country_ie='1'
+          uci set wireless.radio1.country='YE'
           uci set wireless.radio1.txpower='30'
 
           # === 4. Enable radios ===
