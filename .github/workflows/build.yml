@@ -134,8 +134,7 @@ jobs:
           mkdir -p files/lib/firmware/ath10k/QCA4019/hw1.0/
           cp ../board-2.bin files/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
           
-          # Copy our generated regulatory database
-          # Superchannel regulatory.db injection disabled to prevent 0 dBm crash on 5GHz
+          # Copy all custom files including regulatory.db (900-byte custom YE regdb from reference router)
           cp -r ../files_ap/* files/
 
       - name: Inject Custom LuCI Cloud App
@@ -656,7 +655,7 @@ jobs:
         run: |
           cd openwrt
           mkdir -p files
-          find ../files_ap -type f -exec sed -i 's/\r$//' {} +
+          find ../files_ap -type f ! -name '*.db' ! -name '*.bin' -exec sed -i 's/\r$//' {} +
           cp -r ../files_ap/* files/
 
       - name: Download Dependencies
