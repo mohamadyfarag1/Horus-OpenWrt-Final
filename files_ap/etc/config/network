@@ -6,11 +6,12 @@ config interface 'loopback'
 
 config globals 'globals'
 	option packet_steering '1'
-	option ula_prefix 'fd90:f4d8:c90e::/48'
 
 config device
 	option name 'br-lan'
 	option type 'bridge'
+	option stp '1'
+	option ipv6 '0'
 	list ports 'lan1'
 	list ports 'lan2'
 	list ports 'lan3'
@@ -21,7 +22,6 @@ config interface 'lan'
 	option proto 'static'
 	option ipaddr '192.168.100.1'
 	option netmask '255.255.255.0'
-	option ip6assign '60'
 
 config interface 'wan'
 	option device 'wan'

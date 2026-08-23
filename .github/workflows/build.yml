@@ -351,43 +351,78 @@ jobs:
           mkdir -p files_ap/etc/uci-defaults
           cat << 'MACEOF' > files_ap/etc/uci-defaults/99-fix-macs
           #!/bin/sh
+          # =============================================
+          # Horus 9200 - Unified First Boot Configuration
+          # =============================================
           . /lib/functions.sh
+
+          # === 1. MAC Address Assignment ===
+          # br-lan / 2.4G Radio = BASE (b7)
+          # WAN                 = BASE+1 (b8)
+          # 5G Radio            = BASE+2 (b9)
           BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
           if [ -n "$BASE_MAC" ]; then
-              # === MAC Address Assignment ===
-              # br-lan / 2.4G = BASE (b7)
-              # WAN           = BASE+1 (b8)
-              # 5G            = BASE+2 (b9)
               WAN_MAC=$(macaddr_add "$BASE_MAC" 1)
               WIFI5_MAC=$(macaddr_add "$BASE_MAC" 2)
               uci set network.lan.macaddr="$BASE_MAC"
               uci set network.wan.macaddr="$WAN_MAC"
               uci set wireless.radio0.macaddr="$BASE_MAC"
               uci set wireless.radio1.macaddr="$WIFI5_MAC"
-
-              # === Disable DHCP Server (Dumb AP - MikroTik handles DHCP) ===
-              uci set dhcp.lan.ignore='1'
-              uci set dhcp.lan.dhcpv6='disabled'
-              uci set dhcp.lan.ra='disabled'
-              uci commit dhcp
-
-              # === Country & Power (country_ie=1 enables 802.11d for hostapd) ===
-              uci set wireless.radio0.country='US'
-              uci set wireless.radio0.country_ie='1'
-              uci set wireless.radio0.txpower='30'
-              uci set wireless.radio1.country='US'
-              uci set wireless.radio1.country_ie='1'
-              uci set wireless.radio1.txpower='30'
-
-              # === Enable radios ===
-              uci set wireless.radio0.disabled='0'
-              uci set wireless.radio1.disabled='0'
-
-              uci commit network
-              uci commit wireless
           fi
 
-          # === Board JSON (LuCI port display) ===
+          # === 2. Disable DHCP Server (Dumb AP - MikroTik handles DHCP) ===
+          uci set dhcp.lan.ignore='1'
+          uci set dhcp.lan.dhcpv6='disabled'
+          uci set dhcp.lan.ra='disabled'
+          uci set dhcp.lan.ndp='disabled'
+          uci commit dhcp
+
+          # === 3. Country & Power (country_ie=1 enables 802.11d for hostapd) ===
+          uci set wireless.radio0.country='US'
+          uci set wireless.radio0.country_ie='1'
+          uci set wireless.radio0.txpower='30'
+          uci set wireless.radio1.country='US'
+          uci set wireless.radio1.country_ie='1'
+          uci set wireless.radio1.txpower='30'
+
+          # === 4. Enable radios ===
+          uci set wireless.radio0.disabled='0'
+          uci set wireless.radio1.disabled='0'
+          uci commit wireless
+
+          # === 5. Firewall Software Offloading ===
+          uci set firewall.@defaults[0].flow_offloading='1'
+          uci set firewall.@defaults[0].flow_offloading_hw='0'
+          uci commit firewall
+
+          # === 6. Enable STP & Disable IPv6 on Bridge ===
+          uci set network.@device[0].stp='1'
+          uci set network.@device[0].ipv6='0'
+          uci commit network
+
+          # === 7. Secure serial console (require password on TTL) ===
+          uci set system.@system[0].ttylogin='1'
+          uci commit system
+
+          # === 8. LuCI Custom Command Buttons ===
+          uci set luci.stp_check=command
+          uci set luci.stp_check.name='Check Network Loops (STP)'
+          uci set luci.stp_check.command='brctl showstp br-lan'
+
+          uci set luci.extroot=command
+          uci set luci.extroot.name='Format USB & Expand Space (Extroot)'
+          uci set luci.extroot.command='/usr/bin/auto-extroot.sh'
+
+          uci set luci.eject=command
+          uci set luci.eject.name='Safely Eject USB (Reboot to NAND)'
+          uci set luci.eject.command='/usr/bin/safe-eject-usb.sh'
+
+          uci set luci.reconnect=command
+          uci set luci.reconnect.name='Re-enable Existing USB (No Format)'
+          uci set luci.reconnect.command='/usr/bin/enable-extroot.sh'
+          uci commit luci
+
+          # === 9. Board JSON (LuCI port display) ===
           cat << 'BOARDJSON' > /etc/board.json
           {
           	"model": {
@@ -410,20 +445,17 @@ jobs:
           }
           BOARDJSON
 
-          # === STP Check Button in LuCI ===
-          uci set luci.stp_check=command
-          uci set luci.stp_check.name='Check Network Loops (STP)'
-          uci set luci.stp_check.command='brctl showstp br-lan'
-          uci commit luci
+          # === 10. Fix opkg feeds (http instead of https) ===
+          sed -i 's/https/http/g' /etc/opkg/distfeeds.conf
 
-          # === Secure serial console (require password on TTL) ===
-          uci set system.@system[0].ttylogin='1'
-          uci commit system
+          # === 11. Fix permissions ===
+          chmod +x /etc/rc.local
+          chmod +x /usr/bin/auto-extroot.sh 2>/dev/null
+          chmod +x /usr/bin/safe-eject-usb.sh 2>/dev/null
+          chmod +x /usr/bin/enable-extroot.sh 2>/dev/null
 
-          # === Enable STP to prevent network loops & Disable IPv6 ===
-          uci set network.@device[0].stp='1'
-          uci set network.@device[0].ipv6='0'
-          uci commit network
+          # === 12. Disable odhcpd (IPv6 removed) ===
+          /etc/init.d/odhcpd disable 2>/dev/null || true
 
           exit 0
           MACEOF
@@ -432,7 +464,12 @@ jobs:
           # Put your custom commands here that should be executed once
           # the system init finished. By default this file does nothing.
 
-          # Ultimate Wi-Fi SMP Optimization (Pin 2.4G to CPU1, 5G to CPU2)
+          # === CPU Performance Mode ===
+          for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+              echo "performance" > $cpu 2>/dev/null
+          done
+
+          # === Wi-Fi SMP Optimization (Pin 2.4G to CPU1, 5G to CPU2) ===
           IRQ0=$(grep -m1 -i ath10k /proc/interrupts | awk '{print $1}' | tr -d ':')
           IRQ1=$(grep -m2 -i ath10k /proc/interrupts | tail -n1 | awk '{print $1}' | tr -d ':')
           [ -n "$IRQ0" ] && echo 2 > /proc/irq/$IRQ0/smp_affinity
@@ -454,7 +491,7 @@ jobs:
           cd openwrt
           make download -j8
 
-      - name: Compile Firmware with Superchannel Patches
+      - name: Compile Firmware
         run: |
           cd openwrt
           echo "======================================="
