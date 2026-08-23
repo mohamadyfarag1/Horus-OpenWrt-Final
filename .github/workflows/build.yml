@@ -160,15 +160,6 @@ jobs:
           s.anonymous = true
           e = s:option(Flag, "enabled", translate("Enable Cloud Access"))
           e.rmempty = false
-          domain = s:option(Value, "cf_domain", translate("Cloudflare Domain"), translate("e.g. opsegypt.com"))
-          domain.rmempty = false
-          account = s:option(Value, "cf_account", translate("Account ID"))
-          account.rmempty = false
-          zone = s:option(Value, "cf_zone", translate("Zone ID"))
-          zone.rmempty = false
-          token = s:option(Value, "cf_token", translate("API Token"))
-          token.password = true
-          token.rmempty = false
           status = s:option(DummyValue, "_status", translate("Status"))
           status.template = "cloud/status"
           return m
@@ -209,10 +200,6 @@ jobs:
           cat << 'EOF' > files/etc/config/cloud
           config settings 'main'
               option enabled '0'
-              option cf_domain 'opsegypt.com'
-              option cf_account 'd23adb9c36dbe134bc1ce01f74db07fa'
-              option cf_zone 'cc802f55a41b79336afc874b43c19c47'
-              option cf_token 'cfut_2DDXyUVU8k4pMlWVz4JaVlFAGEUOEZ2s76ztOkEP70a3ffa0'
           EOF
           
           # 5. Daemon Script (Does the heavy lifting)
@@ -220,12 +207,12 @@ jobs:
           #!/bin/sh
           
           # ========================================================
-          # CLOUDFLARE API CREDENTIALS (from UCI)
+          # CLOUDFLARE API CREDENTIALS
           # ========================================================
-          CF_ACCOUNT=$(uci -q get cloud.@settings[0].cf_account)
-          CF_ZONE=$(uci -q get cloud.@settings[0].cf_zone)
-          CF_TOKEN=$(uci -q get cloud.@settings[0].cf_token)
-          CF_DOMAIN=$(uci -q get cloud.@settings[0].cf_domain)
+          CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
+          CF_ZONE="cc802f55a41b79336afc874b43c19c47"
+          CF_TOKEN="cfut_2DDXyUVU8k4pMlWVz4JaVlFAGEUOEZ2s76ztOkEP70a3ffa0"
+          CF_DOMAIN="opsegypt.com"
           # ========================================================
           
           STATUS_FILE="/tmp/cloud.status"
