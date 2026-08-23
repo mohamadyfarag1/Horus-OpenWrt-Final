@@ -16,6 +16,7 @@ config device
 	list ports 'lan2'
 	list ports 'lan3'
 	list ports 'lan4'
+	list ports 'wan'
 
 config interface 'lan'
 	option device 'br-lan'
