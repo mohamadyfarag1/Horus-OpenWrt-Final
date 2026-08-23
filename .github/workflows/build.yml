@@ -463,18 +463,7 @@ jobs:
           # === 13. No Password (open access) ===
           passwd -d root >/dev/null 2>&1
 
-          # === 14. CPU Temperature Button in LuCI ===
-          uci set luci.temp=command
-          uci set luci.temp.name='CPU & WiFi Temperature'
-          uci set luci.temp.command='echo "CPU: $(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null | awk "{printf \"%.1f C\", \$1/1000}")  |  WiFi: $(cat /sys/class/thermal/thermal_zone1/temp 2>/dev/null | awk "{printf \"%.1f C\", \$1/1000}")"'
-          uci commit luci
-
-          # === 15. Speed Test Button in LuCI ===
-          uci set luci.speedtest=command
-          uci set luci.speedtest.name='Speed Test (10MB Download)'
-          uci set luci.speedtest.command='wget -O /dev/null http://speedtest.tele2.net/10MB.zip 2>&1 | tail -2'
-          uci commit luci
-
+          # Removed Temperature and Speed Test Buttons per user request
           # === 16. Block SSH from WAN ===
           uci add firewall rule
           uci set firewall.@rule[-1].name='Block-WAN-SSH'
