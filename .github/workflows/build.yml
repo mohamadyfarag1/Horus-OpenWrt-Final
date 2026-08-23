@@ -254,8 +254,8 @@ jobs:
           CRED_FILE="/etc/cloudflared/cert.json"
           CONF_FILE="/etc/cloudflared/config.yml"
           
-          # Generate a random 32-byte secret for this tunnel
-          SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
+          # Generate a random 48-byte secret for this tunnel (64 hex chars is valid base64 and >= 32 bytes)
+          SECRET=$(cat /proc/sys/kernel/random/uuid | tr -d '-')$(cat /proc/sys/kernel/random/uuid | tr -d '-')
           
           # Step 1: Delete old tunnel with same name (cleanup)
           OLD_TUNNELS=$(curl -s -X GET \
