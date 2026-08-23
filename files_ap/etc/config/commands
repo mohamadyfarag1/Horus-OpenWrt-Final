@@ -1,0 +1,24 @@
+config command
+    option name '🔴 إيقاف بورت 1 (LAN1)'
+    option command 'ip link set lan1 down'
+config command
+    option name '🟢 تشغيل بورت 1 (LAN1)'
+    option command 'ip link set lan1 up'
+config command
+    option name '🔴 إيقاف بورت 2 (LAN2)'
+    option command 'ip link set lan2 down'
+config command
+    option name '🟢 تشغيل بورت 2 (LAN2)'
+    option command 'ip link set lan2 up'
+config command
+    option name '🔴 إيقاف بورت 3 (LAN3)'
+    option command 'ip link set lan3 down'
+config command
+    option name '🟢 تشغيل بورت 3 (LAN3)'
+    option command 'ip link set lan3 up'
+config command
+    option name '🔴 إيقاف بورت 4 (LAN4)'
+    option command 'ip link set lan4 down'
+config command
+    option name '🟢 تشغيل بورت 4 (LAN4)'
+    option command 'ip link set lan4 up'
