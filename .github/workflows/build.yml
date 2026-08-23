@@ -324,10 +324,7 @@ jobs:
           # CONFIG_PACKAGE_ath10k-firmware-qca4019 is not set
           CONFIG_PACKAGE_kmod-ath10k-ct=y
           CONFIG_PACKAGE_ath10k-firmware-qca4019-ct=y
-          CONFIG_ATH_USER_REGD=y
-          CONFIG_PACKAGE_ATH_USER_REGD=y
           CONFIG_PACKAGE_kmod-mac80211=y
-          CONFIG_MAC80211_USER_REGD=y
           CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=n
           CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS=y
           CONFIG_PACKAGE_wireless-regdb=y
