@@ -46,28 +46,16 @@ jobs:
           dtc -I dtb -O dts -o "$dts_path_66" ../router.dtb
           
           # Patch the DTS safely to upgrade NAND rootfs partition to 128MB and fix UBI mounting
-          python3 << 'PYEOF'
-          import re
-          path = "target/linux/ipq40xx/files-6.6/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
-          with open(path, "r") as f:
-              content = f.read()
-              
-          def patch_nand_part(m):
-              return m.group(0).replace('rootfs', 'ubi').replace('0x2000000', '0x8000000')
-
-          content = re.sub(r'partition@0\s*\{\s*label\s*=\s*"rootfs";\s*reg\s*=\s*<0x0 0x2000000>;\s*\};', patch_nand_part, content)
-          content = content.replace('compatible = "gpio-keys";', 'compatible = "gpio-keys-polled";\n\t\tpoll-interval = <20>;')
-
-          def patch_chosen(m):
-              return 'chosen {\n        bootargs-append = " ubi.mtd=ubi root=/dev/ubiblock0_1";\n    };'
-
-          content = re.sub(r'chosen\s*\{[^}]*\};', patch_chosen, content)
+                    # Forcefully patch partition label and size using sed
+          sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
+          sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
           
-          content = re.sub(r'model\s*=\s*".*";', r'model = "Horus 9200";', content)
+          # Fix chosen bootargs
+          sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
           
-          with open(path, "w") as f:
-              f.write(content)
-          PYEOF
+          # Update model name and compatible
+          sed -i 's/model = .*/model = "Horus 9200";/g' "$dts_path_66"
+          sed -i 's/compatible = .*/compatible = "h1radio,ti04-708hp", "qcom,ipq4019";/g' "$dts_path_66"
           
           cp "$dts_path_66" "$dts_path_base"
 
@@ -84,7 +72,7 @@ jobs:
             printf '\tPAGESIZE := 2048\n'
             printf '\tDEVICE_TITLE := Horus 9200\n'
             printf '\tSUPPORTED_DEVICES := H1Radio,ti04-708hp h1radio,ti04-708hp qcom,ipq4019-h1radio-ti04-708hp\n'
-            printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct-fullall -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands lldpd relayd luci-proto-relay luci-app-nlbwmon htop -odhcp6c -odhcpd-ipv6only -luci-proto-ipv6 -luci-app-samba -luci-app-samba4 -samba36-server -samba4-server -luci-i18n-samba-en -luci-i18n-samba4-en\n'
+            printf '\tDEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands lldpd relayd luci-proto-relay luci-app-nlbwmon htop -odhcp6c -odhcpd-ipv6only -luci-proto-ipv6 -luci-app-samba -luci-app-samba4 -samba36-server -samba4-server -luci-i18n-samba-en -luci-i18n-samba4-en\n'
             printf 'endef\n'
             printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
           } >> target/linux/ipq40xx/image/generic.mk
@@ -93,29 +81,16 @@ jobs:
       - name: Patch platform.sh for sysupgrade support
         run: |
           cd openwrt
-          python3 << 'PYEOF'
-          path = "target/linux/ipq40xx/base-files/lib/upgrade/platform.sh"
-          with open(path, "r") as f:
-              content = f.read()
-          content = content.replace(
-              "wallys,dr40x9)",
-              "H1Radio,ti04-708hp |\\\n\twallys,dr40x9)"
-          )
-          with open(path, "w") as f:
-              f.write(content)
-          print("OK: h1radio added to nand_do_upgrade in platform.sh")
-
-          path_net = "target/linux/ipq40xx/base-files/etc/board.d/02_network"
-          with open(path_net, "r") as f:
-              net_content = f.read()
-          net_content = net_content.replace(
-              "zyxel,nbg6617)",
-              "h1radio,ti04-708hp |\\\n\tzyxel,nbg6617)"
-          )
-          with open(path_net, "w") as f:
-              f.write(net_content)
-          print("OK: h1radio added to 02_network")
-          PYEOF
+                    # Forcefully patch partition label and size using sed
+          sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
+          sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
+          
+          # Fix chosen bootargs
+          sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
+          
+          # Update model name and compatible
+          sed -i 's/model = .*/model = "Horus 9200";/g' "$dts_path_66"
+          sed -i 's/compatible = .*/compatible = "h1radio,ti04-708hp", "qcom,ipq4019";/g' "$dts_path_66"
 
           # Completely disable board mismatch checks (Accept ANY firmware)
           echo "platform_check_image() { return 0; }" >> target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
@@ -134,7 +109,7 @@ jobs:
           mkdir -p files/lib/firmware/ath10k/QCA4019/hw1.0/
           cp ../board-2.bin files/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
           
-          # Copy all custom files including regulatory.db (900-byte custom YE regdb from reference router)
+
           cp -r ../files_ap/* files/
 
       - name: Inject Custom LuCI Cloud App
@@ -185,6 +160,15 @@ jobs:
           s.anonymous = true
           e = s:option(Flag, "enabled", translate("Enable Cloud Access"))
           e.rmempty = false
+          domain = s:option(Value, "cf_domain", translate("Cloudflare Domain"), translate("e.g. opsegypt.com"))
+          domain.rmempty = false
+          account = s:option(Value, "cf_account", translate("Account ID"))
+          account.rmempty = false
+          zone = s:option(Value, "cf_zone", translate("Zone ID"))
+          zone.rmempty = false
+          token = s:option(Value, "cf_token", translate("API Token"))
+          token.password = true
+          token.rmempty = false
           status = s:option(DummyValue, "_status", translate("Status"))
           status.template = "cloud/status"
           return m
@@ -225,6 +209,10 @@ jobs:
           cat << 'EOF' > files/etc/config/cloud
           config settings 'main'
               option enabled '0'
+              option cf_domain 'opsegypt.com'
+              option cf_account 'd23adb9c36dbe134bc1ce01f74db07fa'
+              option cf_zone 'cc802f55a41b79336afc874b43c19c47'
+              option cf_token 'cfut_2DDXyUVU8k4pMlWVz4JaVlFAGEUOEZ2s76ztOkEP70a3ffa0'
           EOF
           
           # 5. Daemon Script (Does the heavy lifting)
@@ -232,12 +220,12 @@ jobs:
           #!/bin/sh
           
           # ========================================================
-          # CLOUDFLARE API CREDENTIALS
+          # CLOUDFLARE API CREDENTIALS (from UCI)
           # ========================================================
-          CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
-          CF_ZONE="cc802f55a41b79336afc874b43c19c47"
-          CF_TOKEN="cfut_2DDXyUVU8k4pMlWVz4JaVlFAGEUOEZ2s76ztOkEP70a3ffa0"
-          CF_DOMAIN="opsegypt.com"
+          CF_ACCOUNT=$(uci -q get cloud.@settings[0].cf_account)
+          CF_ZONE=$(uci -q get cloud.@settings[0].cf_zone)
+          CF_TOKEN=$(uci -q get cloud.@settings[0].cf_token)
+          CF_DOMAIN=$(uci -q get cloud.@settings[0].cf_domain)
           # ========================================================
           
           STATUS_FILE="/tmp/cloud.status"
@@ -576,13 +564,14 @@ jobs:
           CONFIG_TARGET_ipq40xx_generic_DEVICE_h1radio_ti04-708hp=y
           CONFIG_PACKAGE_luci=y
           CONFIG_PACKAGE_luci-compat=y
+          CONFIG_PACKAGE_curl=y
           # CONFIG_PACKAGE_irqbalance is not set
           # CONFIG_PACKAGE_luci-app-irqbalance is not set
           CONFIG_PACKAGE_kmod-ath=y
           # CONFIG_PACKAGE_kmod-ath10k is not set
           # CONFIG_PACKAGE_ath10k-firmware-qca4019 is not set
           CONFIG_PACKAGE_kmod-ath10k-ct=y
-          CONFIG_PACKAGE_ath10k-firmware-qca4019-ct-fullall=y
+          CONFIG_PACKAGE_ath10k-firmware-qca4019-ct=y
           CONFIG_PACKAGE_kmod-mac80211=y
           CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=n
           # CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS is not set
