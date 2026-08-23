@@ -220,10 +220,10 @@ jobs:
           # ========================================================
           # CLOUDFLARE API CREDENTIALS - FILL THESE BEFORE BUILDING!
           # ========================================================
-          CF_ACCOUNT="YOUR_ACCOUNT_ID"
-          CF_ZONE="YOUR_ZONE_ID"
+          CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
+          CF_ZONE="cc802f55a41b79336afc874b43c19c47"
           CF_TOKEN="YOUR_API_TOKEN"
-          CF_DOMAIN="YOUR_DOMAIN.com"
+          CF_DOMAIN="opsegypt.com"
           # ========================================================
           
           echo "🟡 Checking space..." > /tmp/cloud.status
