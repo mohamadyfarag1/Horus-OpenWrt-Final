@@ -367,7 +367,9 @@ jobs:
               uci set network.lan.macaddr="$BASE_MAC"
               uci set network.wan.macaddr="$WAN_MAC"
               uci set wireless.radio0.macaddr="$BASE_MAC"
+              uci set wireless.default_radio0.macaddr="$BASE_MAC"
               uci set wireless.radio1.macaddr="$WIFI5_MAC"
+              uci set wireless.default_radio1.macaddr="$WIFI5_MAC"
           fi
 
           # === 2. Disable DHCP Server (Dumb AP - MikroTik handles DHCP) ===
