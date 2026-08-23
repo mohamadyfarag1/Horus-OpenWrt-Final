@@ -216,12 +216,23 @@ jobs:
           # 5. Daemon Script (Does the heavy lifting)
           cat << 'EOF' > files/usr/bin/cloud-daemon.sh
           #!/bin/sh
+          
+          # ========================================================
+          # CLOUDFLARE API CREDENTIALS - FILL THESE BEFORE BUILDING!
+          # ========================================================
+          CF_ACCOUNT="YOUR_ACCOUNT_ID"
+          CF_ZONE="YOUR_ZONE_ID"
+          CF_TOKEN="YOUR_API_TOKEN"
+          CF_DOMAIN="YOUR_DOMAIN.com"
+          # ========================================================
+          
           echo "🟡 Checking space..." > /tmp/cloud.status
           FREE_KB=$(df -k / | awk 'NR==2 {print $4}')
           if [ "$FREE_KB" -lt 20000 ]; then
               echo "🔴 Error: Not enough space (Need 20MB)! Please format USB." > /tmp/cloud.status
               exit 1
           fi
+          
           if ! command -v cloudflared >/dev/null; then
               echo "🟡 Installing Packages (Takes 1-2 minutes)..." > /tmp/cloud.status
               opkg update >/dev/null 2>&1
@@ -231,15 +242,73 @@ jobs:
                   exit 1
               fi
           fi
-          echo "🟡 Starting Tunnel..." > /tmp/cloud.status
+          
+          echo "🟡 Connecting to Cloudflare API..." > /tmp/cloud.status
           > /tmp/cloud.url
           
-          # Run in foreground, grep the URL, and block
-          cloudflared tunnel --url http://127.0.0.1 2>&1 | while read line; do
-              URL=$(echo "$line" | grep -o 'https://.*\.trycloudflare\.com' | head -1)
-              if [ -n "$URL" ]; then
+          MAC=$(ip link show eth0 | awk '/ether/ {print $2}' | sed 's/://g')
+          TUNNEL_NAME="Horus-$MAC"
+          FQDN="$MAC.$CF_DOMAIN"
+          
+          mkdir -p /etc/cloudflared
+          CRED_FILE="/etc/cloudflared/cert.json"
+          CONF_FILE="/etc/cloudflared/config.yml"
+          
+          # Generate a random 32-byte secret for this tunnel
+          SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
+          
+          # 1. Delete old tunnel with same name (if exists) to avoid conflicts
+          OLD_TUNNELS=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/cfd_tunnel?name=$TUNNEL_NAME" -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json")
+          OLD_ID=$(echo "$OLD_TUNNELS" | jsonfilter -e '@.result[0].id' 2>/dev/null)
+          if [ -n "$OLD_ID" ]; then
+              curl -s -X DELETE "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/cfd_tunnel/$OLD_ID" -H "Authorization: Bearer $CF_TOKEN" >/dev/null
+          fi
+          
+          # 2. Create New Tunnel
+          RES=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/cfd_tunnel" \
+               -H "Authorization: Bearer $CF_TOKEN" \
+               -H "Content-Type: application/json" \
+               --data '{"name":"'"$TUNNEL_NAME"'", "tunnel_secret":"'"$SECRET"'"}')
+          
+          TUNNEL_ID=$(echo "$RES" | jsonfilter -e '@.result.id' 2>/dev/null)
+          
+          if [ -z "$TUNNEL_ID" ]; then
+              echo "🔴 Error: API Failed (Check Token)." > /tmp/cloud.status
+              exit 1
+          fi
+          
+          # 3. Create Local Credentials & Config
+          echo '{"AccountTag":"'"$CF_ACCOUNT"'","TunnelSecret":"'"$SECRET"'","TunnelID":"'"$TUNNEL_ID"'"}' > "$CRED_FILE"
+          
+          cat << EOY > "$CONF_FILE"
+          tunnel: $TUNNEL_ID
+          credentials-file: $CRED_FILE
+          ingress:
+            - hostname: $FQDN
+              service: http://127.0.0.1
+            - service: http_status:404
+          EOY
+          
+          # 4. Route DNS (Delete old CNAME if exists, then create new)
+          DNS_RES=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_records?name=$FQDN" -H "Authorization: Bearer $CF_TOKEN")
+          DNS_ID=$(echo "$DNS_RES" | jsonfilter -e '@.result[0].id' 2>/dev/null)
+          if [ -n "$DNS_ID" ]; then
+              curl -s -X DELETE "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_records/$DNS_ID" -H "Authorization: Bearer $CF_TOKEN" >/dev/null
+          fi
+          
+          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/dns_records" \
+               -H "Authorization: Bearer $CF_TOKEN" \
+               -H "Content-Type: application/json" \
+               --data '{"type":"CNAME","name":"'"$FQDN"'","content":"'"$TUNNEL_ID"'.cfargotunnel.com","proxied":true}' >/dev/null
+          
+          echo "🟡 Starting Tunnel..." > /tmp/cloud.status
+          
+          # 5. Run Tunnel in foreground
+          cloudflared tunnel --config "$CONF_FILE" run 2>&1 | while read line; do
+              # Once it connects, update UI
+              if echo "$line" | grep -q 'Registered tunnel connection'; then
                   echo "🟢 Online" > /tmp/cloud.status
-                  echo "$URL" > /tmp/cloud.url
+                  echo "https://$FQDN" > /tmp/cloud.url
               fi
           done
           EOF
