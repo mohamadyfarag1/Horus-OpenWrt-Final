@@ -570,7 +570,7 @@ jobs:
           CONFIG_PACKAGE_ath10k-firmware-qca4019-ct=y
           CONFIG_PACKAGE_kmod-mac80211=y
           CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=n
-          CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS=y
+          # CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS is not set
           CONFIG_PACKAGE_wireless-regdb=y
           CONFIG_PACKAGE_tcpdump-mini=y
           CONFIG_PACKAGE_ip-full=y
