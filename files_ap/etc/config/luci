@@ -1,0 +1,15 @@
+config command 'stp_check'
+	option name 'Check Network Loops (STP)'
+	option command 'brctl showstp br-lan'
+
+config command 'extroot'
+	option name 'Format USB & Expand Space (Extroot)'
+	option command '/usr/bin/auto-extroot.sh'
+
+config command 'eject'
+	option name 'Safely Eject USB (Reboot to NAND)'
+	option command '/usr/bin/safe-eject-usb.sh'
+
+config command 'reconnect'
+	option name 'Re-enable Existing USB (No Format)'
+	option command '/usr/bin/enable-extroot.sh'

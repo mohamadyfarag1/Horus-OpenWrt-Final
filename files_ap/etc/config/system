@@ -4,6 +4,7 @@ config system
 	option zonename 'Africa/Cairo'
 	option log_size '64'
 	option urandom_seed '0'
+	option ttylogin '1'
 
 config timeserver 'ntp'
 	option enable_server '0'

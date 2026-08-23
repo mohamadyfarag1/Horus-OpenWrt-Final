@@ -343,20 +343,22 @@ jobs:
           echo "# CONFIG_PACKAGE_luci-app-samba4 is not set" >> .config
           echo "# CONFIG_PACKAGE_samba36-server is not set" >> .config
           echo "# CONFIG_PACKAGE_samba4-server is not set" >> .config
-      - name: Inject MAC & WiFi Auto-Fix Script
+      - name: Inject MAC Auto-Fix Script (MAC Only - Fast Boot)
         run: |
           mkdir -p files_ap/etc/uci-defaults
           cat << 'MACEOF' > files_ap/etc/uci-defaults/99-fix-macs
           #!/bin/sh
           # =============================================
-          # Horus 9200 - Unified First Boot Configuration
+          # Horus 9200 - First Boot MAC Assignment Only
+          # (All other settings are pre-written in static config files)
           # =============================================
           . /lib/functions.sh
 
-          # === 1. MAC Address Assignment ===
-          # br-lan / 2.4G Radio = BASE (b7)
-          # WAN                 = BASE+1 (b8)
-          # 5G Radio            = BASE+2 (b9)
+          # === MAC Address Assignment ===
+          # br-lan (LAN) = BASE        (eth0 original MAC)
+          # wan          = BASE + 1
+          # 2.4G radio   = BASE + 2
+          # 5G  radio    = BASE + 3
           BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
           if [ -n "$BASE_MAC" ]; then
               WAN_MAC=$(macaddr_add "$BASE_MAC" 1)
@@ -364,109 +366,25 @@ jobs:
               WIFI5_MAC=$(macaddr_add "$BASE_MAC" 3)
               uci set network.lan.macaddr="$BASE_MAC"
               uci set network.wan.macaddr="$WAN_MAC"
+              uci commit network
               uci set wireless.radio0.macaddr="$WIFI2_MAC"
               uci set wireless.default_radio0.macaddr="$WIFI2_MAC"
               uci set wireless.radio1.macaddr="$WIFI5_MAC"
               uci set wireless.default_radio1.macaddr="$WIFI5_MAC"
+              uci commit wireless
           fi
 
-          # === 2. Disable DHCP Server (Dumb AP - MikroTik handles DHCP) ===
-          uci set dhcp.lan.ignore='1'
-          uci set dhcp.lan.dhcpv6='disabled'
-          uci set dhcp.lan.ra='disabled'
-          uci set dhcp.lan.ndp='disabled'
-          uci commit dhcp
+          # === No Password (open access) ===
+          passwd -d root >/dev/null 2>&1
 
-          # === 3. Country & Power (country_ie=1 enables 802.11d for hostapd) ===
-          uci set wireless.radio0.country='YE'
-          uci set wireless.radio0.txpower='30'
-          uci set wireless.radio1.country='YE'
-          uci set wireless.radio1.txpower='30'
+          # === Fix opkg feeds (http instead of https) ===
+          sed -i 's/https/http/g' /etc/opkg/distfeeds.conf 2>/dev/null
 
-          # === 4. Enable radios ===
-          uci set wireless.radio0.disabled='0'
-          uci set wireless.radio1.disabled='0'
-          uci commit wireless
-
-          # === 5. Firewall Software Offloading ===
-          uci set firewall.@defaults[0].flow_offloading='1'
-          uci set firewall.@defaults[0].flow_offloading_hw='0'
-          uci commit firewall
-
-          # === 6. Enable STP & Disable IPv6 on Bridge ===
-          uci set network.@device[0].stp='1'
-          uci set network.@device[0].ipv6='0'
-          uci commit network
-
-          # === 7. Secure serial console (require password on TTL) ===
-          uci set system.@system[0].ttylogin='1'
-          uci commit system
-
-          # === 8. LuCI Custom Command Buttons ===
-          uci set luci.stp_check=command
-          uci set luci.stp_check.name='Check Network Loops (STP)'
-          uci set luci.stp_check.command='brctl showstp br-lan'
-
-          uci set luci.extroot=command
-          uci set luci.extroot.name='Format USB & Expand Space (Extroot)'
-          uci set luci.extroot.command='/usr/bin/auto-extroot.sh'
-
-          uci set luci.eject=command
-          uci set luci.eject.name='Safely Eject USB (Reboot to NAND)'
-          uci set luci.eject.command='/usr/bin/safe-eject-usb.sh'
-
-          uci set luci.reconnect=command
-          uci set luci.reconnect.name='Re-enable Existing USB (No Format)'
-          uci set luci.reconnect.command='/usr/bin/enable-extroot.sh'
-          uci commit luci
-
-          # === 9. Board JSON (LuCI port display) ===
-          cat << 'BOARDJSON' > /etc/board.json
-          {
-          	"model": {
-          		"id": "H1Radio,ti04-708hp",
-          		"name": "Horus 9200"
-          	},
-          	"system": {
-          		"compat_version": "1.1"
-          	},
-          	"network": {
-          		"wan": {
-          			"ports": ["wan"],
-          			"protocol": "dhcp"
-          		},
-          		"lan": {
-          			"ports": ["lan1", "lan2", "lan3", "lan4"],
-          			"protocol": "static"
-          		}
-          	}
-          }
-          BOARDJSON
-
-          # === 10. Fix opkg feeds (http instead of https) ===
-          sed -i 's/https/http/g' /etc/opkg/distfeeds.conf
-
-          # === 11. Fix permissions ===
-          chmod +x /etc/rc.local
+          # === Fix permissions ===
+          chmod +x /etc/rc.local 2>/dev/null
           chmod +x /usr/bin/auto-extroot.sh 2>/dev/null
           chmod +x /usr/bin/safe-eject-usb.sh 2>/dev/null
           chmod +x /usr/bin/enable-extroot.sh 2>/dev/null
-
-          # === 12. Disable odhcpd (IPv6 removed) ===
-          /etc/init.d/odhcpd disable 2>/dev/null || true
-
-          # === 13. No Password (open access) ===
-          passwd -d root >/dev/null 2>&1
-
-          # Removed Temperature and Speed Test Buttons per user request
-          # === 16. Block SSH from WAN ===
-          uci add firewall rule
-          uci set firewall.@rule[-1].name='Block-WAN-SSH'
-          uci set firewall.@rule[-1].src='wan'
-          uci set firewall.@rule[-1].dest_port='22'
-          uci set firewall.@rule[-1].proto='tcp'
-          uci set firewall.@rule[-1].target='DROP'
-          uci commit firewall
 
           exit 0
           MACEOF
