@@ -295,7 +295,7 @@ jobs:
             "$CF_ACCOUNT" "$SECRET" "$TUNNEL_ID" > "$CRED_FILE"
           
           # Step 4: Create Config File
-          printf 'tunnel: %s\ncredentials-file: %s\ningress:\n  - hostname: %s\n    service: http://127.0.0.1:80\n  - service: http_status:404\n' \
+          printf 'tunnel: %s\ncredentials-file: %s\nprotocol: http2\ningress:\n  - hostname: %s\n    service: http://127.0.0.1:80\n  - service: http_status:404\n' \
             "$TUNNEL_ID" "$CRED_FILE" "$FQDN" > "$CONF_FILE"
           
           # Step 5: Route DNS (Delete old CNAME if exists, then create new)
