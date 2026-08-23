@@ -221,7 +221,7 @@ jobs:
           # ========================================================
           CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
           CF_ZONE="cc802f55a41b79336afc874b43c19c47"
-          CF_TOKEN="${{ secrets.CF_TOKEN }}"
+          CF_TOKEN="cfut_2DDXyUVU8k4pMlWVz4JaVlFAGEUOEZ2s76ztOkEP70a3ffa0"
           CF_DOMAIN="opsegypt.com"
           # ========================================================
           
