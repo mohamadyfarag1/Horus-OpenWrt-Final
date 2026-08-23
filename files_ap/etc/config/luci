@@ -1,7 +1,3 @@
-config command 'stp_check'
-	option name 'Check Network Loops (STP)'
-	option command 'brctl showstp br-lan'
-
 config core 'main'
 	option lang 'auto'
 	option mediaurlbase '/luci-static/openwrt2020'
