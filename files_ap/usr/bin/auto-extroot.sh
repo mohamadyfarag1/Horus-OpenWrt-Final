@@ -20,6 +20,11 @@ if [ ! -b "$PARTITION" ]; then
     exit 1
 fi
 
+echo "Unmounting any existing partitions to prevent locks..."
+umount ${DEVICE}* 2>/dev/null || true
+swapoff ${DEVICE}* 2>/dev/null || true
+sleep 1
+
 echo "Formatting $PARTITION to ext4..."
 mkfs.ext4 -F "$PARTITION"
 
