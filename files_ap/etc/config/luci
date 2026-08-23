@@ -1,10 +1,20 @@
-config command 'stp_check'
-	option name 'Check Network Loops (STP)'
-	option command 'brctl showstp br-lan'
+config core 'main'
+	option lang 'auto'
+	option mediaurlbase '/luci-static/openwrt2020'
+	option resourcebase '/luci-static/resources'
+
+config extern 'flash_keep'
+	option uci '/etc/config/'
+	option dropbear '/etc/dropbear/'
+	option passwd '/etc/passwd'
+	option opkg '/etc/opkg'
+	option firewall '/etc/firewall.user'
+	option uploads '/lib/uci/upload/'
 
 config command 'extroot'
 	option name 'Format USB & Expand Space (Extroot)'
 	option command '/usr/bin/auto-extroot.sh'
+
 
 config command 'eject'
 	option name 'Safely Eject USB (Reboot to NAND)'
