@@ -51,11 +51,13 @@ jobs:
           path = "target/linux/ipq40xx/files-6.6/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
           with open(path, "r") as f:
               content = f.read()
-              
+
+          # More permissive regex to catch the partition block regardless of formatting
           def patch_nand_part(m):
               return m.group(0).replace('rootfs', 'ubi').replace('0x2000000', '0x8000000')
 
-          content = re.sub(r'partition@0\s*\{\s*label\s*=\s*"rootfs";\s*reg\s*=\s*<0x0 0x2000000>;\s*\};', patch_nand_part, content)
+          content = re.sub(r'partition@[0-9a-fA-F]+\s*\{[^}]*label\s*=\s*"rootfs"[^}]*reg\s*=\s*<[^>]*0x2000000>;[^}]*\};', patch_nand_part, content)
+          
           content = content.replace('compatible = "gpio-keys";', 'compatible = "gpio-keys-polled";\n\t\tpoll-interval = <20>;')
 
           def patch_chosen(m):
