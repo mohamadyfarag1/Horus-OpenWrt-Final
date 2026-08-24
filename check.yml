@@ -227,10 +227,16 @@ jobs:
           make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
           
           echo "======================================="
-          echo "Step 1.5: Preparing Kernel..."
+          echo "Step 1.5: Preparing Kernel and Patching PSGMII loop..."
           echo "======================================="
           make target/linux/prepare V=s -j$(nproc)
           
+          # Now that the kernel is extracted, patch the qca8k driver to completely skip the 100-retry PSGMII loop
+          for f in $(find build_dir/ -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
+              sed -i 's/retries < 100/retries < 1/g' "$f"
+              sed -i 's/retries < 10 /retries < 1 /g' "$f"
+              echo "Patched PSGMII boot delay loop in: $f"
+          done
           echo "======================================="
 echo "Step 3: Starting Full Compilation..."
           echo "======================================="
