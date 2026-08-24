@@ -46,16 +46,15 @@ jobs:
           dtc -I dtb -O dts -o "$dts_path_66" ../router.dtb
           
           # Patch the DTS safely to upgrade NAND rootfs partition to 128MB and fix UBI mounting
-                    # Forcefully patch partition label and size using sed
+          # 1. Forcefully patch partition label and size
           sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
           sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
           
-          # Fix chosen bootargs
+          # 2. Fix chosen bootargs
           sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
           
-          # Update model name and compatible
+          # 3. Update model name (NO compatible change, to preserve U-boot fixup)
           sed -i 's/model = .*/model = "Horus 9200";/g' "$dts_path_66"
-          sed -i 's/compatible = .*/compatible = "h1radio,ti04-708hp", "qcom,ipq4019";/g' "$dts_path_66"
           
           cp "$dts_path_66" "$dts_path_base"
 
