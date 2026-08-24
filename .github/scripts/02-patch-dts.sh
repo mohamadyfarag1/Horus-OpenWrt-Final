@@ -1,8 +1,8 @@
 #!/bin/bash
 # Modify DTS for Horus 9200
 echo "Applying DTS modifications for Horus 9200..."
-dts_path_base="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom-ipq4018-jalapeno.dtsi"
-dts_path_66="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom-ipq4019-h1radio-ti04-708hp.dts"
+dts_path_66="target/linux/ipq40xx/files-6.6/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
+dts_path_base="target/linux/ipq40xx/files/arch/arm/boot/dts/qcom/qcom-ipq4019-h1radio-ti04-708hp.dts"
 
 mkdir -p $(dirname "$dts_path_66")
 mkdir -p $(dirname "$dts_path_base")
@@ -61,5 +61,7 @@ sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ub
 # Apply SPI NAND node fix
 sed -i 's/spi_0/spi_1/g' "$dts_path_66"
 sed -i 's/flash@0/flash@1/g' "$dts_path_66"
+
+cp "$dts_path_66" "$dts_path_base"
 
 echo "DTS generation complete."
