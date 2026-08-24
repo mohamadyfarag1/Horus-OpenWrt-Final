@@ -58,8 +58,8 @@ jobs:
           sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
           sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
           
-          # 2. Fix chosen bootargs
-          sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
+          # 2. Fix chosen bootargs (Must include serial console so it doesn't appear dead at Starting kernel)
+          sed -i 's/bootargs = .*/bootargs = "console=ttyMSM0,115200n8 cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
           
           # 3. Update model name (NO compatible change, to preserve U-boot fixup)
           sed -i 's/model = .*/model = "Horus 9200";/g' "$dts_path_66"
@@ -227,16 +227,10 @@ jobs:
           make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
           
           echo "======================================="
-          echo "Step 1.5: Preparing Kernel and Patching PSGMII loop..."
+          echo "Step 1.5: Preparing Kernel..."
           echo "======================================="
           make target/linux/prepare V=s -j$(nproc)
           
-          # Now that the kernel is extracted, patch the qca8k driver to completely skip the 100-retry PSGMII loop
-          for f in $(find build_dir/ -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
-              sed -i 's/retries < 100/retries < 1/g' "$f"
-              sed -i 's/retries < 10 /retries < 1 /g' "$f"
-              echo "Patched PSGMII boot delay loop in: $f"
-          done
           echo "======================================="
 echo "Step 3: Starting Full Compilation..."
           echo "======================================="
