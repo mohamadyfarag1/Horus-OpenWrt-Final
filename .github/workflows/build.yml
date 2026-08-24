@@ -648,6 +648,13 @@ jobs:
           echo "Step 1: Preparing kernel and wireless sources..."
           echo "======================================="
           make target/linux/prepare V=s -j$(nproc) 2>&1 || true
+          
+          # Fix QCA8k switch PSGMII 100-retry loop (Prevents 2-minute delay and LAN ports dying)
+          for f in $(find build_dir/ -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
+              sed -i 's/retries < 100/retries < 1/g' "$f"
+              sed -i 's/retries < 10 /retries < 1 /g' "$f"
+          done
+          
           make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
           make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
 
