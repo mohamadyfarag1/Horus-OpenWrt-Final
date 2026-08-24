@@ -63,12 +63,18 @@ dts = re.sub(r"model\s*=\s*\"[^\"]+\";", "model = \"Horus 9200\";", dts, count=1
 dts = re.sub(r"compatible\s*=\s*\"[^\"]+\"(.*?);", "compatible = \"h1radio,ti04-708hp\", \"qcom,ipq4019\";", dts, count=1)
 
 # Find rootfs or ubi partition and force size to 128MB (0x8000000)
-# We match label = "rootfs" and the following reg = <offset size>
 dts = re.sub(r"(label\s*=\s*\"rootfs\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
 dts = re.sub(r"(label\s*=\s*\"ubi\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
 with open(sys.argv[1], "w") as f:
     f.write(dts)
 ' "$dts_path_66"
+
+          # Extra safety: use sed inside the same step where $dts_path_66 is defined
+          sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
+          sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
+          
+          # Fix chosen bootargs
+          sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
 
           cp "$dts_path_66" "$dts_path_base"
 
@@ -89,25 +95,6 @@ with open(sys.argv[1], "w") as f:
             printf 'endef\n'
             printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
           } >> target/linux/ipq40xx/image/generic.mk
-
-
-      - name: Patch platform.sh for sysupgrade support
-        run: |
-          cd openwrt
-                    # Forcefully patch partition label and size using sed
-          sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
-          sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
-          
-          # Fix chosen bootargs
-          sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
-          
-          # Update model name and compatible
-          sed -i 's/model = .*/model = "Horus 9200";/g' "$dts_path_66"
-          sed -i 's/compatible = .*/compatible = "h1radio,ti04-708hp", "qcom,ipq4019";/g' "$dts_path_66"
-          
-
-
-
       - name: Inject Custom Board Data and Regulatory and UCI Defaults
         run: |
           cd openwrt

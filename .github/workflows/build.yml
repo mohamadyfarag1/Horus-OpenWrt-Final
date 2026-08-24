@@ -81,16 +81,6 @@ jobs:
       - name: Patch platform.sh for sysupgrade support
         run: |
           cd openwrt
-                    # Forcefully patch partition label and size using sed
-          sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
-          sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
-          
-          # Fix chosen bootargs
-          sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
-          
-          # Update model name and compatible
-          sed -i 's/model = .*/model = "Horus 9200";/g' "$dts_path_66"
-          sed -i 's/compatible = .*/compatible = "h1radio,ti04-708hp", "qcom,ipq4019";/g' "$dts_path_66"
 
           # Completely disable board mismatch checks (Accept ANY firmware)
           echo "platform_check_image() { return 0; }" >> target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
