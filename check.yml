@@ -87,6 +87,7 @@ jobs:
       - name: Inject Custom Board Data and Regulatory and UCI Defaults
         run: |
           cd openwrt
+          mkdir -p files/
           cp -r ../files_ap/* files/
           # CRITICAL: Strip Windows CRLF line endings - without this, shell scripts fail silently on Linux
           find files/ -type f -exec sed -i 's/\r$//' {} +

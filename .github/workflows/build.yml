@@ -95,7 +95,7 @@ jobs:
       - name: Inject Custom Board Data and Regulatory and UCI Defaults
         run: |
           cd openwrt
-
+          mkdir -p files/
           cp -r ../files_ap/* files/
 
       - name: Inject Custom LuCI Cloud App
