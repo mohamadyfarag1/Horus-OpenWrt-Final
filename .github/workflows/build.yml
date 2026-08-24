@@ -196,11 +196,11 @@ jobs:
           #!/bin/sh
           
           # ========================================================
-          # CLOUDFLARE API CREDENTIALS
+          # CLOUDFLARE API CREDENTIALS (Enter these manually on the router after flashing!)
           # ========================================================
           CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
           CF_ZONE="cc802f55a41b79336afc874b43c19c47"
-          CF_TOKEN="cfut_VheEvldQdRwIFV8SYFfBkgUktcSKHRZsi9HlY4XN27abfa5f"
+          CF_TOKEN="PUT_YOUR_API_TOKEN_HERE"
           CF_DOMAIN="opsegypt.com"
           # ========================================================
           
