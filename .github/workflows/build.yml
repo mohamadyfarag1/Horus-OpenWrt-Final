@@ -267,55 +267,46 @@ jobs:
           MAC=$(cat /sys/class/net/eth0/address | sed 's/://g')
           TUNNEL_NAME="Horus-${MAC}"
           FQDN="${MAC}.${CF_DOMAIN}"
-          
-          mkdir -p /etc/cloudflared
-          CRED_FILE="/etc/cloudflared/cert.json"
-          CONF_FILE="/etc/cloudflared/config.yml"
-          
-          # Generate a random 48-byte secret for this tunnel (64 hex chars is valid base64 and >= 32 bytes)
-          SECRET=$(cat /proc/sys/kernel/random/uuid | tr -d '-')$(cat /proc/sys/kernel/random/uuid | tr -d '-')
-          
-          # Step 1: Delete old tunnel with same name (cleanup)
+
+          # Check for existing tunnels with the same name
           OLD_TUNNELS=$(curl -s -X GET \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel?name=${TUNNEL_NAME}&is_deleted=false" \
             -H "Authorization: Bearer ${CF_TOKEN}" \
             -H "Content-Type: application/json")
-          OLD_ID=$(echo "$OLD_TUNNELS" | jsonfilter -e '@.result[0].id' 2>/dev/null)
-          if [ -n "$OLD_ID" ]; then
-              # Must clean connections first
-              curl -s -X DELETE \
-                "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel/${OLD_ID}/connections" \
-                -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
-              sleep 2
-              curl -s -X DELETE \
-                "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel/${OLD_ID}" \
-                -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
+          TUNNEL_ID=$(echo "$OLD_TUNNELS" | jsonfilter -e '@.result[0].id' 2>/dev/null)
+
+          if [ -n "$TUNNEL_ID" ]; then
+              echo "🟡 Found existing tunnel. Reconnecting..." > "$STATUS_FILE"
+          else
+              echo "🟡 Creating new Tunnel..." > "$STATUS_FILE"
+              RES=$(curl -s -X POST \
+                "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel" \
+                -H "Authorization: Bearer ${CF_TOKEN}" \
+                -H "Content-Type: application/json" \
+                --data "{\"name\":\"${TUNNEL_NAME}\", \"config_src\":\"cloudflare\"}")
+              TUNNEL_ID=$(echo "$RES" | jsonfilter -e '@.result.id' 2>/dev/null)
+              
+              if [ -z "$TUNNEL_ID" ]; then
+                  ERROR_MSG=$(echo "$RES" | jsonfilter -e '@.errors[0].message' 2>/dev/null)
+                  echo "🔴 Error: API Failed - ${ERROR_MSG:-Unknown}" > "$STATUS_FILE"
+                  exit 1
+              fi
           fi
-          
-          # Step 2: Create New Tunnel
-          echo "🟡 Creating Tunnel..." > "$STATUS_FILE"
-          RES=$(curl -s -X POST \
-            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel" \
+
+          # Retrieve the auth token for the tunnel
+          TOKEN_RES=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel/${TUNNEL_ID}/token" \
+            -H "Authorization: Bearer ${CF_TOKEN}" \
+            -H "Content-Type: application/json")
+          TUNNEL_TOKEN=$(echo "$TOKEN_RES" | jsonfilter -e '@.result' 2>/dev/null)
+
+          # Configure Tunnel Routing via API (Since it's remotely managed now)
+          curl -s -X PUT \
+            "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel/${TUNNEL_ID}/configurations" \
             -H "Authorization: Bearer ${CF_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data "{\"name\":\"${TUNNEL_NAME}\", \"tunnel_secret\":\"${SECRET}\"}")
-          
-          TUNNEL_ID=$(echo "$RES" | jsonfilter -e '@.result.id' 2>/dev/null)
-          
-          if [ -z "$TUNNEL_ID" ]; then
-              ERROR_MSG=$(echo "$RES" | jsonfilter -e '@.errors[0].message' 2>/dev/null)
-              echo "🔴 Error: API Failed - ${ERROR_MSG:-Unknown}" > "$STATUS_FILE"
-              exit 1
-          fi
-          
-          # Step 3: Create Local Credentials
-          printf '{"AccountTag":"%s","TunnelSecret":"%s","TunnelID":"%s"}' \
-            "$CF_ACCOUNT" "$SECRET" "$TUNNEL_ID" > "$CRED_FILE"
-          
-          # Step 4: Create Config File
-          printf 'tunnel: %s\ncredentials-file: %s\nprotocol: http2\ningress:\n  - hostname: %s\n    service: http://127.0.0.1:80\n  - service: http_status:404\n' \
-            "$TUNNEL_ID" "$CRED_FILE" "$FQDN" > "$CONF_FILE"
-          
+            --data "{\"config\":{\"ingress\":[{\"hostname\":\"${FQDN}\",\"service\":\"http://127.0.0.1:80\"},{\"service\":\"http_status:404\"}]}}" >/dev/null 2>&1
+
           # Step 5: Route DNS (Delete old CNAME if exists, then create new)
           echo "🟡 Setting up DNS..." > "$STATUS_FILE"
           DNS_RES=$(curl -s -X GET \
@@ -337,7 +328,8 @@ jobs:
           # Step 6: Run Tunnel (foreground, procd monitors it)
           echo "🟡 Starting Tunnel..." > "$STATUS_FILE"
           
-          cloudflared tunnel --config "$CONF_FILE" run 2>&1 | while IFS= read -r line; do
+          # Run via Token (Remotely Managed)
+          cloudflared tunnel --protocol http2 run --token "$TUNNEL_TOKEN" 2>&1 | while IFS= read -r line; do
               if echo "$line" | grep -q 'Registered tunnel connection'; then
                   echo "🟢 Online" > "$STATUS_FILE"
                   echo "https://${FQDN}" > "$URL_FILE"
