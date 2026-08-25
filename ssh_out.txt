@@ -1,0 +1,139 @@
+Connecting to 192.168.100.2...
+Connected!
+
+=== cat /etc/openwrt_release ===
+DISTRIB_ID='OpenWrt'
+DISTRIB_RELEASE='23.05.3'
+DISTRIB_REVISION='r23809-234f1a2efa'
+DISTRIB_TARGET='ipq40xx/generic'
+DISTRIB_ARCH='arm_cortex-a7_neon-vfpv4'
+DISTRIB_DESCRIPTION='OpenWrt 23.05.3 r23809-234f1a2efa'
+DISTRIB_TAINTS='no-all'
+
+=== iw reg get ===
+global
+country YE: DFS-UNSET
+	(2402 - 2482 @ 40), (N/A, 32), (N/A)
+	(5150 - 5250 @ 80), (N/A, 30), (N/A)
+	(5250 - 5350 @ 80), (N/A, 30), (N/A)
+	(5350 - 5725 @ 160), (N/A, 30), (N/A)
+	(5725 - 5900 @ 80), (N/A, 30), (N/A)
+
+phy#1
+country US: DFS-UNSET
+	(2402 - 2482 @ 40), (N/A, 32), (N/A)
+	(5150 - 5250 @ 80), (N/A, 30), (N/A)
+	(5250 - 5350 @ 80), (N/A, 30), (N/A)
+	(5350 - 5725 @ 160), (N/A, 30), (N/A)
+	(5725 - 5900 @ 80), (N/A, 30), (N/A)
+
+phy#0
+country US: DFS-UNSET
+	(2402 - 2482 @ 40), (N/A, 32), (N/A)
+	(5150 - 5250 @ 80), (N/A, 30), (N/A)
+	(5250 - 5350 @ 80), (N/A, 30), (N/A)
+	(5350 - 5725 @ 160), (N/A, 30), (N/A)
+	(5725 - 5900 @ 80), (N/A, 30), (N/A)
+
+=== iwinfo ===
+phy0-ap0  ESSID: "horus-2.4_CD56"
+          Access Point: 1C:EC:72:FB:CD:56
+          Mode: Master  Channel: 1 (2.412 GHz)  HT Mode: HT20
+          Center Channel 1: 1 2: unknown
+          Tx-Power: 30 dBm  Link Quality: unknown/70
+          Signal: unknown  Noise: -99 dBm
+          Bit Rate: unknown
+          Encryption: none
+          Type: nl80211  HW Mode(s): 802.11b/g/n
+          Hardware: embedded [Qualcomm Atheros IPQ4019]
+          TX power offset: none
+          Frequency offset: none
+          Supports VAPs: yes  PHY name: phy0
+
+phy1-ap0  ESSID: "horus-5G_CD57"
+          Access Point: 1C:EC:72:FB:CD:57
+          Mode: Master  Channel: 146 (5.730 GHz)  HT Mode: VHT80
+          Center Channel 1: 140 2: unknown
+          Tx-Power: 30 dBm  Link Quality: unknown/70
+          Signal: unknown  Noise: unknown
+          Bit Rate: unknown
+          Encryption: none
+          Type: nl80211  HW Mode(s): 802.11ac/n
+          Hardware: embedded [Qualcomm Atheros IPQ4019]
+          TX power offset: none
+          Frequency offset: none
+          Supports VAPs: yes  PHY name: phy1
+
+=== cat /etc/config/wireless ===
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option path 'platform/soc/a000000.wifi'
+	option channel '1'
+	option band '2g'
+	option htmode 'HT20'
+	option disabled '0'
+	option country 'YE'
+	option txpower '30'
+
+config wifi-iface 'default_radio0'
+	option device 'radio0'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'horus-2.4_CD56'
+	option encryption 'none'
+
+config wifi-device 'radio1'
+	option type 'mac80211'
+	option path 'platform/soc/a800000.wifi'
+	option channel '146'
+	option band '5g'
+	option htmode 'VHT80'
+	option disabled '0'
+	option country 'YE'
+	option txpower '30'
+	option cell_density '0'
+
+config wifi-iface 'default_radio1'
+	option device 'radio1'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'horus-5G_CD57'
+	option encryption 'none'
+
+=== md5sum /lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin ===
+2bdce2247cda36f0c3884d09b580999d  /lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
+
+=== dmesg | grep ath10k ===
+[   25.272993] ath10k_ahb a000000.wifi: qca4019 hw1.0 target 0x01000000 chip_id 0x003b00ff sub 0000:0000
+[   25.273066] ath10k_ahb a000000.wifi: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   25.284927] ath10k_ahb a000000.wifi: firmware ver 10.4b-ct-4019-fW-13-5ae337bb1 api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 6b2b5c5b
+[   25.339825] ath10k_ahb a000000.wifi: Loading BDF type 0
+[   25.463089] ath10k_ahb a000000.wifi: board_file api 2 bmi_id 0:20 crc32 d140cd7d
+[   26.753523] ath10k_ahb a000000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   26.753606] ath10k_ahb a000000.wifi: msdu-desc: 2500  skid: 32
+[   26.801927] ath10k_ahb a000000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   26.802883] ath10k_ahb a000000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   26.941471] ath10k_ahb a000000.wifi: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-nvmem max-sta 32 raw 0 hwcrypto 1
+[   28.711733] ath10k_ahb a800000.wifi: qca4019 hw1.0 target 0x01000000 chip_id 0x003b00ff sub 0000:0000
+[   28.711824] ath10k_ahb a800000.wifi: kconfig debug 0 debugfs 1 tracing 0 dfs 1 testmode 0
+[   28.723775] ath10k_ahb a800000.wifi: firmware ver 10.4b-ct-4019-fW-13-5ae337bb1 api 5 features mfp,peer-flow-ctrl,txstatus-noack,wmi-10.x-CT,ratemask-CT,regdump-CT,txrate-CT,flush-all-CT,pingpong-CT,ch-regs-CT,nop-CT,set-special-CT,tx-rc-CT,cust-stats-CT,txrate2-CT,beacon-cb-CT,wmi-block-ack-CT,wmi-bcn-rc-CT crc32 6b2b5c5b
+[   28.778515] ath10k_ahb a800000.wifi: Loading BDF type 0
+[   28.790691] ath10k_ahb a800000.wifi: board_file api 2 bmi_id 0:21 crc32 d140cd7d
+[   30.081462] ath10k_ahb a800000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   30.081534] ath10k_ahb a800000.wifi: msdu-desc: 2500  skid: 32
+[   30.130405] ath10k_ahb a800000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   30.131365] ath10k_ahb a800000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   30.269935] ath10k_ahb a800000.wifi: htt-ver 2.2 wmi-op 6 htt-op 4 cal pre-cal-nvmem max-sta 32 raw 0 hwcrypto 1
+[   42.847245] ath10k_ahb a000000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   42.847317] ath10k_ahb a000000.wifi: msdu-desc: 2500  skid: 32
+[   42.896055] ath10k_ahb a000000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   42.896903] ath10k_ahb a000000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   43.229916] ath10k_ahb a000000.wifi: rts threshold -1
+[   43.230161] ath10k_ahb a000000.wifi: Firmware lacks feature flag indicating a retry limit of > 2 is OK, requested limit: 4
+[   43.262945] ath10k_ahb a000000.wifi: NOTE:  Firmware DBGLOG output disabled in debug_mask: 0x10000000
+[   45.087608] ath10k_ahb a800000.wifi: 10.4 wmi init: vdevs: 16  peers: 48  tid: 96
+[   45.087690] ath10k_ahb a800000.wifi: msdu-desc: 2500  skid: 32
+[   45.136552] ath10k_ahb a800000.wifi: wmi print 'P 48/48 V 16 K 144 PH 176 T 186  msdu-desc: 2500  sw-crypt: 0 ct-sta: 0'
+[   45.137383] ath10k_ahb a800000.wifi: wmi print 'free: 53252 iram: 13432 sram: 35752'
+[   45.457588] ath10k_ahb a800000.wifi: rts threshold -1
+[   45.458024] ath10k_ahb a800000.wifi: Firmware lacks feature flag indicating a retry limit of > 2 is OK, requested limit: 4
