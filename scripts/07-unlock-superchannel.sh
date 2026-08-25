@@ -4,8 +4,6 @@
 # Brutally removes Kernel frequency restrictions
 # ============================================
 set -e
-cd openwrt
-
 echo "============================================"
 echo "=== SUPERCHANNEL UNLOCK - Full Spectrum ==="
 echo "============================================"
