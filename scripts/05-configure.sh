@@ -130,4 +130,14 @@ mkdir -p files
 find ../files_ap -type f ! -name '*.db' ! -name '*.bin' -exec sed -i 's/\r$//' {} +
 cp -r ../files_ap/* files/
 
-echo "✅ Feeds updated, config applied, custom files copied."
+# ============================================
+# SECTION F: Inject ath10k regdomain override
+# 0x8377 = 33655 decimal
+# Forces kernel 6.6 to apply regdomain 0x8377
+# (same as golden AP kernel 5.15) for super channels + 30dBm power
+# ============================================
+mkdir -p files/etc/modules.d
+echo "options ath10k_core override_eeprom_regdomain=33655" > files/etc/modules.d/ath10k-super
+echo "Injected ath10k_core regdomain override 0x8377 (33655) into files/etc/modules.d/ath10k-super"
+
+echo "Done: Feeds updated, config applied, custom files copied."
