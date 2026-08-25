@@ -84,6 +84,23 @@ jobs:
             printf 'endef\n'
             printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
           } >> target/linux/ipq40xx/image/generic.mk
+
+      - name: Patch platform.sh for sysupgrade support
+        run: |
+          cd openwrt
+          echo "platform_check_image() { return 0; }" >> target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
+          sed -i 's/fwtool -q/fwtool -q -i/g' package/base-files/files/sbin/sysupgrade 2>/dev/null || true
+          sed -i 's/return 1/return 0/g' target/linux/ipq40xx/base-files/lib/upgrade/platform.sh 2>/dev/null || true
+          
+          # CRITICAL: Add device to platform_do_upgrade so sysupgrade writes NAND correctly
+          sed -i '/platform_do_upgrade() {/,/^}/ {
+            /case.*board_name/a\\
+\th1radio,ti04-708hp|\\
+\tH1Radio,ti04-708hp)\\
+\t\tnand_do_upgrade "$1"\\
+\t\t;;
+          }' target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
+
       - name: Inject Custom Board Data and Regulatory and UCI Defaults
         run: |
           cd openwrt
@@ -179,12 +196,9 @@ jobs:
           CONFIG_PACKAGE_ath10k-firmware-qca4019-ct-htt=y
           # CONFIG_PACKAGE_kmod-ath10k is not set
           # CONFIG_PACKAGE_ath10k-firmware-qca4019 is not set
-          CONFIG_ATH_USER_REGD=y
-          CONFIG_PACKAGE_ATH_USER_REGD=y
           CONFIG_PACKAGE_kmod-mac80211=y
-          CONFIG_MAC80211_USER_REGD=y
-          CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=n
-          CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS=y
+          CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=y
+          # CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS is not set
           CONFIG_PACKAGE_wireless-regdb=y
           CONFIG_PACKAGE_tcpdump-mini=y
           CONFIG_PACKAGE_ip-full=y

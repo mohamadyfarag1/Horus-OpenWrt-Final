@@ -69,6 +69,16 @@ jobs:
           sed -i 's/fwtool -q/fwtool -q -i/g' package/base-files/files/sbin/sysupgrade 2>/dev/null || true
           sed -i 's/return 1/return 0/g' target/linux/ipq40xx/base-files/lib/upgrade/platform.sh 2>/dev/null || true
           
+          # CRITICAL: Add device to platform_do_upgrade so sysupgrade writes NAND correctly
+          # Without this, sysupgrade uses default method which does NOT create UBI volumes
+          sed -i '/platform_do_upgrade() {/,/^}/ {
+            /case.*board_name/a\\
+\th1radio,ti04-708hp|\\
+\tH1Radio,ti04-708hp)\\
+\t\tnand_do_upgrade "$1"\\
+\t\t;;
+          }' target/linux/ipq40xx/base-files/lib/upgrade/platform.sh
+          
 
 
 
@@ -530,7 +540,7 @@ jobs:
           CONFIG_PACKAGE_kmod-ath10k-ct=y
           CONFIG_PACKAGE_ath10k-firmware-qca4019-ct-htt=y
           CONFIG_PACKAGE_kmod-mac80211=y
-          CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=n
+          CONFIG_KERNEL_CFG80211_REQUIRE_SIGNED_REGDB=y
           # CONFIG_KERNEL_CFG80211_CERTIFICATION_ONUS is not set
           CONFIG_PACKAGE_wireless-regdb=y
           CONFIG_PACKAGE_tcpdump-mini=y
