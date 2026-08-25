@@ -42,6 +42,13 @@ bash ../scripts/07-unlock-superchannel.sh
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
 echo "======================================="
-make -j$(nproc) || { make -j1 V=s 2>&1 | tee build.log; exit ${PIPESTATUS[0]}; }
+# Always save the full compile log to build.log for debugging
+make -j$(nproc) 2>&1 | tee build.log
+
+# If the build failed, exit with error
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo "❌ Build failed! Check build.log for details."
+    exit 1
+fi
 
 echo "✅ Firmware compilation complete!"
