@@ -160,6 +160,20 @@ jobs:
 
           status = s:option(DummyValue, "_status", translate("Status"))
           status.template = "cloud/status"
+
+          d = m:section(TypedSection, "device", translate("Forwarded Devices (Optional)"), translate("Add internal devices (like DVR, Camera) to access them remotely via Cloudflare Tunnel."))
+          d.template = "cbi/tblsection"
+          d.addremove = true
+          d.anonymous = true
+
+          name = d:option(Value, "name", translate("Device Name (e.g. dvr)"))
+          name.rmempty = false
+          name.datatype = "hostname"
+
+          ip = d:option(Value, "ip", translate("Internal IP:Port (e.g. 192.168.1.10:80)"))
+          ip.rmempty = false
+          ip.datatype = "hostport"
+
           return m
           EOF
           
@@ -290,30 +304,54 @@ jobs:
             -H "Content-Type: application/json")
           TUNNEL_TOKEN=$(echo "$TOKEN_RES" | jsonfilter -e '@.result' 2>/dev/null)
 
-          # Configure Tunnel Routing via API (Since it's remotely managed now)
+          # Ingress Array (Start with the main router)
+          INGRESS="[{\"hostname\":\"${FQDN}\",\"service\":\"http://127.0.0.1:80\"}"
+          
+          # Add Main DNS
+          echo "🟡 Setting up DNS for Router..." > "$STATUS_FILE"
+          DNS_RES=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?name=${FQDN}" -H "Authorization: Bearer ${CF_TOKEN}")
+          DNS_ID=$(echo "$DNS_RES" | jsonfilter -e '@.result[0].id' 2>/dev/null)
+          if [ -n "$DNS_ID" ]; then
+              curl -s -X DELETE "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records/${DNS_ID}" -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
+          fi
+          curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records" -H "Authorization: Bearer ${CF_TOKEN}" -H "Content-Type: application/json" --data "{\"type\":\"CNAME\",\"name\":\"${FQDN}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}" >/dev/null 2>&1
+
+          # Function to process downstream devices
+          build_ingress() {
+              local cfg="$1"
+              local name
+              local ip
+              config_get name "$cfg" name
+              config_get ip "$cfg" ip
+              
+              if [ -n "$name" ] && [ -n "$ip" ]; then
+                  DEV_FQDN="${name}-${MAC}.${CF_DOMAIN}"
+                  INGRESS="${INGRESS},{\"hostname\":\"${DEV_FQDN}\",\"service\":\"http://${ip}\"}"
+                  
+                  echo "🟡 Setting up DNS for ${name}..." > "$STATUS_FILE"
+                  D_RES=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?name=${DEV_FQDN}" -H "Authorization: Bearer ${CF_TOKEN}")
+                  D_ID=$(echo "$D_RES" | jsonfilter -e '@.result[0].id' 2>/dev/null)
+                  if [ -n "$D_ID" ]; then
+                       curl -s -X DELETE "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records/${D_ID}" -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
+                  fi
+                  curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records" -H "Authorization: Bearer ${CF_TOKEN}" -H "Content-Type: application/json" --data "{\"type\":\"CNAME\",\"name\":\"${DEV_FQDN}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}" >/dev/null 2>&1
+              fi
+          }
+
+          # Load UCI and loop devices
+          config_load cloud
+          config_foreach build_ingress device
+
+          # Close Ingress Array
+          INGRESS="${INGRESS},{\"service\":\"http_status:404\"}]"
+
+          # Upload Ingress configuration to Cloudflare
+          echo "🟡 Uploading Ingress Rules..." > "$STATUS_FILE"
           curl -s -X PUT \
             "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}/cfd_tunnel/${TUNNEL_ID}/configurations" \
             -H "Authorization: Bearer ${CF_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data "{\"config\":{\"ingress\":[{\"hostname\":\"${FQDN}\",\"service\":\"http://127.0.0.1:80\"},{\"service\":\"http_status:404\"}]}}" >/dev/null 2>&1
-
-          # Step 5: Route DNS (Delete old CNAME if exists, then create new)
-          echo "🟡 Setting up DNS..." > "$STATUS_FILE"
-          DNS_RES=$(curl -s -X GET \
-            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?name=${FQDN}" \
-            -H "Authorization: Bearer ${CF_TOKEN}")
-          DNS_ID=$(echo "$DNS_RES" | jsonfilter -e '@.result[0].id' 2>/dev/null)
-          if [ -n "$DNS_ID" ]; then
-              curl -s -X DELETE \
-                "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records/${DNS_ID}" \
-                -H "Authorization: Bearer ${CF_TOKEN}" >/dev/null 2>&1
-          fi
-          
-          curl -s -X POST \
-            "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records" \
-            -H "Authorization: Bearer ${CF_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "{\"type\":\"CNAME\",\"name\":\"${FQDN}\",\"content\":\"${TUNNEL_ID}.cfargotunnel.com\",\"proxied\":true}" >/dev/null 2>&1
+            --data "{\"config\":{\"ingress\":${INGRESS}}}" >/dev/null 2>&1
           
           # Step 6: Run Tunnel (foreground, procd monitors it)
           echo "🟡 Starting Tunnel..." > "$STATUS_FILE"
