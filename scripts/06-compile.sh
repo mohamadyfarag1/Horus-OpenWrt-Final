@@ -35,6 +35,11 @@ make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
 make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
 
 echo "======================================="
+echo "Step 2.5: Applying Superchannel C-code Unlock..."
+echo "======================================="
+bash ../scripts/07-unlock-superchannel.sh
+
+echo "======================================="
 echo "Step 3: Starting Full Compilation..."
 echo "======================================="
 make -j$(nproc) || { make -j1 V=s 2>&1 | tee build.log; exit ${PIPESTATUS[0]}; }
