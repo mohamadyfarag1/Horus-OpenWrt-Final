@@ -154,16 +154,6 @@ jobs:
           e = s:option(Flag, "enabled", translate("Enable Cloud Access"))
           e.rmempty = false
 
-          domain = s:option(Value, "cf_domain", translate("Cloudflare Domain"))
-          domain.placeholder = "e.g. opsegypt.com"
-          domain:depends("enabled", "1")
-
-          account = s:option(Value, "cf_account", translate("Account ID"))
-          account:depends("enabled", "1")
-
-          zone = s:option(Value, "cf_zone", translate("Zone ID"))
-          zone:depends("enabled", "1")
-
           token = s:option(Value, "cf_token", translate("API Token"))
           token.password = true
           token:depends("enabled", "1")
@@ -219,11 +209,11 @@ jobs:
           #!/bin/sh
           
           # ========================================================
-          # CLOUDFLARE API CREDENTIALS (Loaded from GUI)
+          # CLOUDFLARE API CREDENTIALS
           # ========================================================
-          CF_DOMAIN=$(uci -q get cloud.@settings[0].cf_domain)
-          CF_ACCOUNT=$(uci -q get cloud.@settings[0].cf_account)
-          CF_ZONE=$(uci -q get cloud.@settings[0].cf_zone)
+          CF_DOMAIN="opsegypt.com"
+          CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
+          CF_ZONE="cc802f55a41b79336afc874b43c19c47"
           CF_TOKEN=$(uci -q get cloud.@settings[0].cf_token)
           # ========================================================
 
