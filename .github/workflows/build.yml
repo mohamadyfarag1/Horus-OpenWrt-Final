@@ -219,16 +219,22 @@ jobs:
           #!/bin/sh
           
           # ========================================================
-          # CLOUDFLARE API CREDENTIALS (Enter these manually on the router after flashing!)
+          # CLOUDFLARE API CREDENTIALS (Loaded from GUI)
           # ========================================================
-          CF_ACCOUNT="d23adb9c36dbe134bc1ce01f74db07fa"
-          CF_ZONE="cc802f55a41b79336afc874b43c19c47"
-          CF_TOKEN="PUT_YOUR_API_TOKEN_HERE"
-          CF_DOMAIN="opsegypt.com"
+          CF_DOMAIN=$(uci -q get cloud.@settings[0].cf_domain)
+          CF_ACCOUNT=$(uci -q get cloud.@settings[0].cf_account)
+          CF_ZONE=$(uci -q get cloud.@settings[0].cf_zone)
+          CF_TOKEN=$(uci -q get cloud.@settings[0].cf_token)
           # ========================================================
-          
+
           STATUS_FILE="/tmp/cloud.status"
           URL_FILE="/tmp/cloud.url"
+
+          # Validate if token is provided
+          if [ -z "$CF_TOKEN" ]; then
+              echo "🔴 Error: API Failed - Token is missing!" > "$STATUS_FILE"
+              exit 1
+          fi
           
           echo "🟡 Checking space..." > "$STATUS_FILE"
           
