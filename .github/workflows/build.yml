@@ -166,7 +166,7 @@ jobs:
           d.addremove = true
           d.anonymous = true
 
-          name = d:option(Value, "name", translate("Subdomain"), translate("e.g. dvr1 (becomes dvr1.opsegypt.com)"))
+          name = d:option(Value, "name", translate("Subdomain"), translate("e.g. dvr1"))
           name.rmempty = false
           name.datatype = "hostname"
 
@@ -180,6 +180,17 @@ jobs:
           ip = d:option(Value, "ip", translate("Internal IP:Port"), translate("e.g. 192.168.1.10:80"))
           ip.rmempty = false
           ip.datatype = "hostport"
+
+          url = d:option(DummyValue, "_url", translate("Access Link"))
+          url.rawhtml = true
+          function url.cfgvalue(self, section)
+              local n = m.uci:get("cloud", section, "name")
+              if n and n ~= "" then
+                  local link = "https://" .. n .. ".opsegypt.com"
+                  return '<a href="' .. link .. '" target="_blank" style="color:#0055ff; font-weight:bold; text-decoration:underline;">Open &#8599;</a>'
+              end
+              return '<span style="color:#999;">Save first</span>'
+          end
 
           return m
           EOF
