@@ -177,9 +177,8 @@ jobs:
           proto:value("ssh", "SSH")
           proto.default = "http"
 
-          ip = d:option(Value, "ip", translate("Internal IP:Port"), translate("e.g. 192.168.1.10:80"))
+          ip = d:option(Value, "ip", translate("Internal IP[:Port]"), translate("e.g. 192.168.1.10 (Port is optional)"))
           ip.rmempty = false
-          ip.datatype = "hostport"
 
           url = d:option(DummyValue, "_url", translate("Access Link"))
           url.rawhtml = true
