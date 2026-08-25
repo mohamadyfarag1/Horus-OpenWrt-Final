@@ -186,7 +186,7 @@ jobs:
               local n = m.uci:get("cloud", section, "name")
               if n and n ~= "" then
                   local link = "https://" .. n .. ".opsegypt.com"
-                  return '<a href="' .. link .. '" target="_blank" style="color:#0055ff; font-weight:bold; text-decoration:underline;">Open &#8599;</a>'
+                  return '<a href="' .. link .. '" target="_blank" style="color:#0055ff; text-decoration:underline;">' .. link .. '</a>'
               end
               return '<span style="color:#999;">Save first</span>'
           end
