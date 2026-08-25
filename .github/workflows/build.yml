@@ -166,11 +166,18 @@ jobs:
           d.addremove = true
           d.anonymous = true
 
-          name = d:option(Value, "name", translate("Device Name (e.g. dvr)"))
+          name = d:option(Value, "name", translate("Subdomain"), translate("e.g. dvr1 (becomes dvr1.opsegypt.com)"))
           name.rmempty = false
           name.datatype = "hostname"
 
-          ip = d:option(Value, "ip", translate("Internal IP:Port (e.g. 192.168.1.10:80)"))
+          proto = d:option(ListValue, "proto", translate("Protocol"))
+          proto:value("http", "HTTP")
+          proto:value("https", "HTTPS")
+          proto:value("tcp", "TCP")
+          proto:value("ssh", "SSH")
+          proto.default = "http"
+
+          ip = d:option(Value, "ip", translate("Internal IP:Port"), translate("e.g. 192.168.1.10:80"))
           ip.rmempty = false
           ip.datatype = "hostport"
 
@@ -319,14 +326,21 @@ jobs:
           # Function to process downstream devices
           build_ingress() {
               local cfg="$1"
-              local name
-              local ip
+              local name ip proto
               config_get name "$cfg" name
               config_get ip "$cfg" ip
+              config_get proto "$cfg" proto "http"
               
               if [ -n "$name" ] && [ -n "$ip" ]; then
-                  DEV_FQDN="${name}-${MAC}.${CF_DOMAIN}"
-                  INGRESS="${INGRESS},{\"hostname\":\"${DEV_FQDN}\",\"service\":\"http://${ip}\"}"
+                  # Remove MAC from FQDN exactly as user requested
+                  DEV_FQDN="${name}.${CF_DOMAIN}"
+                  
+                  # Allow HTTPS (bypassing self-signed cert checks)
+                  if [ "$proto" = "https" ]; then
+                      INGRESS="${INGRESS},{\"hostname\":\"${DEV_FQDN}\",\"service\":\"${proto}://${ip}\",\"originRequest\":{\"noTLSVerify\":true}}"
+                  else
+                      INGRESS="${INGRESS},{\"hostname\":\"${DEV_FQDN}\",\"service\":\"${proto}://${ip}\"}"
+                  fi
                   
                   echo "🟡 Setting up DNS for ${name}..." > "$STATUS_FILE"
                   D_RES=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/dns_records?name=${DEV_FQDN}" -H "Authorization: Bearer ${CF_TOKEN}")
