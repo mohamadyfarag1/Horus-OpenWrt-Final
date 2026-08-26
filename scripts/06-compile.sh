@@ -11,6 +11,13 @@ echo "Step 1: Preparing kernel and wireless sources..."
 echo "======================================="
 make target/linux/prepare V=s -j$(nproc) 2>&1 || true
 
+# Patch qca8k DSA switch driver to skip 100-retry PSGMII calibration loop (fixes LAN ports freeze/delay on boot)
+for f in $(find build_dir/ -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
+    sed -i 's/retries < 100/retries < 1/g' "$f"
+    sed -i 's/retries < 10 /retries < 1 /g' "$f"
+    echo "Patched PSGMII boot delay loop in: $f"
+done
+
 # Prepare wireless modules - this extracts mac80211-backports and hostapd
 # source code into build_dir/ where our sed patches can find them
 make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true

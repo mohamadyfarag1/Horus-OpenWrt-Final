@@ -20,16 +20,22 @@ if [ ! -f "$dts_path_66" ]; then
 fi
 
 echo "Patching 128MB SPI NAND capacity and model strings into factory DTS..."
+python3 -c '
+import re, sys
+with open(sys.argv[1], "r") as f:
+    dts = f.read()
 
-# 1. Forcefully patch partition label and size
-sed -i 's/label = "rootfs";/label = "ubi";/g' "$dts_path_66"
-sed -i 's/reg = <0x0 0x2000000>;/reg = <0x0 0x8000000>;/g' "$dts_path_66"
+# Replace model and compatible in the root node
+dts = re.sub(r"model\s*=\s*\"[^\"]+\";", "model = \"Horus 9200\";", dts, count=1)
+dts = re.sub(r"compatible\s*=\s*\"[^\"]+\"(.*?);", "compatible = \"h1radio,ti04-708hp\", \"qcom,ipq4019\";", dts, count=1)
 
-# 2. Fix chosen bootargs
-sed -i 's/bootargs = .*/bootargs = "cma=32M mtdparts=spi0.1:128m(ubi) ubi.mtd=ubi root=\/dev\/ubiblock0_1 rootfstype=squashfs";/g' "$dts_path_66"
-
-# 3. Update model name (NO compatible change, to preserve U-boot fixup)
-sed -i 's/model = .*/model = "Horus 9200";/g' "$dts_path_66"
+# Find rootfs or ubi partition and force size to 128MB (0x8000000)
+# We match label = "rootfs" and the following reg = <offset size>
+dts = re.sub(r"(label\s*=\s*\"rootfs\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
+dts = re.sub(r"(label\s*=\s*\"ubi\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
+with open(sys.argv[1], "w") as f:
+    f.write(dts)
+' "$dts_path_66"
 
 cp "$dts_path_66" "$dts_path_base"
 

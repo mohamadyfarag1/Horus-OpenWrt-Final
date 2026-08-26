@@ -183,6 +183,10 @@ if [ -f ../wireless-regdb/regulatory.db ]; then
   mkdir -p files/lib/firmware
   cp ../wireless-regdb/regulatory.db files/lib/firmware/regulatory.db
   echo "Using freshly built regulatory.db with super channels!"
+elif [ -f ../regulatory.db ]; then
+  mkdir -p files/lib/firmware
+  cp ../regulatory.db files/lib/firmware/regulatory.db
+  echo "Using existing regulatory.db from repo (6364 bytes)!"
 fi
 
 # ============================================
