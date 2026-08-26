@@ -11,6 +11,7 @@ cd openwrt
 # ============================================
 mkdir -p files/lib/firmware/ath10k/QCA4019/hw1.0/
 cp ../board-2.bin files/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
+[ -f ../firmware-5.bin ] && cp ../firmware-5.bin files/lib/firmware/ath10k/QCA4019/hw1.0/firmware-5.bin
 # NOTE: files_ap is copied in 05-configure.sh with proper binary file protection
 
 # ============================================
