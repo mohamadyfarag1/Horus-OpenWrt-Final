@@ -50,10 +50,8 @@ for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
   sed -i 's/REG_RULE(2412-10, 2462+10, 40, 6, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 6, 33, 0)/g' "$REG"
   sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2192-10, 2732+10, 40, 6, 33,/g' "$REG"
   sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2484-10, 2484+10, 40, 6, 33,/g' "$REG"
-  # Remove ALL is_valid_rd() validation blocks
-  sed -i '/if (!is_valid_rd(rd)) {/{N;N;N;N;d}' "$REG"
-  sed -i '/if (WARN(!is_valid_rd(rd)/{N;N;N;d}' "$REG"
-  # Force is_valid_rd to always return true
+  # Force is_valid_rd to always return true (safe on any kernel version)
+  # This bypasses all validation blocks without needing to delete them
   sed -i '/^static bool is_valid_rd(/,/^{/ { /^{/a\\treturn true;
   }' "$REG"
   # CRITICAL ORDER: Replace NL80211_RRF_NO_IR_ALL first (before NL80211_RRF_NO_IR)

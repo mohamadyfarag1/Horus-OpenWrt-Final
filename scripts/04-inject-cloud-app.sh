@@ -11,7 +11,7 @@ cd openwrt
 # ============================================
 mkdir -p files/lib/firmware/ath10k/QCA4019/hw1.0/
 cp ../board-2.bin files/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
-cp -r ../files_ap/* files/
+# NOTE: files_ap is copied in 05-configure.sh with proper binary file protection
 
 # ============================================
 # SECTION B: Cloud App - LuCI Interface
@@ -440,7 +440,7 @@ echo 'exit 0' >> files/etc/uci-defaults/99-enable-passive-arp
 chmod +x files/etc/uci-defaults/99-enable-passive-arp
 
 # CRITICAL: Strip Windows CRLF line endings
-find files/ -type f -exec sed -i 's/\r$//' {} +
+find files/ -type f ! -name '*.bin' ! -name '*.db' -exec sed -i 's/\r$//' {} +
 chmod +x files/etc/uci-defaults/*
 
 # ============================================
