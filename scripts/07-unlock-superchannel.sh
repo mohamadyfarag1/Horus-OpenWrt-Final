@@ -25,9 +25,12 @@ for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
   sed -i 's/REG_RULE(2412-10, 2462+10, 40, 0, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 0, 33, 0)/g' "$REGD"
   sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2192-10, 2732+10, 40, 0, 33,/g' "$REGD"
   sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2484-10, 2484+10, 40, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(4900-10, 6100+10, 160, 0, 33,/g' "$REGD"
+  # 5GHz first range: 4900 - 5350 MHz (Lower 5G & Super channels 36-70)
+  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(4900-10, 5350+10, 80, 0, 33,/g' "$REGD"
+  # 5GHz second range: 5350 - 5725 MHz (Middle 5G & Super channels 72-144)
+  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5350-10, 5725+10, 80, 0, 33,/g' "$REGD"
+  # 5GHz third range: 5725 - 6100 MHz (Upper 5G & Super channels 146-177)
+  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5725-10, 6100+10, 80, 0, 33,/g' "$REGD"
   sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
   sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
   FOUND1=$((FOUND1 + 1))

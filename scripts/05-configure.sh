@@ -171,7 +171,9 @@ with open('db.txt', 'w') as f:
         else:
             f.write(f'country {c}:\n')
         f.write('\t(2192 - 2732 @ 40), (33)\n')
-        f.write('\t(4900 - 6100 @ 160), (33)\n\n')
+        f.write('\t(4900 - 5350 @ 80), (33)\n')
+        f.write('\t(5350 - 5725 @ 80), (33)\n')
+        f.write('\t(5725 - 6100 @ 80), (33)\n\n')
 "
 python3 db2fw.py regulatory.db db.txt || echo "WARNING: db2fw.py failed"
 cd ../openwrt
