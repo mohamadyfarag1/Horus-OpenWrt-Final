@@ -9,6 +9,11 @@ cd openwrt
 echo "======================================="
 echo "Step 1: Preparing kernel and wireless sources..."
 echo "======================================="
+
+# Inject Superchannel C-code patch safely into OpenWrt's patch system BEFORE extraction
+mkdir -p target/linux/ipq40xx/patches-6.6
+cp ../patches/999-unlock-superchannel.patch target/linux/ipq40xx/patches-6.6/999-unlock-superchannel.patch
+
 make target/linux/prepare V=s -j$(nproc) 2>&1 || true
 
 # ============================================
@@ -33,11 +38,6 @@ fi
 # Prepare wireless modules
 make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
 make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
-
-echo "======================================="
-echo "Step 2.5: Applying Superchannel C-code Unlock..."
-echo "======================================="
-bash ../scripts/07-unlock-superchannel.sh
 
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
