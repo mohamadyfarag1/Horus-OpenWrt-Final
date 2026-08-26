@@ -7,26 +7,21 @@ set -e
 cd openwrt
 
 echo "======================================="
-echo "Step 1: Injecting Superchannel Patches..."
-echo "======================================="
-
-# The correct way to patch mac80211 backports in OpenWrt is to place the patch
-# in the mac80211 package's patch directory so Quilt applies it automatically.
-mkdir -p package/kernel/mac80211/patches/build/
-cp ../patches/mac80211-superchannel.patch package/kernel/mac80211/patches/build/999-unlock-superchannel.patch
-
-# Also patch hostapd so it allows advanced modes on extended channels
-mkdir -p package/network/services/hostapd/patches/
-cp ../patches/hostapd-superchannel.patch package/network/services/hostapd/patches/999-unlock-superchannel.patch
-
-echo "======================================="
-echo "Step 2: Preparing Kernel and Wireless Sources..."
+echo "Step 1: Preparing kernel and wireless sources..."
 echo "======================================="
 make target/linux/prepare V=s -j$(nproc) 2>&1 || true
 
-# Prepare wireless modules (this will now automatically apply our injected patches!)
+# Prepare wireless modules - this extracts mac80211-backports and hostapd
+# source code into build_dir/ where our sed patches can find them
 make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
 make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
+
+echo "======================================="
+echo "Step 2: Applying Superchannel C-code Unlock..."
+echo "======================================="
+# This script searches build_dir/ for the extracted source files
+# and applies sed-based text replacements (works on any kernel version)
+bash ../scripts/07-unlock-superchannel.sh
 
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
