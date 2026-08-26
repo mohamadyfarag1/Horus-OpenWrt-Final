@@ -129,3 +129,11 @@
  		channel_flags |= IEEE80211_CHAN_NO_OFDM;
  	if (rd_flags & NL80211_RRF_NO_OUTDOOR)
  		channel_flags |= IEEE80211_CHAN_INDOOR_ONLY;
+--- a/net/wireless/util.c
++++ b/net/wireless/util.c
+@@ -1345,6 +1345,7 @@
+ 	case NL80211_BAND_2GHZ:
++		chan = (int)(char)chan;
+ 		if (chan == 14)
+ 			return 2484;
+ 		if (chan < 14)

@@ -1,43 +1,32 @@
 #!/bin/bash
 # =============================================
-# Script 6: Compile Firmware with PSGMII Fix
+# Script 6: Compile Firmware
 # =============================================
 set -e
 
 cd openwrt
 
 echo "======================================="
-echo "Step 1: Preparing kernel and wireless sources..."
+echo "Step 1: Injecting Superchannel Patches..."
+echo "======================================="
+
+# The correct way to patch mac80211 backports in OpenWrt is to place the patch
+# in the mac80211 package's patch directory so Quilt applies it automatically.
+mkdir -p package/kernel/mac80211/patches/build/
+cp ../patches/mac80211-superchannel.patch package/kernel/mac80211/patches/build/999-unlock-superchannel.patch
+
+# Also patch hostapd so it allows advanced modes on extended channels
+mkdir -p package/network/services/hostapd/patches/
+cp ../patches/hostapd-superchannel.patch package/network/services/hostapd/patches/999-unlock-superchannel.patch
+
+echo "======================================="
+echo "Step 2: Preparing Kernel and Wireless Sources..."
 echo "======================================="
 make target/linux/prepare V=s -j$(nproc) 2>&1 || true
 
-# ============================================
-# PSGMII Fix: Reduce QCA8K switch calibration
-# retries from 100 to 1 to prevent 2-minute
-# boot delay and dead LAN ports on IPQ4019
-# ============================================
-echo "======================================="
-echo "Step 2: Applying PSGMII boot delay fix..."
-echo "======================================="
-PATCHED=0
-for f in $(find build_dir/ -path "*/drivers/net/dsa/qca/qca8k*c" 2>/dev/null); do
-    sed -i 's/retries < 100/retries < 1/g' "$f"
-    sed -i 's/retries < 10 /retries < 1 /g' "$f"
-    echo "Patched PSGMII boot delay loop in: $f"
-    PATCHED=$((PATCHED + 1))
-done
-if [ "$PATCHED" -eq 0 ]; then
-    echo "WARNING: No QCA8K driver files found to patch!"
-fi
-
-# Prepare wireless modules
+# Prepare wireless modules (this will now automatically apply our injected patches!)
 make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
 make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
-
-echo "======================================="
-echo "Step 2.5: Applying Superchannel C-code Unlock..."
-echo "======================================="
-bash ../scripts/07-unlock-superchannel.sh
 
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
