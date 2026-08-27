@@ -38,8 +38,13 @@ fi
 umount /tmp/usb_check 2>/dev/null
 
 echo "✅ USB is ready. Re-enabling existing USB Extroot..."
-uci set fstab.overlay.enabled="1" 2>/dev/null
-uci commit fstab 2>/dev/null
+UUID=$(block info "$USB_PART" | grep -o -e 'UUID=\S*' | cut -d'=' -f2 | tr -d '"')
+uci -q delete fstab.overlay
+uci set fstab.overlay="mount"
+uci set fstab.overlay.uuid="${UUID}"
+uci set fstab.overlay.target="/overlay"
+uci set fstab.overlay.enabled="1"
+uci commit fstab
 sync
 echo "Done! The router will now reboot to boot from the USB flash drive."
 echo "Please wait 2 minutes for the router to come back online."
