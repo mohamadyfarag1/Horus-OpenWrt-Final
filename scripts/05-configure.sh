@@ -78,9 +78,9 @@ if [ -n "$BASE_MAC" ]; then
     WAN_MAC=$(macaddr_add "$BASE_MAC" 1)
     WIFI2_MAC=$(macaddr_add "$BASE_MAC" 2)
     WIFI5_MAC=$(macaddr_add "$BASE_MAC" 3)
-    uci set network.lan.macaddr="$BASE_MAC"
-    uci set network.wan.macaddr="$WAN_MAC"
-    uci commit network
+    # uci set network.lan.macaddr="$BASE_MAC"
+    # uci set network.wan.macaddr="$WAN_MAC"
+    # uci commit network
     uci set wireless.radio0.macaddr="$WIFI2_MAC"
     uci set wireless.default_radio0.macaddr="$WIFI2_MAC"
     uci set wireless.radio1.macaddr="$WIFI5_MAC"
