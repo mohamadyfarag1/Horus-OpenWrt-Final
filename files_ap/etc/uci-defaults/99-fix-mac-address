@@ -27,7 +27,7 @@ if [ -n "$BASE_MAC" ]; then
     uci set wireless.default_radio1.macaddr="$MAC_WIFI5G"
     uci commit wireless
 
-    ifconfig eth0 hw ether "$MAC_ETH0" 2>/dev/null
-    ifconfig br-lan hw ether "$MAC_ETH0" 2>/dev/null
+    # ifconfig eth0 hw ether "$MAC_ETH0" 2>/dev/null
+    # ifconfig br-lan hw ether "$MAC_ETH0" 2>/dev/null
 fi
 exit 0
