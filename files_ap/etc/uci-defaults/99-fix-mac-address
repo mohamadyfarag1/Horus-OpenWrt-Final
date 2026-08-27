@@ -1,3 +1,33 @@
 #!/bin/sh
-BASE_MAC=\
-if [ -n \
+BASE_MAC=$(strings /dev/mtd5 | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+if [ -n "$BASE_MAC" ]; then
+    MAC_ETH0=$BASE_MAC
+    
+    MAC_PREFIX=$(echo $BASE_MAC | cut -d: -f1-5)
+    MAC_LAST=$(echo $BASE_MAC | cut -d: -f6)
+    
+    LAST_DEX=$(printf "%d" 0x$MAC_LAST)
+    
+    LAST_1_HEX=$(printf "%02x" $(((LAST_DEX + 1) % 256)))
+    LAST_2_HEX=$(printf "%02x" $(((LAST_DEX + 2) % 256)))
+    
+    MAC_WIFI2G="$MAC_PREFIX:$LAST_1_HEX"
+    MAC_WIFI5G="$MAC_PREFIX:$LAST_2_HEX"
+
+    uci set network.lan.macaddr="$MAC_ETH0"
+    uci set network.wan.macaddr="$MAC_ETH0"
+    uci commit network
+
+    uci -q delete wireless.radio0.country_ie
+    uci -q delete wireless.radio1.country_ie
+
+    uci set wireless.radio0.macaddr="$MAC_WIFI2G"
+    uci set wireless.default_radio0.macaddr="$MAC_WIFI2G"
+    uci set wireless.radio1.macaddr="$MAC_WIFI5G"
+    uci set wireless.default_radio1.macaddr="$MAC_WIFI5G"
+    uci commit wireless
+
+    ifconfig eth0 hw ether "$MAC_ETH0" 2>/dev/null
+    ifconfig br-lan hw ether "$MAC_ETH0" 2>/dev/null
+fi
+exit 0
