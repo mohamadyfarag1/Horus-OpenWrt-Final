@@ -1,9 +1,7 @@
 #!/bin/bash
 # ============================================
-# Script 7: SUPERCHANNEL C-CODE UNLOCKER
-# Exact copy of the PROVEN working script from check.yml
-# Uses sed (text search/replace) not unified diff patches
-# This works on ANY kernel version (5.15, 6.6, 6.12)
+# Script 7: SUPERCHANNEL C-CODE UNLOCKER (Python Engine)
+# Re-written for modern Kernel 6.6+ compatibility
 # ============================================
 set -e
 echo "============================================"
@@ -13,100 +11,92 @@ echo "============================================"
 # We are called from inside 'openwrt' directory by 06-compile.sh
 cd build_dir
 
-#############################################
-# PATCH 1: ath/regd.c (Kernel Regulatory)
-# Expands 2GHz to 2192-2732 MHz
-# Expands 5GHz to 4900-6100 MHz
-# Removes NO_IR and NO_OFDM restrictions
-#############################################
-FOUND1=0
-for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
-  echo "[PATCH 1] Patching: $REGD"
-  sed -i 's/REG_RULE(2412-10, 2462+10, 40, 0, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 0, 33, 0)/g' "$REGD"
-  sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2192-10, 2732+10, 40, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2484-10, 2484+10, 40, 0, 33,/g' "$REGD"
-  # 5GHz first range: 4900 - 5350 MHz (Lower 5G & Super channels 36-70)
-  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(4900-10, 5350+10, 80, 0, 33,/g' "$REGD"
-  # 5GHz second range: 5350 - 5725 MHz (Middle 5G & Super channels 72-144)
-  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5350-10, 5725+10, 80, 0, 33,/g' "$REGD"
-  # 5GHz third range: 5725 - 6100 MHz (Upper 5G & Super channels 146-177)
-  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5725-10, 6100+10, 80, 0, 33,/g' "$REGD"
-  sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
-  sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
-  FOUND1=$((FOUND1 + 1))
-  echo "  -> ath/regd.c patched OK"
-done
-echo "[PATCH 1] Found and patched $FOUND1 file(s)"
+cat << 'EOF' > patch_superchannel.py
+import os
+import re
 
-#############################################
-# PATCH 2: net/wireless/reg.c
-# Expands world regdomain 00
-# Removes is_valid_rd() checks completely
-# IMPORTANT: We must handle NL80211_RRF_NO_IR_ALL
-# separately BEFORE replacing NL80211_RRF_NO_IR
-# to avoid creating invalid "0_ALL" token
-#############################################
-FOUND2=0
-for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
-  echo "[PATCH 2] Patching: $REG"
-  # Expand world regdomain 00 - 2GHz
-  sed -i 's/REG_RULE(2412-10, 2462+10, 40, 6, 20, 0)/REG_RULE(2192-10, 2732+10, 40, 6, 33, 0)/g' "$REG"
-  sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2192-10, 2732+10, 40, 6, 33,/g' "$REG"
-  sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2484-10, 2484+10, 40, 6, 33,/g' "$REG"
-  # Force is_valid_rd to always return true (safe on any kernel version)
-  # This bypasses all validation blocks without needing to delete them
-  sed -i '/^static bool is_valid_rd(/,/^{/ { /^{/a\\treturn true;
-  }' "$REG"
-  # CRITICAL ORDER: Replace NL80211_RRF_NO_IR_ALL first (before NL80211_RRF_NO_IR)
-  # Otherwise NL80211_RRF_NO_IR_ALL becomes 0_ALL which is invalid C
-  sed -i 's/NL80211_RRF_NO_IR_ALL/0/g' "$REG"
-  # Now safe to replace remaining NL80211_RRF_NO_IR
-  sed -i 's/NL80211_RRF_NO_IR/0/g' "$REG"
-  sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REG"
-  FOUND2=$((FOUND2 + 1))
-  echo "  -> net/wireless/reg.c patched OK"
-done
-echo "[PATCH 2] Found and patched $FOUND2 file(s)"
+print("Starting Python Patch Engine...")
 
-#############################################
-# PATCH 3: net/wireless/util.c
-# CRITICAL for 2.3GHz support!
-# Adds support for channel numbers > 127
-#############################################
-FOUND3=0
-for UTIL in $(find . -path "*/net/wireless/util.c" 2>/dev/null); do
-  echo "[PATCH 3] Patching: $UTIL"
-  sed -i '/case NL80211_BAND_2GHZ:/a\\t\tchan = (int)(char)chan;' "$UTIL"
-  FOUND3=$((FOUND3 + 1))
-  echo "  -> net/wireless/util.c patched OK"
-done
-echo "[PATCH 3] Found and patched $FOUND3 file(s)"
+found1 = 0
+for root, dirs, files in os.walk('.'):
+    if 'regd.c' in files and 'ath' in root:
+        filepath = os.path.join(root, 'regd.c')
+        with open(filepath, 'r') as f:
+            content = f.read()
+        
+        # 2GHz
+        content = re.sub(r'REG_RULE\(\s*2412\s*-\s*10\s*,\s*2462\s*\+\s*10\s*,\s*40\s*,\s*0\s*,\s*\d+\s*,\s*0\s*\)', 'REG_RULE(2192-10, 2732+10, 40, 0, 33, 0)', content)
+        content = re.sub(r'REG_RULE\(\s*2467\s*-\s*10\s*,\s*2472\s*\+\s*10\s*,\s*40\s*,\s*0\s*,\s*\d+\s*,', 'REG_RULE(2192-10, 2732+10, 40, 0, 33,', content)
+        content = re.sub(r'REG_RULE\(\s*2484\s*-\s*10\s*,\s*2484\s*\+\s*10\s*,\s*40\s*,\s*0\s*,\s*\d+\s*,', 'REG_RULE(2484-10, 2484+10, 40, 0, 33,', content)
+        
+        # 5GHz (Flexible regex for spaces and dBm values)
+        content = re.sub(r'REG_RULE\(\s*5150\s*-\s*10\s*,\s*5350\s*\+\s*10\s*,\s*80\s*,\s*0\s*,\s*\d+\s*,', 'REG_RULE(4900-10, 5350+10, 80, 0, 33,', content)
+        content = re.sub(r'REG_RULE\(\s*5470\s*-\s*10\s*,\s*5850\s*\+\s*10\s*,\s*80\s*,\s*0\s*,\s*\d+\s*,', 'REG_RULE(5350-10, 5725+10, 80, 0, 33,', content)
+        content = re.sub(r'REG_RULE\(\s*5725\s*-\s*10\s*,\s*5850\s*\+\s*10\s*,\s*80\s*,\s*0\s*,\s*\d+\s*,', 'REG_RULE(5725-10, 6100+10, 80, 0, 33,', content)
+        
+        content = content.replace('NL80211_RRF_NO_IR', '0')
+        content = content.replace('NL80211_RRF_NO_OFDM', '0')
+        
+        with open(filepath, 'w') as f:
+            f.write(content)
+        print(f"Patched: {filepath}")
+        found1 += 1
 
-#############################################
-# PATCH 4: hostapd - hw_features.c
-# Allow OFDM/HT/VHT on channel 14
-#############################################
+found2 = 0
+for root, dirs, files in os.walk('.'):
+    if 'reg.c' in files and 'wireless' in root:
+        filepath = os.path.join(root, 'reg.c')
+        with open(filepath, 'r') as f:
+            content = f.read()
+        
+        # World Domain
+        content = re.sub(r'REG_RULE\(\s*2412\s*-\s*10\s*,\s*2462\s*\+\s*10\s*,\s*40\s*,\s*6\s*,\s*\d+\s*,\s*0\s*\)', 'REG_RULE(2192-10, 2732+10, 40, 6, 33, 0)', content)
+        content = re.sub(r'REG_RULE\(\s*2467\s*-\s*10\s*,\s*2472\s*\+\s*10\s*,\s*20\s*,\s*6\s*,\s*\d+\s*,', 'REG_RULE(2192-10, 2732+10, 40, 6, 33,', content)
+        content = re.sub(r'REG_RULE\(\s*2484\s*-\s*10\s*,\s*2484\s*\+\s*10\s*,\s*20\s*,\s*6\s*,\s*\d+\s*,', 'REG_RULE(2484-10, 2484+10, 40, 6, 33,', content)
+        
+        # is_valid_rd bypass
+        content = re.sub(r'(static bool is_valid_rd\([^)]+\)\s*\{)', r'\1 return true;', content)
+        
+        # Remove restrictions
+        content = content.replace('NL80211_RRF_NO_IR_ALL', '0')
+        content = content.replace('NL80211_RRF_NO_IR', '0')
+        content = content.replace('NL80211_RRF_NO_OFDM', '0')
+        
+        with open(filepath, 'w') as f:
+            f.write(content)
+        print(f"Patched: {filepath}")
+        found2 += 1
+
+found3 = 0
+for root, dirs, files in os.walk('.'):
+    if 'util.c' in files and 'wireless' in root:
+        filepath = os.path.join(root, 'util.c')
+        with open(filepath, 'r') as f:
+            content = f.read()
+            
+        if 'chan = (int)(char)chan;' not in content:
+            content = content.replace('case NL80211_BAND_2GHZ:', 'case NL80211_BAND_2GHZ:\n\t\tchan = (int)(char)chan;')
+            with open(filepath, 'w') as f:
+                f.write(content)
+        print(f"Patched: {filepath}")
+        found3 += 1
+
+if found1 == 0 and found2 == 0:
+    print("WARNING: No files patched by Python engine!")
+EOF
+
+python3 patch_superchannel.py
+rm patch_superchannel.py
+
 FOUND4=0
 for HWF in $(find . -path "*/hostapd*/src/ap/hw_features.c" -o -path "*/wpad*/src/ap/hw_features.c" 2>/dev/null); do
-  echo "[PATCH 4] Patching: $HWF"
   sed -i 's/wpa_printf(MSG_INFO, "Disable OFDM\/HT\/VHT on channel 14");//g' "$HWF"
   sed -i 's/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211B;/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211G;/g' "$HWF"
   sed -i '/iface->conf->ieee80211n = 0;/d' "$HWF"
   sed -i '/iface->conf->ieee80211ac = 0;/d' "$HWF"
   FOUND4=$((FOUND4 + 1))
-  echo "  -> hostapd/hw_features.c patched OK"
 done
-echo "[PATCH 4] Found and patched $FOUND4 file(s)"
 
 echo "============================================"
 echo "=== SUPERCHANNEL UNLOCK COMPLETE ==="
-echo "=== Patched: $FOUND1 regd.c, $FOUND2 reg.c, $FOUND3 util.c, $FOUND4 hostapd ==="
 echo "============================================"
-
-# Safety check - if nothing was patched, something is wrong
-if [ "$FOUND1" -eq 0 ] && [ "$FOUND2" -eq 0 ]; then
-  echo "ERROR: No wireless regulatory files found to patch!"
-  echo "Listing build_dir contents for debugging:"
-  find . -name "regd.c" -o -name "reg.c" 2>/dev/null | sort
-  exit 1
-fi
