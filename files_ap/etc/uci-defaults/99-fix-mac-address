@@ -14,9 +14,9 @@ if [ -n "$BASE_MAC" ]; then
     MAC_WIFI2G="$MAC_PREFIX:$LAST_1_HEX"
     MAC_WIFI5G="$MAC_PREFIX:$LAST_2_HEX"
 
-    uci set network.lan.macaddr="$MAC_ETH0"
-    uci set network.wan.macaddr="$MAC_ETH0"
-    uci commit network
+    # uci set network.lan.macaddr="$MAC_ETH0"
+    # uci set network.wan.macaddr="$MAC_ETH0"
+    # uci commit network
 
     uci -q delete wireless.radio0.country_ie
     uci -q delete wireless.radio1.country_ie
