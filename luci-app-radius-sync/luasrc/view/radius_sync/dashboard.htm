@@ -1,0 +1,105 @@
+<%+header%>
+<style>
+    .rad-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-family: sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .rad-table th, .rad-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+    .rad-table th { background-color: #f4f4f4; color: #333; font-weight: bold; }
+    .rad-table tr:hover { background-color: #f9f9f9; }
+    .status-active { color: #fff; background-color: #4caf50; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+    .status-expired { color: #fff; background-color: #f44336; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+    .status-offline { color: #fff; background-color: #9e9e9e; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+    .btn-refresh { background: #0069d6; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; }
+    .btn-refresh:hover { background: #0056b3; }
+    .stat-card { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 15px; display: inline-block; min-width: 150px; margin-right: 15px; margin-bottom: 15px; text-align: center; }
+    .stat-val { font-size: 24px; font-weight: bold; color: #0069d6; }
+</style>
+
+<h2><%:RADIUS Live Dashboard%></h2>
+<div style="margin-bottom: 20px;">
+    <button class="btn-refresh" onclick="fetchData()">&#x21bb; Refresh Now</button>
+    <span id="last-update" style="margin-left: 15px; color: #666;">Waiting for data...</span>
+</div>
+
+<div id="stats-container">
+    <div class="stat-card">
+        <div class="stat-title">Active Users</div>
+        <div class="stat-val" id="stat-active">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-title">Total MACs Seen</div>
+        <div class="stat-val" id="stat-macs">0</div>
+    </div>
+</div>
+
+<div style="overflow-x: auto;">
+    <table class="rad-table" id="radTable">
+        <thead>
+            <tr>
+                <th>MAC / IP</th>
+                <th>Interface</th>
+                <th>Username</th>
+                <th>Profile</th>
+                <th>Status</th>
+                <th>Remaining</th>
+                <th>Expiration</th>
+            </tr>
+        </thead>
+        <tbody id="radBody">
+            <tr><td colspan="7" style="text-align:center;">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script type="text/javascript">
+function fetchData() {
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "radius_sync", "status")%>', null, function(x, data) {
+        var tbody = document.getElementById('radBody');
+        tbody.innerHTML = '';
+        
+        if (!data || data.error) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:red;">' + (data ? data.error : 'Connection Error') + '</td></tr>';
+            return;
+        }
+
+        var clients = data.clients || [];
+        var activeCount = 0;
+        
+        if (clients.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No clients found</td></tr>';
+        } else {
+            for (var i = 0; i < clients.length; i++) {
+                var c = clients[i];
+                var tr = document.createElement('tr');
+                
+                var macIp = '<b>' + (c.mac || '-') + '</b><br><small style="color:#666;">' + (c.ip || '-') + '</small>';
+                
+                var statusClass = 'status-offline';
+                var statusText = c.status || 'Unknown';
+                if (statusText.toLowerCase() === 'active') { statusClass = 'status-active'; activeCount++; }
+                else if (statusText.toLowerCase() === 'expired') { statusClass = 'status-expired'; }
+                
+                tr.innerHTML = '<td>' + macIp + '</td>' +
+                               '<td>' + (c.interface || 'LAN') + '</td>' +
+                               '<td><b>' + (c.username || '-') + '</b></td>' +
+                               '<td>' + (c.profile || '-') + '</td>' +
+                               '<td><span class="' + statusClass + '">' + statusText + '</span></td>' +
+                               '<td>' + (c.remaining || '-') + '</td>' +
+                               '<td><small>' + (c.expiration || '-') + '</small></td>';
+                tbody.appendChild(tr);
+            }
+        }
+        
+        document.getElementById('stat-active').innerText = activeCount;
+        document.getElementById('stat-macs').innerText = clients.length;
+        
+        var now = new Date();
+        document.getElementById('last-update').innerText = 'Last updated: ' + now.toLocaleTimeString();
+    });
+}
+
+// Auto refresh every 5 seconds
+setInterval(fetchData, 5000);
+// Initial load
+fetchData();
+</script>
+
+<%+footer%>

@@ -1,0 +1,13 @@
+{
+    "luci-app-radius-sync": {
+        "description": "Grant access for RADIUS Sync app",
+        "read": {
+            "uci": [ "radius_sync" ],
+            "file": [ "/tmp/radius_users.json" ]
+        },
+        "write": {
+            "uci": [ "radius_sync" ],
+            "file": [ "/tmp/radius_users.json" ]
+        }
+    }
+}

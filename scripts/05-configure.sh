@@ -192,7 +192,20 @@ elif [ -f ../regulatory.db ]; then
 fi
 
 # ============================================
+# SECTION F: Inject Custom Packages (luci-app-radius-sync)
+# ============================================
+echo "Injecting luci-app-radius-sync package..."
+mkdir -p package/luci-app-radius-sync
+cp -r ../luci-app-radius-sync/* package/luci-app-radius-sync/
+find package/luci-app-radius-sync -type f -exec sed -i 's/\r$//' {} +
+chmod +x package/luci-app-radius-sync/root/usr/bin/* 2>/dev/null || true
+chmod +x package/luci-app-radius-sync/root/etc/init.d/* 2>/dev/null || true
+
+# Also inject into the .config so it gets compiled
+echo "CONFIG_PACKAGE_luci-app-radius-sync=y" >> .config
+
+# ============================================
 # Done
 # ============================================
 
-echo "Done: Feeds updated, config applied, custom files copied."
+echo "Done: Feeds updated, config applied, custom files copied, radius sync injected."
