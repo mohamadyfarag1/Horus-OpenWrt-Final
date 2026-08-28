@@ -1,8 +1,0 @@
-config settings 'main'
-    option enabled '0'
-    option radius_type 'sas'
-    option base_url ''
-    option username ''
-    option password ''
-    option api_key ''
-    option sync_interval '60'
