@@ -131,7 +131,7 @@ def get_wireless_macs():
         out = subprocess.check_output("ubus list | grep hostapd", shell=True, text=True)
         for h in out.splitlines():
             h = h.strip()
-            if not h: continue
+            if not h or not h.startswith("hostapd."): continue
             iface_name = h.replace("hostapd.", "")
             try:
                 raw = subprocess.check_output(f"ubus call {h} get_clients", shell=True, text=True)
@@ -390,7 +390,9 @@ def ban_mac_locally(mac):
     try:
         out = subprocess.check_output("ubus list | grep hostapd", shell=True, text=True)
         for h in out.splitlines():
-            subprocess.run(f"ubus call {h.strip()} del_client '{{\"addr\":\"{mac}\", \"ban_time\": 0}}'", shell=True)
+            h = h.strip()
+            if not h or not h.startswith("hostapd."): continue
+            subprocess.run(f"ubus call {h} del_client '{{\"addr\":\"{mac}\", \"ban_time\": 0}}'", shell=True)
         subprocess.run(f"iptables -I FORWARD 1 -m mac --mac-source {mac} -j DROP", shell=True)
     except Exception:
         pass
@@ -495,7 +497,7 @@ def steer_client_locally(mac, target_bssid=None, ban_time=3000):
         out = subprocess.check_output("ubus list | grep hostapd", shell=True, text=True)
         for h in out.splitlines():
             h = h.strip()
-            if not h: continue
+            if not h or not h.startswith("hostapd."): continue
             # 1. 802.11v BSS Transition Request
             if target_bssid:
                 try:
