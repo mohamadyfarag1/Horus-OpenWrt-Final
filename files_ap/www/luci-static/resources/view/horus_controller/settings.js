@@ -9,7 +9,7 @@ return view.extend({
 	render: function() {
 		var m, s, o;
 
-		var horus_version = '1.0.26-30';
+		var horus_version = '1.0.26-31';
 		m = new form.Map('horus_controller', _('إعدادات نظام حورس'), _('نظام الإدارة المركزي لشبكات الوايرليس (WLC) - الإصدار: ') + horus_version);
 
 		s = m.section(form.NamedSection, 'main', 'settings', _('الإعدادات'));

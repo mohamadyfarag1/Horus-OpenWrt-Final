@@ -154,10 +154,20 @@
     }
 
     function injectAll() {
+        // NEVER run injector on Horus Controller pages (Horus Controller has its own native UI)
+        if (window.location.href.indexOf('horus_controller') !== -1 || document.getElementById('horus-wlc-root')) {
+            return;
+        }
+
         var rows = document.querySelectorAll('tr');
 
         for (var i = 0; i < rows.length; i++) {
             var row = rows[i];
+
+            // Skip any table inside Horus WLC Container
+            if (row.closest && (row.closest('#horus-wlc-root') || row.closest('.horus-wlc-container'))) {
+                continue;
+            }
 
             // Skip header rows
             if (row.querySelector('th')) continue;
@@ -379,6 +389,11 @@
                 return res;
             };
         }
+    }
+
+    // Never run on Horus Controller pages
+    if (window.location.href.indexOf('horus_controller') !== -1) {
+        return;
     }
 
     // Run hook & sync
