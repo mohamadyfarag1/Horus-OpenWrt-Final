@@ -577,6 +577,19 @@ return view.extend({
 					var prof = rUser.profile ? ' (' + rUser.profile + ')' : '';
 					var quota = rUser.quota ? ' | متبقي: ' + rUser.quota : '';
 
+					var sigVal = parseInt(c.signal, 10) || -100;
+					var sigBadgeColor = sigVal >= -65 ? 'background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.3);' :
+									   (sigVal >= -75 ? 'background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.3);' :
+														'background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.3);');
+
+					var btnSteer = E('button', { class: 'btn-action', style: 'background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4);' }, '⚡ توجيه ذكي');
+					btnSteer.onclick = function() {
+						if (confirm('توجيه العميل (' + cmac + ') لإجباره على الانتقال لإكسس أقرب وأقوى؟')) {
+							fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'steer_client', mac: cmac, ban_time: 3000 }) });
+							ui.addNotification(null, E('p', '⚡ تم إرسال أمر التوجيه الذكي (802.11v BSS Transition & Kick) للعميل بنجاح!'));
+						}
+					};
+
 					var btnKick = E('button', { class: 'btn-action btn-kick' }, 'فصل ❌');
 					btnKick.onclick = function() {
 						if (confirm('فصل العميل (' + cmac + ')؟')) {
@@ -599,10 +612,10 @@ return view.extend({
 							E('span', { style: 'color:#00e676; font-weight:700;' }, dispName),
 							E('small', { style: 'color:#80deea;' }, prof + quota)
 						]),
-						E('td', {}, (c.signal || '-') + ' dBm'),
+						E('td', {}, E('span', { style: 'padding:3px 8px; border-radius:4px; font-weight:700; font-size:11px;' + sigBadgeColor }, (c.signal || '-') + ' dBm')),
 						E('td', {}, c.iface || '-'),
 						E('td', {}, rUser.ip || '-'),
-						E('td', { style: 'text-align:center;' }, [btnKick, btnBan])
+						E('td', { style: 'text-align:center;' }, [btnSteer, btnKick, btnBan])
 					]));
 				});
 			}

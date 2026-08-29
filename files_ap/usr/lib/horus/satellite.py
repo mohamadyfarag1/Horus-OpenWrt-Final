@@ -186,6 +186,16 @@ class SatelliteNode:
                                 except Exception:
                                     pass
                         
+                        elif action == "steer_client" or action == "kick":
+                            target_mac = data.get("mac")
+                            target_bssid = data.get("target_bssid")
+                            ban_time = data.get("ban_time", 3000)
+                            if target_mac:
+                                steer_client_locally(target_mac, target_bssid=target_bssid, ban_time=ban_time)
+                        
+                        elif action == "enable_80211kv":
+                            enable_80211kv_locally()
+                        
                         elif action == "port_state" or action == "port_toggle":
                             port = data.get("port")
                             state = data.get("state")

@@ -9,7 +9,7 @@ return view.extend({
 	render: function() {
 		var m, s, o;
 
-		var horus_version = '1.0.26-17';
+		var horus_version = '1.0.26-18';
 		m = new form.Map('horus_controller', _('إعدادات نظام حورس'), _('نظام الإدارة المركزي لشبكات الوايرليس (WLC) - الإصدار: ') + horus_version);
 
 		s = m.section(form.NamedSection, 'main', 'settings', _('الإعدادات'));
@@ -17,6 +17,7 @@ return view.extend({
 		s.addremove = false;
 
 		s.tab('role', _('نظام التشغيل'));
+		s.tab('roaming', _('التجوال الذكي والتوجيه (Smart Roaming)'));
 		s.tab('radius', _('إعدادات الريديس'));
 
 		// Tab: role
@@ -60,6 +61,31 @@ return view.extend({
 		o = s.taboption('role', form.Flag, 'auto_ch_5g', _('إدارة القنوات التلقائية 5GHz (RRM)'));
 		o.depends('role', 'root');
 		o.description = _('تغيير ترددات 5GHz تلقائياً للإكسسات الفرعية.');
+
+		// Tab: roaming
+		o = s.taboption('roaming', form.Flag, 'roaming_enabled', _('تفعيل التجوال والتوجيه الذكي (Enable Smart Roaming)'));
+		o.default = '1';
+		o.description = _('نقل وطرد الهواتف ذات الإشارة الضعيفة تلقائياً للإكسس الأقرب بدون انقطاع.');
+
+		o = s.taboption('roaming', form.Flag, 'enable_80211kv', _('تفعيل بروتوكولات 802.11k/v (Fast BSS Transition)'));
+		o.default = '1';
+		o.description = _('إرسال تقارير الجيران ومساعدة الهواتف الحديثة على التنقل فائق السرعة (<20ms).');
+
+		o = s.taboption('roaming', form.Value, 'min_rssi', _('عتبة الإشارة الدنيا لطرد العميل (Min-RSSI dBm)'));
+		o.datatype = 'integer';
+		o.placeholder = '-75';
+		o.default = '-75';
+		o.description = _('طرد الهاتف فوراً إذا انخفضت إشارته عن هذا الحد (مثال: -75 dBm) لإجباره على الارتباط بالإكسس الأقوى.');
+
+		o = s.taboption('roaming', form.Flag, 'band_steering', _('التوجيه التلقائي لتردد 5GHz عالي السرعة (Band Steering)'));
+		o.default = '1';
+		o.description = _('توجيه الهواتف ذات الإشارة القوية للاتصال بتردد 5GHz للحصول على أعلى سرعة إنترنت.');
+
+		o = s.taboption('roaming', form.Value, 'roam_diff', _('فارق قوة الإشارة المطلوب للنقل (Signal Delta dBm)'));
+		o.datatype = 'uinteger';
+		o.placeholder = '10';
+		o.default = '10';
+		o.description = _('الحد الأدنى لفارق الإشارة بين الإكسسين لبدء توجيه الهاتف.');
 
 		// Tab: radius
 		o = s.taboption('radius', form.Flag, 'enabled', _('تفعيل مزامنة الريديس'));

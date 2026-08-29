@@ -335,3 +335,44 @@ def apply_wifi_config(action, iface_name, value="", **kwargs):
             subprocess.run("wifi reload", shell=True)
     except Exception:
         pass
+
+def steer_client_locally(mac, target_bssid=None, ban_time=3000):
+    try:
+        out = subprocess.check_output("ubus list | grep hostapd", shell=True, text=True)
+        for h in out.splitlines():
+            h = h.strip()
+            if not h: continue
+            # 1. 802.11v BSS Transition Request
+            if target_bssid:
+                try:
+                    subprocess.run(
+                        f"ubus call {h} bss_transition_request '{{\"addr\":\"{mac}\", \"disassociation_imminent\":true, \"disassociation_timer\":10, \"neighbors\":[\"{target_bssid}\"]}}'",
+                        shell=True, timeout=2
+                    )
+                except Exception:
+                    pass
+            # 2. Deauthenticate / Disassociate with probe suppression ban_time (forces association to closer AP)
+            try:
+                subprocess.run(
+                    f"ubus call {h} del_client '{{\"addr\":\"{mac}\", \"reason\":1, \"deauth\":true, \"ban_time\":{ban_time}}}'",
+                    shell=True, timeout=2
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+def enable_80211kv_locally():
+    try:
+        out = subprocess.check_output("uci show wireless", shell=True, text=True)
+        ifaces = [l.split('.')[1].split('=')[0] for l in out.splitlines() if 'wifi-iface' in l and '=wifi-iface' in l]
+        for iface in ifaces:
+            subprocess.run(f"uci set wireless.{iface}.ieee80211k='1'", shell=True)
+            subprocess.run(f"uci set wireless.{iface}.ieee80211v='1'", shell=True)
+            subprocess.run(f"uci set wireless.{iface}.bss_transition='1'", shell=True)
+            subprocess.run(f"uci set wireless.{iface}.wnm_sleep_mode='1'", shell=True)
+        subprocess.run("uci commit wireless", shell=True)
+        subprocess.run("wifi reload", shell=True)
+    except Exception:
+        pass
+

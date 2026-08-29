@@ -10,8 +10,8 @@ from .config import (
 )
 from .system import (
     get_my_mac, get_lan_ip, get_hostname, get_wireless_macs,
-    get_wifi_info, get_uci, ban_mac_locally, unban_mac_locally,
-    apply_wifi_config
+    get_wifi_info, get_ethernet_ports, get_uci, ban_mac_locally, unban_mac_locally,
+    apply_wifi_config, steer_client_locally, enable_80211kv_locally
 )
 from .protocol import send_hmp_frame, parse_incoming_data
 from .db import HorusDB
@@ -169,6 +169,41 @@ class RootNode:
                                                     "action": "set_channel",
                                                     "value": str(best_ch)
                                                 }, dst_mac=ap_mac, dst_ip=target_ip)
+
+                # 4. Smart Roaming & Min-RSSI Steering (Every 5 seconds)
+                if loop_tick % 5 == 0:
+                    roaming_en = get_uci("horus_controller.main.roaming_enabled", "1")
+                    if roaming_en == "1":
+                        try:
+                            min_rssi = int(get_uci("horus_controller.main.min_rssi", "-75"))
+                        except Exception:
+                            min_rssi = -75
+
+                        with self.lock:
+                            all_clients = self.db.get_all_state().get("clients", {})
+                            for cmac, cinfo in all_clients.items():
+                                if cinfo.get("banned"): continue
+                                cur_sig = cinfo.get("signal", -100)
+                                cur_ap = cinfo.get("ap_mac", "")
+
+                                # If client signal drops below Min-RSSI floor
+                                if cur_sig < min_rssi and cur_sig > -100:
+                                    last_steer = cinfo.get("last_steer_time", 0)
+                                    if (now - last_steer) > 15:
+                                        cinfo["last_steer_time"] = now
+                                        if cur_ap == self.my_mac:
+                                            steer_client_locally(cmac, ban_time=3000)
+                                        else:
+                                            target_ip = self.db.get_ap_ip(cur_ap)
+                                            self.send_cmd({
+                                                "type": "ap_manage",
+                                                "src_mac": self.my_mac,
+                                                "target_mac": cur_ap,
+                                                "action": "steer_client",
+                                                "mac": cmac,
+                                                "ban_time": 3000
+                                            }, dst_mac=cur_ap, dst_ip=target_ip)
+                                        self.db.add_log("steer", cmac, f"توجيه ذكي ونقل للعميل لضعف الإشارة ({cur_sig} dBm < {min_rssi} dBm)", now)
 
                 # 4. Check Pending Ban Commands
                 if os.path.exists(BAN_CMD_FILE):
