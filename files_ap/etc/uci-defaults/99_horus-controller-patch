@@ -1,0 +1,46 @@
+#!/bin/sh
+
+# Set executable permissions for all binaries and scripts
+chmod +x /www/cgi-bin/* /usr/bin/horus-radius* /etc/init.d/horus_controller 2>/dev/null
+
+INJECT_TAG='<script type="text/javascript">var _d=new Date().getTime();document.write(\'<script src="/horus_injector.js?v=\'+_d+\'"><\\/script>\');</script>'
+INJECT_JS_LINE="if(!window._horus_injected){window._horus_injected=true;var _s=document.createElement('script');_s.src='/horus_injector.js?v='+Date.now();document.head.appendChild(_s);}"
+
+# Clean old radius_injector if it exists
+sed -i '/radius_injector/d' /www/luci-static/resources/luci.js /www/luci-static/resources/view/network/wireless.js 2>/dev/null
+# Clean old horus_injector (without cache buster) to replace it
+sed -i '/horus_injector.js/d' /www/luci-static/resources/luci.js /www/luci-static/resources/view/network/wireless.js 2>/dev/null
+
+# 1. Prepend to line 1 of main luci.js
+
+# 2. Prepend to line 1 of main luci.js
+for f in /www/luci-static/resources/luci.js; do
+    if [ -f "$f" ]; then
+        sed -i "1i (function(){${INJECT_JS_LINE}})();" "$f"
+    fi
+done
+
+# 3. Patch all ucode templates across all themes (Argon, Material, Bootstrap, etc.)
+for f in $(find /usr/share/ucode/luci/ /www/ -name "*.ut" 2>/dev/null); do
+    if [ -f "$f" ]; then
+        if grep -q "</body>" "$f" && ! grep -q "horus_injector.js" "$f"; then
+            sed -i "s|</body>|${INJECT_TAG}\n</body>|g" "$f"
+        fi
+    fi
+done
+
+# 4. Patch all Lua templates across all themes
+for f in $(find /usr/lib/lua/luci/ /www/ -name "*.htm" 2>/dev/null); do
+    if [ -f "$f" ]; then
+        if grep -q "</body>" "$f" && ! grep -q "horus_injector.js" "$f"; then
+            sed -i "s|</body>|${INJECT_TAG}\n</body>|g" "$f"
+        fi
+    fi
+done
+
+# Clear LuCI cache
+rm -f /tmp/luci-indexcache* /tmp/luci-modulecache* /tmp/luci-session* 2>/dev/null
+# /etc/init.d/rpcd restart 2>/dev/null
+# /etc/init.d/uhttpd restart 2>/dev/null
+
+exit 0

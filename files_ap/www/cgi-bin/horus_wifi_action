@@ -1,0 +1,5 @@
+#!/bin/sh
+printf "Content-Type: application/json\r\n\r\n"
+read -r BODY
+echo "$BODY" > /tmp/horus_wifi_cmd.json
+printf '{"status":"ok"}'
