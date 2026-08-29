@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require form';
 'require ui';
 'require dom';
 
@@ -9,136 +8,177 @@ return view.extend({
 	handleSave: null,
 	handleReset: null,
 
-	load: function() {
-		return fetch('/cgi-bin/horus_map_data').then(function(res) {
-			return res.json();
-		}).catch(function() { return { aps: {} }; });
-	},
+	render: function() {
+		var container = E('div', { class: 'horus-ap-container', style: 'direction:rtl; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;' });
 
-	render: function(data) {
-		var m = new form.JSONMap({}, '');
-		
-		// Section 1: Basic AP Management (IP/TxPower)
-		var s = m.section(form.NamedSection, 'ap_form', 'ap', _('إدارة الإكسسات (AP Management)'), _('تحكم متقدم في الإكسسات التابعة (تغيير الـ IP، إعادة التشغيل، قوة البث)'));
+		// Styles
+		var styles = E('style', {}, `
+			.ap-card { background: rgba(128,128,128,0.06); padding: 22px; border-radius: 8px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 22px; }
+			.ap-card h3 { margin-top: 0; color: #00e676; border-bottom: 2px solid rgba(0,230,118,0.3); padding-bottom: 8px; font-size: 18px; }
+			.ap-row { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+			.ap-field { flex: 1; min-width: 200px; display: flex; flex-direction: column; }
+			.ap-field label { font-size: 13px; font-weight: bold; margin-bottom: 5px; opacity: 0.9; }
+			.ap-field input, .ap-field select { padding: 9px 12px; background: rgba(128,128,128,0.1); color: inherit; border: 1px solid rgba(128,128,128,0.3); border-radius: 4px; font-size: 14px; outline: none; }
+			.btn-ap { padding: 10px 22px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s; }
+			.btn-green { background: #00e676; color: #000; }
+			.btn-green:hover { background: #00c853; }
+			.btn-orange { background: #ff9800; color: #fff; }
+			.btn-orange:hover { background: #e65100; }
+			.btn-red { background: #dc3545; color: #fff; }
+			.btn-red:hover { background: #bd2130; }
+			.btn-blue { background: #007bff; color: #fff; }
+			.btn-blue:hover { background: #0056b3; }
+		`);
+		container.appendChild(styles);
 
-		var ap = s.option(form.ListValue, 'target_ap', _('اختيار الإكسس'));
-		ap.value('ALL', _('الكل (تطبيق على جميع الإكسسات)'));
-		if (data && data.aps) {
-			Object.keys(data.aps).forEach(function(mac) {
-				var info = data.aps[mac];
-				ap.value(mac, (info.hostname || 'Unknown') + ' (' + mac + ')');
-			});
+		var inTargetAp = E('select', {}, [
+			E('option', { value: '' }, '-- اختر الإكسس للتحكم به --')
+		]);
+
+		// Card 1: Select AP
+		var selectCard = E('div', { class: 'ap-card' }, [
+			E('h3', {}, '🎯 اختيار الإكسس المستهدف (Target AP Selection)'),
+			E('div', { class: 'ap-row' }, [
+				E('div', { class: 'ap-field' }, [ E('label', {}, 'الإكسس المطلوب:'), inTargetAp ])
+			])
+		]);
+		container.appendChild(selectCard);
+
+		// Card 2: IP & Network
+		var inNewIp = E('input', { type: 'text', placeholder: '192.168.169.224' });
+		var inNetmask = E('input', { type: 'text', value: '255.255.255.0', placeholder: '255.255.255.0' });
+		var inGateway = E('input', { type: 'text', value: '192.168.169.1', placeholder: '192.168.169.1' });
+		var inHostname = E('input', { type: 'text', placeholder: 'مثال: AP-Floor2' });
+		var inTxpower = E('input', { type: 'number', placeholder: 'مثال: 23' });
+
+		var btnApplyNet = E('button', { class: 'btn-ap btn-green' }, '💾 تطبيق عنوان الـ IP والشبكة عبر HMP');
+
+		var netCard = E('div', { class: 'ap-card' }, [
+			E('h3', {}, '🌐 إعدادات الشبكة والـ IP عن بعد (Remote Network & Static IP)'),
+			E('div', { class: 'ap-row' }, [
+				E('div', { class: 'ap-field' }, [ E('label', {}, 'اسم الإكسس الجديد (Hostname):'), inHostname ]),
+				E('div', { class: 'ap-field' }, [ E('label', {}, 'عنوان الـ IP الجديد (Static IP):'), inNewIp ])
+			]),
+			E('div', { class: 'ap-row' }, [
+				E('div', { class: 'ap-field' }, [ E('label', {}, 'قناع الشبكة (Netmask):'), inNetmask ]),
+				E('div', { class: 'ap-field' }, [ E('label', {}, 'البوابة الافتراضية (Gateway):'), inGateway ]),
+				E('div', { class: 'ap-field' }, [ E('label', {}, 'قوة الإشارة (TxPower dBm):'), inTxpower ])
+			]),
+			btnApplyNet
+		]);
+		container.appendChild(netCard);
+
+		// Card 3: Hardware Operations
+		var btnReboot = E('button', { class: 'btn-ap btn-orange', style: 'margin:5px;' }, '🔄 إعادة تشغيل الإكسس (Reboot)');
+		var btnWifiRestart = E('button', { class: 'btn-ap btn-blue', style: 'margin:5px;' }, '📶 إعادة تشغيل الواي فاي (Restart WiFi)');
+		var btnRadioOff = E('button', { class: 'btn-ap btn-red', style: 'margin:5px;' }, '📴 إيقاف بث الواي فاي (Radio Off)');
+		var btnRadioOn = E('button', { class: 'btn-ap btn-green', style: 'margin:5px;' }, '✔️ تشغيل بث الواي فاي (Radio On)');
+
+		var opsCard = E('div', { class: 'ap-card' }, [
+			E('h3', {}, '🛠️ عمليات الهاردوير المباشرة (Hardware Operations via Layer 2)'),
+			E('div', { style: 'display:flex; flex-wrap:wrap; gap:10px;' }, [
+				btnReboot, btnWifiRestart, btnRadioOff, btnRadioOn
+			])
+		]);
+		container.appendChild(opsCard);
+
+		function loadAPs() {
+			fetch('/cgi-bin/horus_map_data?_=' + Date.now()).then(function(r){ return r.json(); }).then(function(data) {
+				while (inTargetAp.options.length > 1) inTargetAp.remove(1);
+				if (data && data.aps) {
+					Object.keys(data.aps).forEach(function(mac) {
+						var ap = data.aps[mac];
+						var opt = E('option', { value: mac }, '📡 ' + (ap.hostname || 'AP') + ' (' + (ap.ip || mac) + ')');
+						inTargetAp.appendChild(opt);
+					});
+				}
+			}).catch(function(){});
 		}
 
-		var ip = s.option(form.Value, 'ip', _('IP Address (الجديد)'));
-		ip.datatype = 'ip4addr';
-		
-		var netmask = s.option(form.Value, 'netmask', _('Subnet Mask (الجديد)'));
-		netmask.datatype = 'ip4addr';
-		netmask.placeholder = '255.255.255.0';
-
-		var gateway = s.option(form.Value, 'gateway', _('Gateway (الجديد)'));
-		gateway.datatype = 'ip4addr';
-		
-		var txpower = s.option(form.Value, 'txpower', _('قوة الإشارة (TxPower dBm)'));
-		txpower.datatype = 'uinteger';
-		txpower.placeholder = '20';
-
-		var btnIp = s.option(form.Button, 'apply_ip_btn', _('تطبيق الـ IP والشبكة'));
-		btnIp.inputstyle = 'apply';
-		btnIp.onclick = function() {
-			var form_ap = ap.formvalue('ap_form');
-			var form_ip = ip.formvalue('ap_form');
-			var form_nm = netmask.formvalue('ap_form') || '255.255.255.0';
-			var form_gw = gateway.formvalue('ap_form');
-			var form_tx = txpower.formvalue('ap_form');
-
-			if (!form_ap) {
-				ui.addNotification(null, E('p', _('يرجى اختيار الإكسس أولاً')));
-				return;
-			}
-			
-			if (form_ip) {
-				var payload = { target_ap: form_ap, action: 'set_ip', ip: form_ip, netmask: form_nm };
-				if (form_gw) payload.gateway = form_gw;
-				fetch('/cgi-bin/horus_ap_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-			}
-			
-			if (form_tx) {
-				fetch('/cgi-bin/horus_ap_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, action: 'tx_power', txpower: form_tx }) });
-			}
-			
-			var apName = form_ap === 'ALL' ? _('جميع الإكسسات') : form_ap;
-			ui.addNotification(null, E('p', _('تم إرسال أوامر الإدارة إلى: ') + apName));
+		inTargetAp.onchange = function() {
+			var selectedMac = inTargetAp.value;
+			if (!selectedMac) return;
+			fetch('/cgi-bin/horus_map_data?_=' + Date.now()).then(function(r){ return r.json(); }).then(function(data) {
+				if (data && data.aps && data.aps[selectedMac]) {
+					var ap = data.aps[selectedMac];
+					inHostname.value = ap.hostname || '';
+					if (ap.ip && ap.ip !== '-') inNewIp.value = ap.ip;
+				}
+			});
 		};
 
-		// Section 2: Advanced Control (Hostname, Radio, Ports)
-		var s2 = m.section(form.NamedSection, 'adv_form', 'ap', _('التحكم العميق بالهاردوير (Layer 2)'), _('التحكم في اسم الإكسس وتشغيل/إطفاء منافذ اللان والواي فاي عبر HMP'));
-		
-		var hname = s2.option(form.Value, 'hostname', _('اسم الإكسس (Hostname)'));
-		
-		var radio = s2.option(form.ListValue, 'wifi_radio', _('حالة بث الواي فاي (Radio)'));
-		radio.value('', _('بدون تغيير'));
-		radio.value('0', _('تشغيل (Enable)'));
-		radio.value('1', _('إطفاء (Disable)'));
-		
-		var portName = s2.option(form.Value, 'port_name', _('اسم منفذ اللان (مثال: lan1, lan2)'));
-		portName.placeholder = 'lan1';
-		
-		var portState = s2.option(form.ListValue, 'port_state', _('حالة منفذ اللان'));
-		portState.value('', _('بدون تغيير'));
-		portState.value('up', _('تفعيل (Enable)'));
-		portState.value('down', _('تعطيل (Disable)'));
+		btnApplyNet.onclick = function() {
+			var targetAp = inTargetAp.value;
+			if (!targetAp) { alert('الرجاء اختيار الإكسس المستهدف أولاً من القائمة الأعلى.'); return; }
 
-		var btnAdv = s2.option(form.Button, 'apply_adv_btn', _('تطبيق أوامر الهاردوير'));
-		btnAdv.inputstyle = 'apply';
-		btnAdv.onclick = function() {
-			var form_ap = ap.formvalue('ap_form');
-			if (!form_ap) {
-				ui.addNotification(null, E('p', _('يرجى اختيار الإكسس من القسم الأعلى أولاً')));
-				return;
-			}
-			
-			var h = hname.formvalue('adv_form');
-			var r = radio.formvalue('adv_form');
-			var pName = portName.formvalue('adv_form');
-			var pState = portState.formvalue('adv_form');
+			var newIp = inNewIp.value.trim();
+			var newHost = inHostname.value.trim();
+			var nm = inNetmask.value.trim();
+			var gw = inGateway.value.trim();
+			var tx = inTxpower.value.trim();
 
-			if (h) {
-				fetch('/cgi-bin/horus_ap_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, action: 'set_hostname', hostname: h }) });
+			if (!newIp && !newHost && !tx) { alert('الرجاء إدخال عنوان IP أو اسم جديد لتطبيقه.'); return; }
+
+			if (confirm('تطبيق إعدادات الشبكة على الإكسس المختار عبر HMP؟')) {
+				btnApplyNet.disabled = true;
+				var payload = { target_ap: targetAp, action: 'set_ip' };
+				if (newIp) payload.ip = newIp;
+				if (nm) payload.netmask = nm;
+				if (gw) payload.gateway = gw;
+				if (newHost) payload.hostname = newHost;
+
+				fetch('/cgi-bin/horus_ap_action', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload)
+				}).then(function(){
+					if (tx) {
+						fetch('/cgi-bin/horus_ap_action', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ target_ap: targetAp, action: 'tx_power', txpower: tx })
+						});
+					}
+					btnApplyNet.disabled = false;
+					ui.addNotification(null, E('p', '✅ تم إرسال أوامر ضبط الشبكة والـ IP إلى الإكسس بنجاح!'));
+				}).catch(function(){
+					btnApplyNet.disabled = false;
+				});
 			}
-			if (r) {
-				fetch('/cgi-bin/horus_ap_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, action: 'wifi_radio', state: r }) });
-			}
-			if (pName && pState) {
-				fetch('/cgi-bin/horus_ap_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, action: 'port_state', port: pName, state: pState }) });
-			}
-			
-			var apName = form_ap === 'ALL' ? _('جميع الإكسسات') : form_ap;
-			ui.addNotification(null, E('p', _('تم إرسال الأوامر المتقدمة إلى: ') + apName));
 		};
 
-		// Section 3: Reboot
-		var s3 = m.section(form.NamedSection, 'reboot_form', 'ap', _('إعادة التشغيل'));
-		var btnReboot = s3.option(form.Button, 'reboot_btn', _('إعادة تشغيل (Reboot)'));
-		btnReboot.inputstyle = 'remove';
 		btnReboot.onclick = function() {
-			var form_ap = ap.formvalue('ap_form');
-			if (!form_ap) {
-				ui.addNotification(null, E('p', _('يرجى اختيار الإكسس من القسم الأعلى أولاً')));
-				return;
-			}
-			var msg = form_ap === 'ALL' ? _('هل أنت متأكد من إعادة تشغيل جميع الإكسسات المتصلة؟') : _('هل أنت متأكد من إعادة تشغيل الإكسس المختار؟');
-			if (confirm(msg)) {
-				fetch('/cgi-bin/horus_ap_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, action: 'reboot' }) });
-				var apName = form_ap === 'ALL' ? _('جميع الإكسسات') : form_ap;
-				ui.addNotification(null, E('p', _('تم إرسال أمر إعادة التشغيل إلى: ') + apName));
+			var targetAp = inTargetAp.value;
+			if (!targetAp) { alert('الرجاء اختيار الإكسس المستهدف أولاً.'); return; }
+			if (confirm('إعادة تشغيل هذا الإكسس؟')) {
+				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: targetAp, action: 'reboot' }) });
+				ui.addNotification(null, E('p', 'تم إرسال أمر إعادة التشغيل'));
 			}
 		};
 
-		return m.render().then(function(node) {
-			var wrapper = E('div', { 'class': 'cbi-map', 'dir': 'rtl' }, node);
-			return wrapper;
-		});
+		btnWifiRestart.onclick = function() {
+			var targetAp = inTargetAp.value;
+			if (!targetAp) { alert('الرجاء اختيار الإكسس المستهدف أولاً.'); return; }
+			fetch('/cgi-bin/horus_wifi_action', { method: 'POST', body: JSON.stringify({ target_ap: targetAp, action: 'restart_wifi' }) });
+			ui.addNotification(null, E('p', 'تم إعادة تشغيل الوايرليس'));
+		};
+
+		btnRadioOff.onclick = function() {
+			var targetAp = inTargetAp.value;
+			if (!targetAp) { alert('الرجاء اختيار الإكسس المستهدف أولاً.'); return; }
+			fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: targetAp, action: 'wifi_radio', state: '1' }) });
+			ui.addNotification(null, E('p', 'تم إيقاف بث الوايرليس'));
+		};
+
+		btnRadioOn.onclick = function() {
+			var targetAp = inTargetAp.value;
+			if (!targetAp) { alert('الرجاء اختيار الإكسس المستهدف أولاً.'); return; }
+			fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: targetAp, action: 'wifi_radio', state: '0' }) });
+			ui.addNotification(null, E('p', 'تم تشغيل بث الوايرليس'));
+		};
+
+		loadAPs();
+
+		return container;
 	}
 });

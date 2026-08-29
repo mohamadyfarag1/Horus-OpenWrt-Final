@@ -95,10 +95,12 @@ class RootNode:
             self.send_cmd({"type": "ban", "src_mac": self.my_mac, "target_mac": cmac, "duration": 0})
 
     def maintenance_loop(self):
+        loop_tick = 0
         while True:
             try:
-                time.sleep(5)
+                time.sleep(1)
                 now = time.time()
+                loop_tick += 1
                 
                 with self.lock:
                     # 1. Register Root as an AP

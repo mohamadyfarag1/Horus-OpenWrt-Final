@@ -1,6 +1,5 @@
 'use strict';
 'require view';
-'require form';
 'require ui';
 'require dom';
 
@@ -9,99 +8,139 @@ return view.extend({
 	handleSave: null,
 	handleReset: null,
 
-	load: function() {
-		return fetch('/cgi-bin/horus_map_data').then(function(res) {
-			return res.json();
-		}).catch(function() { return { aps: {} }; });
-	},
+	render: function() {
+		var container = E('div', { class: 'horus-wifi-container', style: 'direction:rtl; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;' });
 
-	render: function(data) {
-		var m = new form.JSONMap({}, '');
-		var s = m.section(form.NamedSection, 'wifi_form', 'wifi', _('التحكم في الواي فاي (WiFi Remote Control)'), _('<span style="color:red">تحذير: تغيير الإعدادات سيؤدي إلى فصل جميع العملاء لمدة ثانيتين</span>'));
+		// Styles
+		var styles = E('style', {}, `
+			.wifi-card { background: rgba(128,128,128,0.06); padding: 22px; border-radius: 8px; border: 1px solid rgba(128,128,128,0.2); box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 22px; }
+			.wifi-card h3 { margin-top: 0; color: #00e676; border-bottom: 2px solid rgba(0,230,118,0.3); padding-bottom: 8px; font-size: 18px; }
+			.wifi-row { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap; }
+			.wifi-field { flex: 1; min-width: 220px; display: flex; flex-direction: column; }
+			.wifi-field label { font-size: 13px; font-weight: bold; margin-bottom: 5px; opacity: 0.9; }
+			.wifi-field input, .wifi-field select { padding: 10px 12px; background: rgba(128,128,128,0.1); color: inherit; border: 1px solid rgba(128,128,128,0.3); border-radius: 4px; font-size: 14px; outline: none; }
+			.wifi-btn { padding: 12px 28px; background: #00e676; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.2s; }
+			.wifi-btn:hover { background: #00c853; }
+			.wifi-alert { background: rgba(255,82,82,0.1); border: 1px solid rgba(255,82,82,0.3); color: #ff5252; padding: 10px 15px; border-radius: 6px; font-size: 13px; font-weight: 500; margin-bottom: 15px; }
+		`);
+		container.appendChild(styles);
 
-		var ap = s.option(form.ListValue, 'target_ap', _('اختيار الإكسس'));
-		ap.value('ALL', _('الكل (تطبيق على جميع الإكسسات)'));
-		
-		if (data && data.aps) {
-			Object.keys(data.aps).forEach(function(mac) {
-				var info = data.aps[mac];
-				ap.value(mac, (info.hostname || 'Unknown') + ' (' + mac + ')');
-			});
+		var inTargetAp = E('select', {}, [
+			E('option', { value: 'ALL' }, '🌍 جميع الإكسسات في الشبكة (Broadcast to All APs)')
+		]);
+
+		var inBand = E('select', {}, [
+			E('option', { value: 'both' }, 'الترددين معاً (2.4GHz + 5GHz)'),
+			E('option', { value: '2g' }, 'تردد 2.4GHz فقط'),
+			E('option', { value: '5g' }, 'تردد 5GHz فقط')
+		]);
+
+		var inSsid = E('input', { type: 'text', placeholder: 'مثال: Horus_Fast_WiFi' });
+		var inPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة (8 أحرف فأكثر)' });
+
+		var inChannel = E('select', {}, [
+			E('option', { value: '' }, 'بدون تغيير (تلقائي/الحالي)'),
+			E('option', { value: 'auto' }, 'Auto (تلقائي)')
+		]);
+		for (var ch = 1; ch <= 13; ch++) inChannel.appendChild(E('option', { value: ch.toString() }, 'قناة ' + ch + ' (2.4GHz)'));
+		[36, 40, 44, 48, 149, 153, 157, 161, 165].forEach(function(ch5) {
+			inChannel.appendChild(E('option', { value: ch5.toString() }, 'قناة ' + ch5 + ' (5GHz)'));
+		});
+
+		var inHtmode = E('select', {}, [
+			E('option', { value: '' }, 'بدون تغيير'),
+			E('option', { value: 'HT20' }, '20 MHz (أفضل توافق وأقل تداخل)'),
+			E('option', { value: 'HT40' }, '40 MHz (سرعة مضاعفة)'),
+			E('option', { value: 'VHT80' }, '80 MHz (أقصى سرعة 5GHz)')
+		]);
+
+		var inEnc = E('select', {}, [
+			E('option', { value: '' }, 'بدون تغيير'),
+			E('option', { value: 'psk2' }, 'WPA2-PSK (موصى به لجميع الأجهزة)'),
+			E('option', { value: 'psk2+ccmp' }, 'WPA2-PSK / AES CCMP'),
+			E('option', { value: 'none' }, 'بدون رقم سري (شبكة مفتوحة)'),
+			E('option', { value: 'sae' }, 'WPA3-SAE (تشفير متطور)')
+		]);
+
+		var btnApply = E('button', { class: 'wifi-btn' }, '🚀 تطبيق إعدادات الوايرليس عبر HMP');
+
+		var card = E('div', { class: 'wifi-card' }, [
+			E('h3', {}, '📶 التحكم الشامل بالواي فاي (WiFi Remote Control)'),
+			E('div', { class: 'wifi-alert' }, '⚠️ تنبيه: تغيير إعدادات الواي فاي سيقوم بإعادة تشغيل راديو الإكسسات المحددة وتطبيق الإعدادات فوراً.'),
+			E('div', { class: 'wifi-row' }, [
+				E('div', { class: 'wifi-field' }, [ E('label', {}, 'الإكسس المستهدف (Target AP):'), inTargetAp ]),
+				E('div', { class: 'wifi-field' }, [ E('label', {}, 'التردد المستهدف (Band):'), inBand ])
+			]),
+			E('div', { class: 'wifi-row' }, [
+				E('div', { class: 'wifi-field' }, [ E('label', {}, 'اسم شبكة الواي فاي الجديد (SSID):'), inSsid ]),
+				E('div', { class: 'wifi-field' }, [ E('label', {}, 'الرقم السري الجديد (Password):'), inPass ])
+			]),
+			E('div', { class: 'wifi-row' }, [
+				E('div', { class: 'wifi-field' }, [ E('label', {}, 'القناة (Channel):'), inChannel ]),
+				E('div', { class: 'wifi-field' }, [ E('label', {}, 'عرض القناة (Channel Width):'), inHtmode ]),
+				E('div', { class: 'wifi-field' }, [ E('label', {}, 'نوع التشفير (Encryption):'), inEnc ])
+			]),
+			E('div', { style: 'margin-top: 15px;' }, [ btnApply ])
+		]);
+		container.appendChild(card);
+
+		// Populate APs
+		function loadAPs() {
+			fetch('/cgi-bin/horus_map_data?_=' + Date.now()).then(function(r){ return r.json(); }).then(function(data) {
+				while (inTargetAp.options.length > 1) inTargetAp.remove(1);
+				if (data && data.aps) {
+					Object.keys(data.aps).forEach(function(mac) {
+						var ap = data.aps[mac];
+						var opt = E('option', { value: mac }, '📡 ' + (ap.hostname || 'AP') + ' (' + (ap.ip || mac) + ')');
+						inTargetAp.appendChild(opt);
+					});
+				}
+			}).catch(function(){});
 		}
 
-		var ssid = s.option(form.Value, 'ssid', _('New SSID (اسم الشبكة الجديد)'));
-		var pwd = s.option(form.Value, 'password', _('New Password (الرقم السري)'));
-		pwd.password = true;
+		btnApply.onclick = function() {
+			var targetAp = inTargetAp.value;
+			var band = inBand.value;
+			var ssid = inSsid.value.trim();
+			var pass = inPass.value.trim();
+			var ch = inChannel.value;
+			var ht = inHtmode.value;
+			var enc = inEnc.value;
 
-		var ch = s.option(form.ListValue, 'channel', _('Channel (القناة)'));
-		ch.value('', _('بدون تغيير'));
-		for (var i = 1; i <= 13; i++) ch.value(i.toString());
-		[36,40,44,48,149,153,157,161,165].forEach(function(c) {
-			ch.value(c.toString());
-		});
-		
-		var htmode = s.option(form.ListValue, 'htmode', _('عرض القناة (Channel Width)'));
-		htmode.value('', _('بدون تغيير'));
-		htmode.value('HT20', '20 MHz');
-		htmode.value('HT40', '40 MHz');
-		htmode.value('VHT80', '80 MHz');
-
-		var wmode = s.option(form.ListValue, 'mode', _('وضع التشغيل (Wireless Mode)'));
-		wmode.value('', _('بدون تغيير'));
-		wmode.value('ap', 'Access Point (بث واي فاي)');
-		wmode.value('sta', 'Client / Station (استقبال)');
-		wmode.value('mesh', 'Mesh (802.11s)');
-		wmode.value('monitor', 'Monitor (وضع المراقبة)');
-
-		var enc = s.option(form.ListValue, 'encryption', _('Encryption (التشفير)'));
-		enc.value('', _('بدون تغيير'));
-		enc.value('none', 'بدون رقم سري (مفتوحة)');
-		enc.value('psk2', 'WPA2-PSK');
-		enc.value('psk2+ccmp', 'WPA2-PSK/CCMP');
-		enc.value('sae', 'WPA3-SAE');
-
-		var btn = s.option(form.Button, 'apply_btn', _('تطبيق التغييرات'));
-		btn.inputstyle = 'apply';
-		btn.onclick = function() {
-			var form_ap = ap.formvalue('wifi_form');
-			var form_ssid = ssid.formvalue('wifi_form');
-			var form_pwd = pwd.formvalue('wifi_form');
-			var form_ch = ch.formvalue('wifi_form');
-			var form_ht = htmode.formvalue('wifi_form');
-			var form_enc = enc.formvalue('wifi_form');
-			var form_wmode = wmode.formvalue('wifi_form');
-
-			if (!form_ap) {
-				ui.addNotification(null, E('p', _('يرجى اختيار الإكسس أولاً')));
+			if (!ssid && !pass && !ch && !ht && !enc) {
+				alert('الرجاء إدخال اسم شبكة أو رقم سري أو تغيير قناة لتطبيقها.');
 				return;
 			}
 
-			if (form_ssid) {
-				fetch('/cgi-bin/horus_wifi_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, iface: 'wlan0', action: 'set_ssid', value: form_ssid }) });
-			}
-			if (form_pwd) {
-				fetch('/cgi-bin/horus_wifi_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, iface: 'wlan0', action: 'set_password', value: form_pwd }) });
-			}
-			if (form_ch) {
-				fetch('/cgi-bin/horus_wifi_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, iface: 'wlan0', action: 'set_channel', value: form_ch }) });
-			}
-			if (form_ht) {
-				fetch('/cgi-bin/horus_wifi_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, iface: 'wlan0', action: 'set_htmode', value: form_ht }) });
-			}
-			if (form_enc) {
-				fetch('/cgi-bin/horus_wifi_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, iface: 'wlan0', action: 'set_encryption', value: form_enc }) });
-			}
-			if (form_wmode) {
-				fetch('/cgi-bin/horus_wifi_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_ap: form_ap, iface: 'wlan0', action: 'set_mode', value: form_wmode }) });
-			}
-			
-			var apName = form_ap === 'ALL' ? _('جميع الإكسسات') : form_ap;
-			ui.addNotification(null, E('p', _('تم إرسال أوامر التغيير إلى: ') + apName));
+			btnApply.disabled = true;
+			btnApply.textContent = 'جاري الإرسال عبر بروتوكول HMP...';
+
+			fetch('/cgi-bin/horus_wifi_action', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					target_ap: targetAp,
+					action: 'apply_profile',
+					band: band,
+					ssid: ssid,
+					password: pass,
+					channel: ch,
+					htmode: ht,
+					encryption: enc
+				})
+			}).then(function(){
+				btnApply.disabled = false;
+				btnApply.textContent = '🚀 تطبيق إعدادات الوايرليس عبر HMP';
+				var targetName = targetAp === 'ALL' ? 'جميع الإكسسات' : targetAp;
+				ui.addNotification(null, E('p', '✅ تم إرسال وتطبيق إعدادات الواي فاي بنجاح إلى: ' + targetName));
+			}).catch(function(){
+				btnApply.disabled = false;
+				btnApply.textContent = '🚀 تطبيق إعدادات الوايرليس عبر HMP';
+			});
 		};
 
-		return m.render().then(function(node) {
-			var wrapper = E('div', { 'class': 'cbi-map', 'dir': 'rtl' }, node);
-			return wrapper;
-		});
+		loadAPs();
+
+		return container;
 	}
 });
