@@ -11,6 +11,7 @@ class HorusDB:
             "aps": {},
             "clients": {},
             "banned": [],
+            "logs": [],
             "my_mac": "",
             "settings": {}
         }
@@ -48,6 +49,17 @@ class HorusDB:
             ap["scan_data"] = scan_data
             self.save()
 
+    def add_log(self, event_type, mac, details, now):
+        if "logs" not in self.state:
+            self.state["logs"] = []
+        self.state["logs"].insert(0, {
+            "type": event_type,
+            "mac": mac,
+            "details": details,
+            "timestamp": int(now)
+        })
+        self.state["logs"] = self.state["logs"][:100]
+
     def update_clients(self, ap_mac, clients_list, now):
         with self.lock:
             # Clear old clients for this AP
@@ -68,9 +80,16 @@ class HorusDB:
                     old_ap = old_c.get("ap_mac", "")
                     
                     if not banned and old_ap and old_ap != ap_mac:
-                        suspicious_since = old_c.get("suspicious_since", 0)
-                        if suspicious_since == 0:
-                            suspicious_since = now
+                        # If seen on old AP within 8s, mark as concurrent presence (suspicious)
+                        if (now - old_c.get("last_seen", 0)) < 8:
+                            suspicious_since = old_c.get("suspicious_since", 0)
+                            if suspicious_since == 0:
+                                suspicious_since = now
+                                self.add_log("spoof_warning", mac, f"ظهور متزامن على {old_ap} و {ap_mac} (بدء مهلة التحقق)", now)
+                        else:
+                            # Normal roam (old AP has naturally released the client)
+                            self.add_log("roam", mac, f"تنقل سلس من {old_ap} إلى {ap_mac}", now)
+                            suspicious_since = 0
                 
                 self.state["clients"][mac] = {
                     "ap_mac": ap_mac,
@@ -146,6 +165,7 @@ class HorusDB:
             if mac in self.state["clients"]:
                 self.state["clients"][mac]["banned"] = True
                 self.state["clients"][mac]["ban_expires"] = expires
+            self.add_log("ban", mac, reason, now)
             self.save()
 
     def unban_client(self, mac):
@@ -154,6 +174,7 @@ class HorusDB:
             if mac in self.state["clients"]:
                 self.state["clients"][mac]["banned"] = False
                 self.state["clients"][mac]["ban_expires"] = 0
+            self.add_log("unban", mac, "تم فك الحظر اليدوي", self.state.get("router_time", 0))
             self.save()
 
     def get_ap_ip(self, mac):
