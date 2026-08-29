@@ -2,7 +2,7 @@
 'require baseclass';
 'require dom';
 
-return baseclass.extend({
+return baseclass.singleton({
 	getStyles: function() {
 		return E('style', {}, `
 			#maincontent { max-width: 98% !important; width: 98% !important; margin: 0 auto !important; padding: 10px !important; }

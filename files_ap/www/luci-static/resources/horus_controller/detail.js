@@ -3,7 +3,7 @@
 'require dom';
 'require ui';
 
-return baseclass.extend({
+return baseclass.singleton({
 	apDetailElements: null,
 
 	buildClientRows: function(clientsList, apMac, state, ui) {

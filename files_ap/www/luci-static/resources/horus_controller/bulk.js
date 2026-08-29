@@ -3,7 +3,7 @@
 'require dom';
 'require ui';
 
-return baseclass.extend({
+return baseclass.singleton({
 	runBulkHardware: function(actName, actParam, state, ui, val) {
 		if (!state.selectedAps || state.selectedAps.size === 0) return;
 		var targetList = Array.from(state.selectedAps);

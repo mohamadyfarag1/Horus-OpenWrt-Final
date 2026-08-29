@@ -13,13 +13,8 @@ return view.extend({
 	handleReset: null,
 
 	render: function() {
-		var styleHelper = new horusStyles();
-		var bulkHelper = new horusBulk();
-		var detailHelper = new horusDetail();
-		var groupHelper = new horusGroups();
-
 		var container = E('div', { class: 'horus-wlc-container', id: 'horus-wlc-root', style: 'direction:rtl; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;' });
-		container.appendChild(styleHelper.getStyles());
+		container.appendChild(horusStyles.getStyles());
 
 		// Navigation Tabs
 		var tabsNav = E('div', { class: 'horus-tabs' });
@@ -114,11 +109,6 @@ return view.extend({
 		]);
 		viewDash.appendChild(tableWrapper);
 
-		// 2. Groups View Initialization
-		var groupsComponent = groupHelper.buildGroupsSection(state, fetchNetworkData, ui);
-		viewGroups.appendChild(groupsComponent.formEl);
-		viewGroups.appendChild(groupsComponent.tableEl);
-
 		// State Object
 		var state = {
 			data: { aps: {}, clients: {} },
@@ -129,12 +119,17 @@ return view.extend({
 			currentDetailApMac: null
 		};
 
+		// 2. Groups View Initialization
+		var groupsComponent = horusGroups.buildGroupsSection(state, fetchNetworkData, ui);
+		viewGroups.appendChild(groupsComponent.formEl);
+		viewGroups.appendChild(groupsComponent.tableEl);
+
 		function openApDetailView(apMac) {
 			state.currentDetailApMac = apMac;
 			viewDash.classList.add('hidden');
 			viewGroups.classList.add('hidden');
 			viewApDetail.classList.remove('hidden');
-			detailHelper.buildApDetailView(apMac, state, viewApDetail, function() {
+			horusDetail.buildApDetailView(apMac, state, viewApDetail, function() {
 				state.currentDetailApMac = null;
 				viewApDetail.classList.add('hidden');
 				viewDash.classList.remove('hidden');
@@ -166,12 +161,12 @@ return view.extend({
 				}
 
 				renderDashboard();
-				groupHelper.renderGroupsTable(state, groupsComponent.tbodyEl, fetchNetworkData);
+				horusGroups.renderGroupsTable(state, groupsComponent.tbodyEl, fetchNetworkData);
 
 				if (state.currentDetailApMac && !viewApDetail.classList.contains('hidden')) {
-					var updated = detailHelper.updateApDetailLive(state.currentDetailApMac, state, ui);
+					var updated = horusDetail.updateApDetailLive(state.currentDetailApMac, state, ui);
 					if (!updated) {
-						detailHelper.buildApDetailView(state.currentDetailApMac, state, viewApDetail, function() {
+						horusDetail.buildApDetailView(state.currentDetailApMac, state, viewApDetail, function() {
 							state.currentDetailApMac = null;
 							viewApDetail.classList.add('hidden');
 							viewDash.classList.remove('hidden');
@@ -182,11 +177,11 @@ return view.extend({
 		}
 
 		// Bulk Button Bindings
-		btnBulkWifi.onclick = function() { bulkHelper.openBulkWifiModal(state, ui); };
-		btnBulkPass.onclick = function() { bulkHelper.openBulkPassModal(state, ui); };
-		btnBulkReboot.onclick = function() { bulkHelper.runBulkHardware('إعادة التشغيل', 'reboot', state, ui); };
-		btnBulkRadioOff.onclick = function() { bulkHelper.runBulkHardware('إيقاف بث الوايرليس', 'wifi_radio', state, ui, '1'); };
-		btnBulkRadioOn.onclick = function() { bulkHelper.runBulkHardware('تشغيل بث الوايرليس', 'wifi_radio', state, ui, '0'); };
+		btnBulkWifi.onclick = function() { horusBulk.openBulkWifiModal(state, ui); };
+		btnBulkPass.onclick = function() { horusBulk.openBulkPassModal(state, ui); };
+		btnBulkReboot.onclick = function() { horusBulk.runBulkHardware('إعادة التشغيل', 'reboot', state, ui); };
+		btnBulkRadioOff.onclick = function() { horusBulk.runBulkHardware('إيقاف بث الوايرليس', 'wifi_radio', state, ui, '1'); };
+		btnBulkRadioOn.onclick = function() { horusBulk.runBulkHardware('تشغيل بث الوايرليس', 'wifi_radio', state, ui, '0'); };
 
 		cbSelectAll.onchange = function() {
 			var isChecked = cbSelectAll.checked;
@@ -271,7 +266,7 @@ return view.extend({
 						if (rowCb.checked) state.selectedAps.add(ap.mac);
 						else state.selectedAps.delete(ap.mac);
 						tr.className = rowCb.checked ? 'selected' : '';
-						bulkHelper.updateBulkBar(state, bulkBar, bulkTitle);
+						horusBulk.updateBulkBar(state, bulkBar, bulkTitle);
 					};
 
 					var dot = E('span', { class: ap.isOnline ? 'status-dot status-online' : 'status-dot status-offline' });
@@ -351,7 +346,7 @@ return view.extend({
 				});
 			}
 			dom.content(tableBody, rows);
-			bulkHelper.updateBulkBar(state, bulkBar, bulkTitle);
+			horusBulk.updateBulkBar(state, bulkBar, bulkTitle);
 		}
 
 		searchInput.oninput = renderDashboard;
