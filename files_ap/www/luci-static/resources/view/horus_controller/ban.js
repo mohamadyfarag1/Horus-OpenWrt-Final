@@ -2,6 +2,7 @@
 'require view';
 'require ui';
 'require dom';
+'require horus_controller.i18n as horusI18n';
 
 return view.extend({
 	handleSaveApply: null,
@@ -9,7 +10,10 @@ return view.extend({
 	handleReset: null,
 
 	render: function() {
-		var container = E('div', { class: 'horus-ban-view', style: 'direction:rtl; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;' });
+		var container = E('div', {
+			class: 'horus-ban-view',
+			style: 'direction:' + horusI18n.getDir() + '; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;'
+		});
 
 		// Professional Dark/Glassmorphism Theme Styles
 		var styles = E('style', {}, `
@@ -72,14 +76,27 @@ return view.extend({
 		`);
 		container.appendChild(styles);
 
-		// Navigation Tabs
-		var tabsNav = E('div', { class: 'horus-tabs' });
-		var tabBanned = E('div', { class: 'horus-tab active' }, '🚫 إدارة الحظر وقائمة المحظورين');
-		var tabSpoofLogs = E('div', { class: 'horus-tab' }, '🛡️ سجل رصد الماكات المكررة ومكافحة السرقة');
-		var tabRoamLogs = E('div', { class: 'horus-tab' }, '📶 سجل تنقل الهواتف السلس (Fast Roaming)');
-		tabsNav.appendChild(tabBanned);
-		tabsNav.appendChild(tabSpoofLogs);
-		tabsNav.appendChild(tabRoamLogs);
+		// Navigation Tabs with Language Switcher
+		var tabsNav = E('div', { class: 'horus-tabs', style: 'display:flex; justify-content:space-between; align-items:flex-end;' });
+		var tabsLeft = E('div', { style: 'display:flex; gap:8px;' });
+		var tabBanned = E('div', { class: 'horus-tab active' }, horusI18n.t('banned_registry'));
+		var tabSpoofLogs = E('div', { class: 'horus-tab' }, horusI18n.t('spoof_audit'));
+		var tabRoamLogs = E('div', { class: 'horus-tab' }, horusI18n.t('roam_log'));
+		tabsLeft.appendChild(tabBanned);
+		tabsLeft.appendChild(tabSpoofLogs);
+		tabsLeft.appendChild(tabRoamLogs);
+
+		var langBtn = horusI18n.buildLangBtn(function() {
+			container.style.direction = horusI18n.getDir();
+			tabBanned.textContent = horusI18n.t('banned_registry');
+			tabSpoofLogs.textContent = horusI18n.t('spoof_audit');
+			tabRoamLogs.textContent = horusI18n.t('roam_log');
+			btnOpenBanModal.textContent = horusI18n.t('manual_ban');
+			loadData();
+		});
+
+		tabsNav.appendChild(tabsLeft);
+		tabsNav.appendChild(E('div', { style: 'margin-bottom:8px;' }, langBtn));
 		container.appendChild(tabsNav);
 
 		// Sections
@@ -112,15 +129,13 @@ return view.extend({
 			knownAps: {}
 		};
 
-		// ----------------------------------------------------
 		// 1. BANNED SECTION - Clean Header & Popup Modal Trigger
-		// ----------------------------------------------------
 		var btnOpenBanModal = E('button', {
 			class: 'btn-primary',
 			style: 'background:linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color:#fff; display:flex; align-items:center; gap:8px; font-weight:800; padding:10px 22px; font-size:14px;'
 		}, [
 			E('span', { style: 'font-size:16px;' }, '➕'),
-			E('span', {}, 'إضافة ماك للقائمة المحظورة يدويّاً')
+			E('span', {}, horusI18n.t('manual_ban'))
 		]);
 
 		btnOpenBanModal.onclick = function() {
@@ -129,8 +144,8 @@ return view.extend({
 
 		var headerBar = E('div', { class: 'glass-card', style: 'display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:18px; padding:18px 24px;' }, [
 			E('div', {}, [
-				E('h3', { style: 'margin:0; color:#fbbf24; font-size:18px; display:flex; align-items:center; gap:8px; font-weight:800;' }, '📑 قائمة الأجهزة المحظورة حالياً (Banned MACs Registry)'),
-				E('p', { style: 'margin:4px 0 0 0; font-size:13px; color:#94a3b8;' }, 'قائمة المشتركين والأجهزة المحظورة في الذاكرة الحية، مع إمكانية فك الحظر أو قفل المشترك على إكسس محدد.')
+				E('h3', { style: 'margin:0; color:#fbbf24; font-size:18px; display:flex; align-items:center; gap:8px; font-weight:800;' }, horusI18n.t('banned_registry')),
+				E('p', { style: 'margin:4px 0 0 0; font-size:13px; color:#94a3b8;' }, 'Horus WLC Centralized MAC Blacklist & Access Control.')
 			]),
 			btnOpenBanModal
 		]);
@@ -141,12 +156,12 @@ return view.extend({
 			E('table', { class: 'custom-table' }, [
 				E('thead', {}, [
 					E('tr', {}, [
-						E('th', {}, 'عنوان الماك (MAC)'),
-						E('th', {}, 'اسم المشترك (Radius)'),
-						E('th', {}, 'سبب الحظر'),
-						E('th', {}, 'تاريخ الحظر'),
-						E('th', {}, 'المدة'),
-						E('th', { style: 'text-align:center;' }, 'إجراءات فك الحظر والتوجيه')
+						E('th', {}, 'MAC'),
+						E('th', {}, 'Radius Name'),
+						E('th', {}, 'Reason'),
+						E('th', {}, 'Timestamp'),
+						E('th', {}, 'Duration'),
+						E('th', { style: 'text-align:center;' }, 'Actions')
 					])
 				]),
 				bannedTableBody
@@ -154,27 +169,25 @@ return view.extend({
 		]);
 		secBanned.appendChild(bannedTableWrapper);
 
-		// ----------------------------------------------------
 		// 2. SPOOF DETECTION LOGS SECTION
-		// ----------------------------------------------------
 		var spoofTableBody = E('tbody');
 		var spoofCard = E('div', { class: 'glass-card' }, [
 			E('div', { class: 'card-header' }, [
 				E('div', {}, [
-					E('h3', { class: 'card-title', style: 'color:#f87171;' }, '🛡️ سجل رصد تكرار الماكات ومحاولات السرقة (Anti-Spoofing Audit)'),
-					E('p', { class: 'card-desc' }, 'يرصد الكنترولر أي ماك يظهر على أكثر من إكسس في نفس الوقت، ويتعامل معه فورياً بعد مهلة السماح.')
+					E('h3', { class: 'card-title', style: 'color:#f87171;' }, horusI18n.t('spoof_audit')),
+					E('p', { class: 'card-desc' }, 'Real-time detection and mitigation of duplicate client MAC attacks.')
 				])
 			]),
 			E('div', { class: 'table-box' }, [
 				E('table', { class: 'custom-table' }, [
 					E('thead', {}, [
 						E('tr', {}, [
-							E('th', {}, 'التوقيت'),
-							E('th', {}, 'عنوان الماك (MAC)'),
-							E('th', {}, 'المشترك (Radius)'),
-							E('th', {}, 'تفاصيل وموقع الرصد'),
-							E('th', {}, 'نوع الحدث'),
-							E('th', { style: 'text-align:center;' }, 'إجراء')
+							E('th', {}, 'Time'),
+							E('th', {}, 'MAC'),
+							E('th', {}, 'Radius User'),
+							E('th', {}, 'Event Details'),
+							E('th', {}, 'Type'),
+							E('th', { style: 'text-align:center;' }, 'Action')
 						])
 					]),
 					spoofTableBody
@@ -183,25 +196,23 @@ return view.extend({
 		]);
 		secSpoofLogs.appendChild(spoofCard);
 
-		// ----------------------------------------------------
 		// 3. FAST ROAMING LOGS SECTION
-		// ----------------------------------------------------
 		var roamTableBody = E('tbody');
 		var roamCard = E('div', { class: 'glass-card' }, [
 			E('div', { class: 'card-header' }, [
 				E('div', {}, [
-					E('h3', { class: 'card-title', style: 'color:#38bdf8;' }, '📶 سجل تنقل الهواتف السلس بين الإكسسات (Fast Roaming Log)'),
-					E('p', { class: 'card-desc' }, 'يوثق انتقال العملاء الطبيعي من إكسس لآخر بدون انقطاع.')
+					E('h3', { class: 'card-title', style: 'color:#38bdf8;' }, horusI18n.t('roam_log')),
+					E('p', { class: 'card-desc' }, 'Smooth client roam transitions between Access Points.')
 				])
 			]),
 			E('div', { class: 'table-box' }, [
 				E('table', { class: 'custom-table' }, [
 					E('thead', {}, [
 						E('tr', {}, [
-							E('th', {}, 'التوقيت'),
-							E('th', {}, 'عنوان الماك (MAC)'),
-							E('th', {}, 'المشترك (Radius)'),
-							E('th', {}, 'مسار التنقل')
+							E('th', {}, 'Time'),
+							E('th', {}, 'MAC'),
+							E('th', {}, 'Radius User'),
+							E('th', {}, 'Roam Trail')
 						])
 					]),
 					roamTableBody
@@ -210,18 +221,16 @@ return view.extend({
 		]);
 		secRoamLogs.appendChild(roamCard);
 
-		// ----------------------------------------------------
 		// MODAL: Manual MAC Ban Dialog
-		// ----------------------------------------------------
 		function openManualBanModal() {
 			var inMac = E('input', { class: 'form-control', type: 'text', placeholder: 'AA:BB:CC:DD:EE:FF', style: 'font-family: monospace; text-transform: uppercase;' });
 			var inDuration = E('select', { class: 'form-control' }, [
-				E('option', { value: '0' }, '🔒 دائم (Permanent Ban)'),
-				E('option', { value: '3600' }, '⏳ ساعة واحدة'),
-				E('option', { value: '86400' }, '⏳ 24 ساعة (يوم كامل)'),
-				E('option', { value: '604800' }, '⏳ 7 أيام (أسبوع)')
+				E('option', { value: '0' }, '🔒 Permanent'),
+				E('option', { value: '3600' }, '⏳ 1 Hour'),
+				E('option', { value: '86400' }, '⏳ 24 Hours'),
+				E('option', { value: '604800' }, '⏳ 7 Days')
 			]);
-			var inReason = E('input', { class: 'form-control', type: 'text', placeholder: 'حظر يدوي / انتهاك سياسة الشبكة' });
+			var inReason = E('input', { class: 'form-control', type: 'text', placeholder: 'Manual Ban / Network Policy' });
 
 			var modalApGrid = E('div', { class: 'ap-grid' });
 			var modalSelCountBadge = E('span', { style: 'color:#00e676; font-weight:bold; font-size:12px;' }, '');
@@ -230,14 +239,14 @@ return view.extend({
 			Object.keys(state.knownAps).forEach(function(m){ modalSelectedAps.add(m); });
 
 			function updateModalCount() {
-				modalSelCountBadge.textContent = '(تم تحديد ' + modalSelectedAps.size + ' إكسس)';
+				modalSelCountBadge.textContent = '(' + modalSelectedAps.size + ' APs selected)';
 			}
 
 			function renderModalAps() {
 				var tiles = [];
 				var apKeys = Object.keys(state.knownAps);
 				if (apKeys.length === 0) {
-					tiles.push(E('div', { style: 'color:#94a3b8; font-size:13px; padding:10px;' }, 'جاري استكشاف الإكسسات عبر بروتوكول HMP...'));
+					tiles.push(E('div', { style: 'color:#94a3b8; font-size:13px; padding:10px;' }, 'Discovering APs via HMP...'));
 				} else {
 					apKeys.forEach(function(mac) {
 						var ap = state.knownAps[mac];
@@ -266,13 +275,13 @@ return view.extend({
 				updateModalCount();
 			}
 
-			var btnModalSelAll = E('button', { class: 'btn-tool', type: 'button' }, '✅ تحديد الكل');
+			var btnModalSelAll = E('button', { class: 'btn-tool', type: 'button' }, '✅ Select All');
 			btnModalSelAll.onclick = function() {
 				Object.keys(state.knownAps).forEach(function(m){ modalSelectedAps.add(m); });
 				renderModalAps();
 			};
 
-			var btnModalDeselAll = E('button', { class: 'btn-tool', type: 'button' }, '❌ إلغاء التحديد');
+			var btnModalDeselAll = E('button', { class: 'btn-tool', type: 'button' }, '❌ Deselect All');
 			btnModalDeselAll.onclick = function() {
 				modalSelectedAps.clear();
 				renderModalAps();
@@ -280,18 +289,18 @@ return view.extend({
 
 			renderModalAps();
 
-			var modalBody = E('div', { style: 'direction:rtl; text-align:right; color:#f8fafc;' }, [
-				E('h3', { style: 'color:#ef4444; margin-top:0; display:flex; align-items:center; gap:8px;' }, '🛡️ إضافة مستخدم للحظر اليدوي (Manual MAC Ban)'),
-				E('p', { style: 'font-size:13px; color:#cbd5e1;' }, 'قم بإدخال عنوان الماك واختيار الإكسسات التي ترغب في تطبيق الحظر عليها فورياً:'),
+			var modalBody = E('div', { style: 'direction:' + horusI18n.getDir() + '; text-align:' + (horusI18n.getDir() === 'rtl' ? 'right' : 'left') + '; color:#f8fafc;' }, [
+				E('h3', { style: 'color:#ef4444; margin-top:0; display:flex; align-items:center; gap:8px;' }, '🛡️ Manual MAC Ban'),
+				E('p', { style: 'font-size:13px; color:#cbd5e1;' }, 'Enter client MAC address and select target Access Points:'),
 				E('div', { class: 'form-grid' }, [
-					E('div', { class: 'form-group' }, [ E('label', { class: 'form-label' }, '📍 عنوان الماك (MAC Address):'), inMac ]),
-					E('div', { class: 'form-group' }, [ E('label', { class: 'form-label' }, '⏳ مدة الحظر:'), inDuration ]),
-					E('div', { class: 'form-group' }, [ E('label', { class: 'form-label' }, '📝 سبب الحظر (اختياري):'), inReason ])
+					E('div', { class: 'form-group' }, [ E('label', { class: 'form-label' }, '📍 MAC Address:'), inMac ]),
+					E('div', { class: 'form-group' }, [ E('label', { class: 'form-label' }, '⏳ Duration:'), inDuration ]),
+					E('div', { class: 'form-group' }, [ E('label', { class: 'form-label' }, '📝 Reason:'), inReason ])
 				]),
 				E('div', { class: 'ap-select-box' }, [
 					E('div', { class: 'ap-select-header' }, [
 						E('div', { class: 'ap-select-title' }, [
-							E('span', {}, '🎯 اختيار الإكسسات المستهدفة للحظر:'),
+							E('span', {}, '🎯 Target APs:'),
 							modalSelCountBadge
 						]),
 						E('div', { class: 'ap-tools' }, [ btnModalSelAll, btnModalDeselAll ])
@@ -300,10 +309,10 @@ return view.extend({
 				])
 			]);
 
-			ui.showModal('إضافة جهاز للحظر اليدوي', [
+			ui.showModal('Manual MAC Ban', [
 				modalBody,
 				E('div', { class: 'right', style: 'margin-top:18px; display:flex; gap:10px; justify-content:flex-end;' }, [
-					E('button', { class: 'btn', click: ui.hideModal }, 'إلغاء'),
+					E('button', { class: 'btn', click: ui.hideModal }, 'Cancel'),
 					E('button', {
 						class: 'btn primary',
 						style: 'background:linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color:#fff; border:none;',
@@ -311,18 +320,18 @@ return view.extend({
 							var rawMac = inMac.value.trim();
 							var cleanMac = rawMac.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
 							if (cleanMac.length !== 12) {
-								alert('الرجاء إدخال عنوان MAC صحيح مكون من 12 خانة (مثال: AA:BB:CC:DD:EE:FF).');
+								alert('Please enter a valid 12-digit MAC address (e.g. AA:BB:CC:DD:EE:FF).');
 								return;
 							}
 							var mac = cleanMac.match(/.{1,2}/g).join(':');
 
 							if (modalSelectedAps.size === 0) {
-								alert('الرجاء اختيار إكسس واحد على الأقل لتطبيق الحظر عليه.');
+								alert('Please select at least one target AP.');
 								return;
 							}
 
 							var dur = parseInt(inDuration.value, 10);
-							var rsn = inReason.value.trim() || 'حظر يدوي من المدير';
+							var rsn = inReason.value.trim() || 'Manual Admin Ban';
 							var targetList = Array.from(modalSelectedAps);
 							var isAll = (targetList.length === Object.keys(state.knownAps).length);
 
@@ -338,18 +347,15 @@ return view.extend({
 									reason: rsn
 								})
 							}).then(function(){
-								ui.addNotification(null, E('p', '✅ تم إرسال أمر الحظر للماك ' + mac + ' بنجاح!'));
+								ui.addNotification(null, E('p', '✅ Ban command dispatched for ' + mac));
 								loadData();
 							});
 						}
-					}, '🚫 تطبيق أمر الحظر فوراً')
+					}, '🚫 Execute Ban Command')
 				])
 			]);
 		}
 
-		// ----------------------------------------------------
-		// DATA SYNC & RENDERING
-		// ----------------------------------------------------
 		function loadData() {
 			Promise.all([
 				fetch('/cgi-bin/horus_map_data?_=' + Date.now()).then(function(r){ return r.json(); }).catch(function(){ return {}; }),
@@ -382,38 +388,38 @@ return view.extend({
 			var rows = [];
 
 			if (bannedList.length === 0) {
-				rows.push(E('tr', {}, E('td', { colspan: 6, style: 'text-align:center; padding: 25px; color:#64748b;' }, 'لا توجد أجهزة محظورة حالياً.')));
+				rows.push(E('tr', {}, E('td', { colspan: 6, style: 'text-align:center; padding: 25px; color:#64748b;' }, 'No banned devices currently.')));
 			} else {
 				bannedList.forEach(function(b) {
 					var mac = (b.mac || '').toUpperCase();
 					var rUser = state.radiusMap[mac] || {};
 					var dispName = rUser.name || rUser.username || '-';
 
-					var dateStr = b.banned_at ? new Date(b.banned_at * 1000).toLocaleString('ar-EG') : '-';
-					var durStr = (b.duration === 0 || !b.duration) ? '🔒 دائم' : Math.round(b.duration / 3600) + ' ساعة';
+					var dateStr = b.banned_at ? new Date(b.banned_at * 1000).toLocaleString() : '-';
+					var durStr = (b.duration === 0 || !b.duration) ? '🔒 Permanent' : Math.round(b.duration / 3600) + ' Hours';
 
-					var btnUnban = E('button', { class: 'btn-unban' }, '🔓 فك الحظر بالكامل');
+					var btnUnban = E('button', { class: 'btn-unban' }, horusI18n.t('unban'));
 					btnUnban.onclick = function() {
-						if (confirm('فك الحظر بالكامل عن الماك (' + mac + ') على جميع الإكسسات؟')) {
+						if (confirm('Unban MAC (' + mac + ') on all APs?')) {
 							fetch('/cgi-bin/horus_ban_action', {
 								method: 'POST',
 								headers: { 'Content-Type': 'application/json' },
 								body: JSON.stringify({ action: 'unban', mac: mac, scope: 'all' })
 							}).then(function(){
-								ui.addNotification(null, E('p', '✅ تم فك الحظر بنجاح عن ' + mac));
+								ui.addNotification(null, E('p', '✅ Unbanned MAC: ' + mac));
 								loadData();
 							});
 						}
 					};
 
-					var btnAllowAp = E('button', { class: 'btn-unban', style: 'background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); margin-right:6px;' }, '🎯 السماح بإكسس منزله فقط');
+					var btnAllowAp = E('button', { class: 'btn-unban', style: 'background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); margin-right:6px;' }, '🎯 Allow Home AP Only');
 					btnAllowAp.onclick = function() {
 						var apKeys = Object.keys(state.knownAps);
-						if (apKeys.length === 0) { alert('لا توجد إكسسات متاحة'); return; }
+						if (apKeys.length === 0) { alert('No APs available'); return; }
 						var apOptions = apKeys.map(function(k, idx){
 							return (idx + 1) + '. ' + (state.knownAps[k].hostname || 'AP') + ' (' + (state.knownAps[k].ip || k) + ')';
 						}).join('\n');
-						var selIdx = prompt('اختر رقم الإكسس المسموح للمشترك الأصلي بالعمل عليه (وحظره على باقي الشبكة):\n\n' + apOptions);
+						var selIdx = prompt('Select AP number to whitelist for this subscriber:\n\n' + apOptions);
 						if (selIdx) {
 							var num = parseInt(selIdx, 10);
 							if (num >= 1 && num <= apKeys.length) {
@@ -423,11 +429,9 @@ return view.extend({
 									headers: { 'Content-Type': 'application/json' },
 									body: JSON.stringify({ action: 'allow_on_ap', mac: mac, exempt_ap: chosenAp })
 								}).then(function(){
-									ui.addNotification(null, E('p', '✅ تم قفل المشترك على إكسسه الأصلي وحظره على باقي الشبكة بنجاح!'));
+									ui.addNotification(null, E('p', '✅ Client locked to designated AP.'));
 									loadData();
 								});
-							} else {
-								alert('اختيار غير صحيح');
 							}
 						}
 					};
@@ -435,7 +439,7 @@ return view.extend({
 					rows.push(E('tr', {}, [
 						E('td', { style: 'font-family:monospace; font-weight:700; color:#f87171;' }, mac),
 						E('td', { style: 'color:#00e676; font-weight:700;' }, dispName),
-						E('td', {}, E('span', { class: 'badge badge-danger' }, b.reason || 'حظر يدوي')),
+						E('td', {}, E('span', { class: 'badge badge-danger' }, b.reason || 'Manual Ban')),
 						E('td', { style: 'font-size:12px; color:#94a3b8;' }, dateStr),
 						E('td', {}, durStr),
 						E('td', { style: 'text-align:center; display:flex; gap:6px; justify-content:center;' }, [btnUnban, btnAllowAp])
@@ -454,12 +458,12 @@ return view.extend({
 				var mac = (l.mac || '').toUpperCase();
 				var rUser = state.radiusMap[mac] || {};
 				var dispName = rUser.name || rUser.username || '-';
-				var timeStr = l.timestamp ? new Date(l.timestamp * 1000).toLocaleTimeString('ar-EG') : '-';
+				var timeStr = l.timestamp ? new Date(l.timestamp * 1000).toLocaleTimeString() : '-';
 
 				if (l.type === 'spoof_ban' || l.type === 'spoof_warning' || l.type === 'ban') {
-					var bType = l.type === 'spoof_ban' ? E('span', { class: 'badge badge-danger' }, '🔴 حظر سرقة ماك') : (l.type === 'spoof_warning' ? E('span', { class: 'badge badge-warning' }, '🟡 اشتباه تكرار') : E('span', { class: 'badge badge-info' }, 'حظر'));
+					var bType = l.type === 'spoof_ban' ? E('span', { class: 'badge badge-danger' }, '🔴 Spoof Ban') : (l.type === 'spoof_warning' ? E('span', { class: 'badge badge-warning' }, '🟡 Suspect') : E('span', { class: 'badge badge-info' }, 'Ban'));
 					
-					var btnQuickBan = E('button', { class: 'btn-tool', style: 'background:rgba(239,68,68,0.2); color:#f87171;' }, '🚫 حظر');
+					var btnQuickBan = E('button', { class: 'btn-tool', style: 'background:rgba(239,68,68,0.2); color:#f87171;' }, '🚫 Ban');
 					btnQuickBan.onclick = function() {
 						fetch('/cgi-bin/horus_ban_action', { method: 'POST', body: JSON.stringify({ action: 'ban', mac: mac, scope: 'all', duration: 0 }) }).then(loadData);
 					};
@@ -483,10 +487,10 @@ return view.extend({
 			});
 
 			if (spoofRows.length === 0) {
-				spoofRows.push(E('tr', {}, E('td', { colspan: 6, style: 'text-align:center; padding:20px; color:#64748b;' }, 'سجل مكافحة السرقة نظيف، لم يتم رصد أي تكرار للماكات حالياً.')));
+				spoofRows.push(E('tr', {}, E('td', { colspan: 6, style: 'text-align:center; padding:20px; color:#64748b;' }, 'No spoofing incidents detected.')));
 			}
 			if (roamRows.length === 0) {
-				roamRows.push(E('tr', {}, E('td', { colspan: 4, style: 'text-align:center; padding:20px; color:#64748b;' }, 'لا توجد حركات تنقل مسجلة مؤخراً.')));
+				roamRows.push(E('tr', {}, E('td', { colspan: 4, style: 'text-align:center; padding:20px; color:#64748b;' }, 'No roam events recorded recently.')));
 			}
 
 			dom.content(spoofTableBody, spoofRows);

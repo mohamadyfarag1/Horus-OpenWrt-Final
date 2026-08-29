@@ -2,6 +2,7 @@
 'require baseclass';
 'require dom';
 'require ui';
+'require horus_controller.i18n as horusI18n';
 
 return baseclass.extend({
 	apDetailElements: null,
@@ -10,9 +11,9 @@ return baseclass.extend({
 		var cmac = (c.mac || '').toUpperCase();
 		var rUser = (state.radiusMap && state.radiusMap[cmac]) ? state.radiusMap[cmac] : {};
 		var isRegistered = !!(rUser.name || rUser.username);
-		var dispName = rUser.name || rUser.username || 'مشترك محلي (غير مسجل)';
+		var dispName = rUser.name || rUser.username || (horusI18n.getLang() === 'ar' ? 'مشترك محلي (غير مسجل)' : 'Local Client (Unregistered)');
 		var prof = rUser.profile ? '🪙 ' + rUser.profile : '';
-		var quota = rUser.quota ? ' | 📊 متبقي: ' + rUser.quota : '';
+		var quota = rUser.quota ? ' | 📊 ' + rUser.quota : '';
 		var uptimeStr = rUser.uptime ? ' | ⏱️ ' + rUser.uptime : '';
 
 		var sigVal = parseInt(c.signal, 10) || -100;
@@ -20,36 +21,36 @@ return baseclass.extend({
 						   (sigVal >= -75 ? 'background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.4);' :
 											'background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.4);');
 
-		var btnSteer = E('button', { class: 'btn-ctrl btn-ctrl-steer', title: 'توجيه ذكي ونقل لأقرب إكسس' }, '⚡ توجيه');
+		var btnSteer = E('button', { class: 'btn-ctrl btn-ctrl-steer', title: 'Smart Steer to Best AP' }, horusI18n.t('steer'));
 		btnSteer.onclick = function() {
-			if (confirm('توجيه العميل (' + cmac + ') لإجباره على الانتقال لإكسس أقرب وأقوى؟')) {
+			if (confirm('Steer client (' + cmac + ') to nearest AP?')) {
 				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'steer_client', mac: cmac, ban_time: 3000 }) });
-				ui.addNotification(null, E('p', '⚡ تم إرسال أمر التوجيه الذكي بنجاح!'));
+				ui.addNotification(null, E('p', '⚡ Smart steering command dispatched.'));
 			}
 		};
 
-		var btnKick = E('button', { class: 'btn-ctrl btn-ctrl-kick', title: 'فصل مؤقت' }, '❌ فصل');
+		var btnKick = E('button', { class: 'btn-ctrl btn-ctrl-kick', title: 'Disconnect Client' }, horusI18n.t('kick'));
 		btnKick.onclick = function() {
-			if (confirm('فصل العميل (' + cmac + ')؟')) {
+			if (confirm('Kick client (' + cmac + ')?')) {
 				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'kick', mac: cmac }) });
-				ui.addNotification(null, E('p', 'تم فصل العميل'));
+				ui.addNotification(null, E('p', 'Client disconnected.'));
 			}
 		};
 
-		var btnBan = E('button', { class: 'btn-ctrl btn-ctrl-ban', title: 'حظر دائم' }, '🚫 حظر');
+		var btnBan = E('button', { class: 'btn-ctrl btn-ctrl-ban', title: 'Ban Client' }, horusI18n.t('ban'));
 		btnBan.onclick = function() {
-			if (confirm('حظر هذا الماك (' + cmac + ') على جميع الإكسسات؟')) {
+			if (confirm('Ban MAC (' + cmac + ') on all APs?')) {
 				fetch('/cgi-bin/horus_ban_action', { method: 'POST', body: JSON.stringify({ action: 'ban', mac: cmac, scope: 'all', duration: 0 }) });
-				ui.addNotification(null, E('p', 'تم حظر الماك بنجاح'));
+				ui.addNotification(null, E('p', 'Client banned.'));
 			}
 		};
 
 		var vIcon = c.vendor_icon || '📱';
-		var vName = c.vendor || 'جهاز غير معروف';
+		var vName = c.vendor || (horusI18n.getLang() === 'ar' ? 'جهاز غير معروف' : 'Unknown Device');
 
 		var radBadge = isRegistered ? 
 			E('span', { class: 'live-rad-badge', style: 'background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; white-space:nowrap;' }, '✔ SAS') :
-			E('span', { class: 'live-rad-badge', style: 'background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:2px 6px; border-radius:4px; font-size:10px; white-space:nowrap;' }, 'غير مسجل');
+			E('span', { class: 'live-rad-badge', style: 'background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:2px 6px; border-radius:4px; font-size:10px; white-space:nowrap;' }, horusI18n.getLang() === 'ar' ? 'غير مسجل' : 'Unregistered');
 
 		var tr = E('tr', { 'data-mac': cmac }, [
 			// Col 1: MAC & Device Brand
@@ -71,8 +72,8 @@ return baseclass.extend({
 			// Col 3: Live Speed Meter
 			E('td', { style: 'white-space:nowrap;' }, [
 				E('div', { class: 'speed-meter-box' }, [
-					E('div', { class: 'speed-meter-row rx' }, [ E('span', {}, '⬇️ سحب:'), E('span', { class: 'live-rx-speed' }, c.rx_speed || '0 bps') ]),
-					E('div', { class: 'speed-meter-row tx' }, [ E('span', {}, '⬆️ رفع:'), E('span', { class: 'live-tx-speed' }, c.tx_speed || '0 bps') ])
+					E('div', { class: 'speed-meter-row rx' }, [ E('span', {}, '⬇️ ' + horusI18n.t('download') + ':'), E('span', { class: 'live-rx-speed' }, c.rx_speed || '0 bps') ]),
+					E('div', { class: 'speed-meter-row tx' }, [ E('span', {}, '⬆️ ' + horusI18n.t('upload') + ':'), E('span', { class: 'live-tx-speed' }, c.tx_speed || '0 bps') ])
 				])
 			]),
 			// Col 4: Session Total Data
@@ -111,13 +112,12 @@ return baseclass.extend({
 			var emptyRow = tbody.querySelector('.empty-clients-row');
 			if (!emptyRow) {
 				dom.content(tbody, [
-					E('tr', { class: 'empty-clients-row' }, E('td', { colspan: 7, style: 'text-align:center; padding:30px; color:#64748b; font-size:14px;' }, 'لا توجد أجهزة متصلة لاسلكياً على هذا الإكسس حالياً.'))
+					E('tr', { class: 'empty-clients-row' }, E('td', { colspan: 7, style: 'text-align:center; padding:30px; color:#64748b; font-size:14px;' }, 'No wireless clients currently connected to this AP.'))
 				]);
 			}
 			return;
 		}
 
-		// Remove empty placeholder if clients are present
 		var emptyPlaceholder = tbody.querySelector('.empty-clients-row');
 		if (emptyPlaceholder) emptyPlaceholder.remove();
 
@@ -129,7 +129,6 @@ return baseclass.extend({
 
 			var existingRow = tbody.querySelector('tr[data-mac="' + cmac + '"]');
 			if (existingRow) {
-				// 1. In-place Update existing cells (Zero DOM rebuild)
 				var elRxSpeed = existingRow.querySelector('.live-rx-speed');
 				if (elRxSpeed && elRxSpeed.textContent !== (c.rx_speed || '0 bps')) elRxSpeed.textContent = c.rx_speed || '0 bps';
 
@@ -160,16 +159,14 @@ return baseclass.extend({
 				var elIp = existingRow.querySelector('.live-ip');
 				if (elIp && elIp.textContent !== (rUser.ip || '-')) elIp.textContent = rUser.ip || '-';
 
-				var dispName = rUser.name || rUser.username || 'مشترك محلي (غير مسجل)';
+				var dispName = rUser.name || rUser.username || (horusI18n.getLang() === 'ar' ? 'مشترك محلي (غير مسجل)' : 'Local Client (Unregistered)');
 				var elName = existingRow.querySelector('.live-disp-name');
 				if (elName && elName.textContent !== dispName) elName.textContent = dispName;
 			} else {
-				// 2. Client joined: Append new row cleanly
 				tbody.appendChild(self.createClientRow(c, apMac, state, ui));
 			}
 		});
 
-		// 3. Client disconnected: Remove stale row cleanly
 		var currentRows = tbody.querySelectorAll('tr[data-mac]');
 		currentRows.forEach(function(r) {
 			var rMac = r.getAttribute('data-mac');
@@ -189,7 +186,7 @@ return baseclass.extend({
 		dom.content(viewApDetail, []);
 
 		// Top Header Card with Back Button
-		var btnBack = E('button', { class: 'btn-back' }, '⬅️ العودة للوحة الإكسسات العامة');
+		var btnBack = E('button', { class: 'btn-back' }, horusI18n.t('back_to_dash'));
 		btnBack.onclick = function() {
 			if (typeof backCb === 'function') backCb();
 		};
@@ -198,19 +195,19 @@ return baseclass.extend({
 			E('div', {}, [
 				E('h2', { class: 'ap-detail-title' }, [
 					E('span', {}, '📡 ' + (ap.hostname || 'Horus-AP')),
-					E('span', { class: 'badge', style: 'font-size:12px; background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:3px 10px; border-radius:20px;' }, 'متصل عبر HMP 🟢')
+					E('span', { class: 'badge', style: 'font-size:12px; background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:3px 10px; border-radius:20px;' }, horusI18n.t('connected_hmp'))
 				]),
 				E('div', { style: 'font-size:13px; color:#94a3b8; font-family:monospace; margin-top:5px;' }, 'MAC: ' + apMac + ' | LAN IP: ' + (ap.ip || '-'))
 			]),
 			E('div', { style: 'display:flex; gap:10px;' }, [
-				E('button', { class: 'btn-action btn-reboot', style: 'padding:9px 18px; font-size:13px;' }, '🔄 إعادة تشغيل الإكسس'),
+				E('button', { class: 'btn-action btn-reboot', style: 'padding:9px 18px; font-size:13px;' }, horusI18n.t('reboot_ap')),
 				btnBack
 			])
 		]);
 		headerBox.querySelector('.btn-reboot').onclick = function() {
-			if (confirm('هل أنت متأكد من إعادة تشغيل الإكسس (' + apMac + ')؟')) {
+			if (confirm('Reboot AP (' + apMac + ')?')) {
 				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'reboot' }) });
-				ui.addNotification(null, E('p', 'تم إرسال أمر إعادة التشغيل للإكسس.'));
+				ui.addNotification(null, E('p', 'Reboot command sent.'));
 			}
 		};
 		viewApDetail.appendChild(headerBox);
@@ -218,16 +215,16 @@ return baseclass.extend({
 		// Real-Time Speed & Capacity Metrics Banner
 		var st = ap.stats || {};
 		var mRxSpeed = E('h3', { style: 'color:#38bdf8; font-size:22px; margin:0;' }, '⬇️ ' + (st.rx_speed || '0 bps'));
-		var mRxTotal = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'سرعة التحميل اللحظية | الإجمالي: ' + (st.total_rx || '-'));
+		var mRxTotal = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, horusI18n.t('rx_live_total') + ' ' + (st.total_rx || '-'));
 
 		var mTxSpeed = E('h3', { style: 'color:#4ade80; font-size:22px; margin:0;' }, '⬆️ ' + (st.tx_speed || '0 bps'));
-		var mTxTotal = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'سرعة الرفع اللحظية | الإجمالي: ' + (st.total_tx || '-'));
+		var mTxTotal = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, horusI18n.t('tx_live_total') + ' ' + (st.total_tx || '-'));
 
-		var mClients = E('h3', { style: 'color:#fbbf24; font-size:22px; margin:0;' }, '👥 ' + clientsList.length + ' متصل');
-		var mClientsDesc = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'عدد عملاء الوايرليس النشطين');
+		var mClients = E('h3', { style: 'color:#fbbf24; font-size:22px; margin:0;' }, '👥 ' + clientsList.length);
+		var mClientsDesc = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, horusI18n.t('active_wifi_clients'));
 
 		var mCpuStats = E('h3', { style: 'color:#a855f7; font-size:20px; margin:0;' }, '🧠 ' + (st.cpu_load || '0.0') + ' | 💾 ' + (st.mem_pct || 0) + '%' + ((st.cpu_temp && st.cpu_temp !== '-') ? ' | 🌡️ ' + st.cpu_temp : ''));
-		var mCpuDesc = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'المعالج والذاكرة وحرارة الجهاز');
+		var mCpuDesc = E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, horusI18n.t('cpu_mem_temp'));
 
 		var statsBanner = E('div', { style: 'display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom: 20px;' }, [
 			E('div', { class: 'dash-card', style: 'border:1px solid rgba(56,189,248,0.3); background:rgba(15,23,42,0.6); padding:16px; border-radius:10px;' }, [ mRxSpeed, mRxTotal ]),
@@ -244,34 +241,34 @@ return baseclass.extend({
 		var radio5g = wifiList.find(function(w){ return w.band_code === '5g' || w.band === '5GHz' || w.channel >= 36; }) || { band: '5GHz', band_code: '5g', channel: '157', htmode: 'VHT80', ssid: 'ras2ac', noise: '-92 dBm', disabled: false };
 
 		function buildRadioCard(rData, is5G) {
-			var bTitle = is5G ? '📶 راديو 5GHz (Radio 1 - عالي السرعة)' : '📶 راديو 2.4GHz (Radio 0 - طويل المدى)';
+			var bTitle = is5G ? horusI18n.t('radio_5g_title') : horusI18n.t('radio_2g_title');
 			var cardColor = is5G ? '#38bdf8' : '#4ade80';
 
-			var inSsid = E('input', { type: 'text', value: rData.ssid || '', placeholder: 'اسم الشبكة' });
-			var inPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة' });
+			var inSsid = E('input', { type: 'text', value: rData.ssid || '', placeholder: 'SSID' });
+			var inPass = E('input', { type: 'password', placeholder: 'Password' });
 			var inChan = E('select', {});
-			inChan.appendChild(E('option', { value: '' }, 'الحالي (' + (rData.channel || 'Auto') + ')'));
-			inChan.appendChild(E('option', { value: 'auto' }, 'Auto (تلقائي)'));
+			inChan.appendChild(E('option', { value: '' }, 'Current (' + (rData.channel || 'Auto') + ')'));
+			inChan.appendChild(E('option', { value: 'auto' }, 'Auto'));
 			if (!is5G) {
-				for (var c = 1; c <= 13; c++) inChan.appendChild(E('option', { value: c.toString() }, 'قناة ' + c));
+				for (var c = 1; c <= 13; c++) inChan.appendChild(E('option', { value: c.toString() }, 'Channel ' + c));
 			} else {
-				[36, 40, 44, 48, 149, 153, 157, 161, 165].forEach(function(c5){ inChan.appendChild(E('option', { value: c5.toString() }, 'قناة ' + c5)); });
+				[36, 40, 44, 48, 149, 153, 157, 161, 165].forEach(function(c5){ inChan.appendChild(E('option', { value: c5.toString() }, 'Channel ' + c5)); });
 			}
 
 			var inHt = E('select', {}, [
-				E('option', { value: '' }, 'الحالي (' + (rData.htmode || '-') + ')'),
-				E('option', { value: 'HT20' }, '20 MHz (أفضل استقرار)'),
-				E('option', { value: 'HT40' }, '40 MHz (سرعة مضاعفة)'),
-				E('option', { value: 'VHT80' }, '80 MHz (أقصى سرعة)')
+				E('option', { value: '' }, 'Current (' + (rData.htmode || '-') + ')'),
+				E('option', { value: 'HT20' }, '20 MHz'),
+				E('option', { value: 'HT40' }, '40 MHz'),
+				E('option', { value: 'VHT80' }, '80 MHz')
 			]);
 
-			var noiseValSpan = E('span', { style: 'color:#38bdf8; font-weight:bold; font-family:monospace;' }, (rData.noise || '-') + ' 🟢 بيئة نقية');
+			var noiseValSpan = E('span', { style: 'color:#38bdf8; font-weight:bold; font-family:monospace;' }, (rData.noise || '-') + ' ' + horusI18n.t('clean_env'));
 			var noiseDisplay = E('div', { style: 'margin: 6px 0 12px 0; font-size:12px; color:#cbd5e1; background:rgba(0,0,0,0.25); padding:6px 10px; border-radius:6px; display:flex; justify-content:space-between;' }, [
-				E('span', {}, '📡 مستوى الضوضاء والتشويش (Noise Floor):'),
+				E('span', {}, horusI18n.t('noise_floor')),
 				noiseValSpan
 			]);
 
-			var btnSave = E('button', { class: 'btn-primary', style: 'width:100%; margin-top:8px;' }, '💾 حفظ وتطبيق إعدادات ' + (is5G ? '5G' : '2.4G'));
+			var btnSave = E('button', { class: 'btn-primary', style: 'width:100%; margin-top:8px;' }, horusI18n.t('save_radio_settings') + ' ' + (is5G ? '5G' : '2.4G'));
 			btnSave.onclick = function() {
 				btnSave.disabled = true;
 				fetch('/cgi-bin/horus_wifi_action', {
@@ -288,37 +285,37 @@ return baseclass.extend({
 					})
 				}).then(function(){
 					btnSave.disabled = false;
-					ui.addNotification(null, E('p', '✅ تم تحديث إعدادات راديو ' + (is5G ? '5G' : '2.4G') + ' بنجاح!'));
+					ui.addNotification(null, E('p', '✅ Radio settings saved successfully.'));
 				});
 			};
 
-			var btnRestart = E('button', { class: 'btn-sm-op', style: 'background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4);' }, '🔄 ريستارت ' + (is5G ? '5G' : '2.4G'));
+			var btnRestart = E('button', { class: 'btn-sm-op', style: 'background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4);' }, horusI18n.t('restart_radio') + ' ' + (is5G ? '5G' : '2.4G'));
 			btnRestart.onclick = function() {
 				fetch('/cgi-bin/horus_wifi_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'radio_restart', radio: is5G ? 'radio1' : 'radio0' }) });
-				ui.addNotification(null, E('p', 'تم إعادة تشغيل راديو ' + (is5G ? '5G' : '2.4G')));
+				ui.addNotification(null, E('p', 'Radio restarted.'));
 			};
 
-			var btnToggle = E('button', { class: 'btn-sm-op', style: rData.disabled ? 'background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4);' : 'background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);' }, rData.disabled ? '✔️ تشغيل الراديو' : '📴 إيقاف الراديو');
+			var btnToggle = E('button', { class: 'btn-sm-op', style: rData.disabled ? 'background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4);' : 'background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);' }, rData.disabled ? horusI18n.t('toggle_radio_on') : horusI18n.t('toggle_radio_off'));
 			btnToggle.onclick = function() {
 				var nextState = rData.disabled ? '0' : '1';
 				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'radio_toggle', radio: is5G ? 'radio1' : 'radio0', state: nextState }) });
-				ui.addNotification(null, E('p', (nextState === '0' ? 'تم تشغيل' : 'تم إيقاف') + ' بث ' + (is5G ? '5G' : '2.4G')));
+				ui.addNotification(null, E('p', (nextState === '0' ? 'Enabled' : 'Disabled') + ' Radio ' + (is5G ? '5G' : '2.4G')));
 			};
 
 			return E('div', { class: 'radio-card' }, [
 				E('div', { class: 'radio-header' }, [
 					E('h4', { class: 'radio-title', style: 'color:' + cardColor }, bTitle),
-					E('span', { style: 'font-size:12px; font-weight:700; color:' + (rData.disabled ? '#ef4444' : '#22c55e') }, rData.disabled ? '🔴 متوقف' : '🟢 يعمل')
+					E('span', { style: 'font-size:12px; font-weight:700; color:' + (rData.disabled ? '#ef4444' : '#22c55e') }, rData.disabled ? horusI18n.t('stopped') : horusI18n.t('running'))
 				]),
 				noiseDisplay,
 				E('div', { class: 'radio-ops' }, [ btnRestart, btnToggle ]),
 				E('div', { class: 'form-row' }, [
-					E('div', { class: 'form-field' }, [ E('label', {}, 'اسم الشبكة (SSID):'), inSsid ]),
-					E('div', { class: 'form-field' }, [ E('label', {}, 'كلمة السر:'), inPass ])
+					E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('ssid_name')), inSsid ]),
+					E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('new_password')), inPass ])
 				]),
 				E('div', { class: 'form-row' }, [
-					E('div', { class: 'form-field' }, [ E('label', {}, 'القناة الحالية: ' + (rData.channel || 'Auto')), inChan ]),
-					E('div', { class: 'form-field' }, [ E('label', {}, 'عرض القناة: ' + (rData.htmode || '-')), inHt ])
+					E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('current_channel') + ' ' + (rData.channel || 'Auto')), inChan ]),
+					E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('channel_width') + ' ' + (rData.htmode || '-')), inHt ])
 				]),
 				btnSave
 			]);
@@ -330,13 +327,13 @@ return baseclass.extend({
 
 		// --- Section 2: Ethernet Ports Status & Wired Clients ---
 		var portsSection = E('div', { class: 'glass-card' }, [
-			E('h3', { style: 'margin-top:0; color:#38bdf8; font-size:17px; display:flex; align-items:center; gap:8px;' }, '🔌 منافذ اللان السلكية والأجهزة المتصلة كابل (Wired Ethernet Ports)'),
-			E('p', { style: 'font-size:13px; color:#94a3b8; margin:0 0 16px 0;' }, 'مراقبة حالة كابلات اللان وسرعة المنافذ والتحكم في إيقاف أو تشغيل أي منفذ سلكي.')
+			E('h3', { style: 'margin-top:0; color:#38bdf8; font-size:17px; display:flex; align-items:center; gap:8px;' }, horusI18n.t('wired_ports_title')),
+			E('p', { style: 'font-size:13px; color:#94a3b8; margin:0 0 16px 0;' }, horusI18n.t('wired_ports_desc'))
 		]);
 
 		var portsGrid = E('div', { class: 'ports-grid', id: 'detail_ports_grid' });
 		if (portsList.length === 0) {
-			portsGrid.appendChild(E('div', { style: 'color:#64748b; font-size:13px;' }, 'جاري قراءة منافذ اللان السلكية عبر HMP...'));
+			portsGrid.appendChild(E('div', { style: 'color:#64748b; font-size:13px;' }, 'Reading wired ports via HMP...'));
 		} else {
 			portsList.forEach(function(p) {
 				var isUp = !!p.is_up;
@@ -346,13 +343,13 @@ return baseclass.extend({
 				var statusBadge = '';
 				var statusClass = '';
 				if (hasCable) {
-					statusBadge = '🟢 ' + (p.speed_str || 'متصل بكابل');
+					statusBadge = '🟢 ' + (p.speed_str || horusI18n.t('port_cable_connected'));
 					statusClass = 'port-status-up';
 				} else if (isEnabled) {
-					statusBadge = '⚪ مفعل (لا يوجد كابل)';
+					statusBadge = horusI18n.t('port_enabled_no_cable');
 					statusClass = 'port-status-down';
 				} else {
-					statusBadge = '🔴 معطل برمجياً';
+					statusBadge = horusI18n.t('port_disabled_admin');
 					statusClass = 'port-status-down';
 				}
 
@@ -366,12 +363,12 @@ return baseclass.extend({
 				var btnPortToggle = E('button', {
 					class: 'btn-sm-op',
 					style: isEnabled ? 'background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.35);' : 'background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid rgba(34,197,94,0.35);'
-				}, isEnabled ? '📴 إيقاف المنفذ' : '✔️ تفعيل المنفذ');
+				}, isEnabled ? horusI18n.t('disable_port') : horusI18n.t('enable_port'));
 
 				btnPortToggle.onclick = function() {
 					var nState = isEnabled ? 'down' : 'up';
 					fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'port_state', port: p.port, state: nState }) });
-					ui.addNotification(null, E('p', 'تم إرسال أمر ' + (nState === 'up' ? 'تفعيل' : 'إيقاف') + ' للمنفذ: ' + p.label));
+					ui.addNotification(null, E('p', 'Command dispatched for port: ' + p.label));
 				};
 				pCard.appendChild(btnPortToggle);
 
@@ -386,7 +383,7 @@ return baseclass.extend({
 						]));
 					});
 					pCard.appendChild(E('div', { class: 'port-clients-list' }, [
-						E('div', { style: 'font-weight:700; color:#cbd5e1; margin-top:6px;' }, 'المتصلين (' + p.clients.length + '):'),
+						E('div', { style: 'font-weight:700; color:#cbd5e1; margin-top:6px;' }, horusI18n.t('connected_wired_clients') + ' (' + p.clients.length + '):'),
 						E('div', {}, cHtml)
 					]));
 				}
@@ -398,12 +395,12 @@ return baseclass.extend({
 
 		// --- Section 3: Wireless Connected Clients on this AP ---
 		var clientsSection = E('div', { class: 'glass-card' }, [
-			E('h3', { id: 'detail_clients_heading', style: 'margin-top:0; color:#fbbf24; font-size:17px;' }, '👥 المشتركون المتصلون لاسلكياً على هذا الإكسس (' + clientsList.length + ')')
+			E('h3', { id: 'detail_clients_heading', style: 'margin-top:0; color:#fbbf24; font-size:17px;' }, horusI18n.t('wifi_subscribers_title') + ' (' + clientsList.length + ')')
 		]);
 
 		var detailClientsTbody = E('tbody', { id: 'detail_clients_tbody' });
 		if (clientsList.length === 0) {
-			detailClientsTbody.appendChild(E('tr', { class: 'empty-clients-row' }, E('td', { colspan: 7, style: 'text-align:center; padding:30px; color:#64748b; font-size:14px;' }, 'لا توجد أجهزة متصلة لاسلكياً على هذا الإكسس حالياً.')));
+			detailClientsTbody.appendChild(E('tr', { class: 'empty-clients-row' }, E('td', { colspan: 7, style: 'text-align:center; padding:30px; color:#64748b; font-size:14px;' }, 'No wireless clients currently connected to this AP.')));
 		} else {
 			clientsList.forEach(function(c) {
 				detailClientsTbody.appendChild(self.createClientRow(c, apMac, state, ui));
@@ -414,13 +411,13 @@ return baseclass.extend({
 			E('table', { class: 'custom-table' }, [
 				E('thead', {}, [
 					E('tr', {}, [
-						E('th', {}, 'الماك وبصمة الجهاز'),
-						E('th', {}, 'بيانات المشترك والريديس'),
-						E('th', {}, 'السرعة اللحظية الحالية'),
-						E('th', {}, 'إجمالي استهلاك الجلسة'),
-						E('th', { style: 'text-align:center;' }, 'الإشارة ومعدل الربط'),
-						E('th', {}, 'الشبكة (IP / Iface)'),
-						E('th', { style: 'text-align:center;' }, 'إجراءات التحكم')
+						E('th', {}, horusI18n.t('mac_brand')),
+						E('th', {}, horusI18n.t('subscriber_radius')),
+						E('th', {}, horusI18n.t('live_speed')),
+						E('th', {}, horusI18n.t('total_session')),
+						E('th', { style: 'text-align:center;' }, horusI18n.t('signal_rate')),
+						E('th', {}, horusI18n.t('network_ip')),
+						E('th', { style: 'text-align:center;' }, horusI18n.t('client_actions'))
 					])
 				]),
 				detailClientsTbody
@@ -432,16 +429,16 @@ return baseclass.extend({
 		var inNewIp = E('input', { type: 'text', value: ap.ip !== '-' ? ap.ip : '', placeholder: '192.168.169.224' });
 		var inNetmask = E('input', { type: 'text', value: '255.255.255.0', placeholder: '255.255.255.0' });
 		var inGateway = E('input', { type: 'text', value: '192.168.169.1', placeholder: '192.168.169.1' });
-		var inHostname = E('input', { type: 'text', value: ap.hostname || '', placeholder: 'اسم الإكسس الجديد' });
-		var inApAdminPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة للوحة التحكم' });
+		var inHostname = E('input', { type: 'text', value: ap.hostname || '', placeholder: 'AP Hostname' });
+		var inApAdminPass = E('input', { type: 'password', placeholder: 'New Admin Password' });
 
-		var btnApplyIp = E('button', { class: 'btn-primary' }, '💾 تغيير عنوان الـ IP والاسم وباسورد الإكسس فوراً عبر HMP');
+		var btnApplyIp = E('button', { class: 'btn-primary' }, horusI18n.t('apply_remote_ip_btn'));
 		btnApplyIp.onclick = function() {
 			var newIp = inNewIp.value.trim();
 			var newHost = inHostname.value.trim();
 			var newPass = inApAdminPass.value.trim();
 
-			if (!newIp && !newHost && !newPass) { alert('يرجى كتابة عنوان IP أو اسم أو كلمة سر جديدة.'); return; }
+			if (!newIp && !newHost && !newPass) { alert('Please enter new IP, Hostname, or Password.'); return; }
 
 			btnApplyIp.disabled = true;
 			var payload = { target_ap: apMac, action: 'set_ip', ip: newIp, netmask: inNetmask.value.trim(), gateway: inGateway.value.trim(), hostname: newHost };
@@ -458,18 +455,18 @@ return baseclass.extend({
 					});
 				}
 				btnApplyIp.disabled = false;
-				ui.addNotification(null, E('p', '✅ تم حفظ وتطبيق إعدادات الشبكة والباسورد على الإكسس بنجاح!'));
+				ui.addNotification(null, E('p', '✅ Network and credentials applied via HMP.'));
 			}).catch(function(){ btnApplyIp.disabled = false; });
 		};
 
 		var ipSection = E('div', { class: 'glass-card' }, [
-			E('h3', { style: 'margin-top:0; color:#a855f7; font-size:17px;' }, '🌐 إعدادات الشبكة وباسورد الإكسس عن بعد (Remote Static IP & Admin Password)'),
+			E('h3', { style: 'margin-top:0; color:#a855f7; font-size:17px;' }, horusI18n.t('remote_ip_admin_title')),
 			E('div', { class: 'form-row' }, [
-				E('div', { class: 'form-field' }, [ E('label', {}, 'اسم الإكسس (Hostname):'), inHostname ]),
-				E('div', { class: 'form-field' }, [ E('label', {}, 'عنوان الـ IP الجديد:'), inNewIp ]),
-				E('div', { class: 'form-field' }, [ E('label', {}, 'قناع الشبكة (Netmask):'), inNetmask ]),
-				E('div', { class: 'form-field' }, [ E('label', {}, 'البوابة (Gateway):'), inGateway ]),
-				E('div', { class: 'form-field' }, [ E('label', {}, 'كلمة سر لوحة التحكم (Admin Password):'), inApAdminPass ])
+				E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('ap_name_host') + ':'), inHostname ]),
+				E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('new_ip')), inNewIp ]),
+				E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('netmask')), inNetmask ]),
+				E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('gateway')), inGateway ]),
+				E('div', { class: 'form-field' }, [ E('label', {}, horusI18n.t('admin_password')), inApAdminPass ])
 			]),
 			btnApplyIp
 		]);
@@ -501,15 +498,15 @@ return baseclass.extend({
 
 		// 1. Update Metrics smoothly in-place
 		if (self.apDetailElements.mRxSpeed) self.apDetailElements.mRxSpeed.textContent = '⬇️ ' + (st.rx_speed || '0 bps');
-		if (self.apDetailElements.mRxTotal) self.apDetailElements.mRxTotal.textContent = 'سرعة التحميل اللحظية | الإجمالي: ' + (st.total_rx || '-');
+		if (self.apDetailElements.mRxTotal) self.apDetailElements.mRxTotal.textContent = horusI18n.t('rx_live_total') + ' ' + (st.total_rx || '-');
 		if (self.apDetailElements.mTxSpeed) self.apDetailElements.mTxSpeed.textContent = '⬆️ ' + (st.tx_speed || '0 bps');
-		if (self.apDetailElements.mTxTotal) self.apDetailElements.mTxTotal.textContent = 'سرعة الرفع اللحظية | الإجمالي: ' + (st.total_tx || '-');
-		if (self.apDetailElements.mClients) self.apDetailElements.mClients.textContent = '👥 ' + clientsList.length + ' متصل';
+		if (self.apDetailElements.mTxTotal) self.apDetailElements.mTxTotal.textContent = horusI18n.t('tx_live_total') + ' ' + (st.total_tx || '-');
+		if (self.apDetailElements.mClients) self.apDetailElements.mClients.textContent = '👥 ' + clientsList.length;
 		if (self.apDetailElements.mCpuStats) self.apDetailElements.mCpuStats.textContent = '🧠 ' + (st.cpu_load || '0.0') + ' | 💾 ' + (st.mem_pct || 0) + '%' + ((st.cpu_temp && st.cpu_temp !== '-') ? ' | 🌡️ ' + st.cpu_temp : '');
 
-		// 2. Update Clients Heading & in-place Row Reconciliation (True Zero-Flicker)
+		// 2. Update Clients Heading & in-place Row Reconciliation
 		if (self.apDetailElements.detailClientsHeading) {
-			self.apDetailElements.detailClientsHeading.textContent = '👥 المشتركون المتصلون لاسلكياً على هذا الإكسس (' + clientsList.length + ')';
+			self.apDetailElements.detailClientsHeading.textContent = horusI18n.t('wifi_subscribers_title') + ' (' + clientsList.length + ')';
 		}
 		if (self.apDetailElements.detailClientsTbody) {
 			self.updateClientsTableInPlace(self.apDetailElements.detailClientsTbody, clientsList, apMac, state, ui);
