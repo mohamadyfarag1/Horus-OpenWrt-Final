@@ -192,11 +192,19 @@ class HorusDB:
         with self.lock:
             if mac in self.state["aps"]:
                 return self.state["aps"][mac].get("ip", "255.255.255.255")
-            return "255.255.255.255"
-
     def get_all_aps(self):
         with self.lock:
             return list(self.state["aps"].keys())
+
+    def get_aps(self):
+        with self.lock:
+            return dict(self.state["aps"])
+
+    def get_ap_hostname(self, mac):
+        with self.lock:
+            if mac in self.state["aps"]:
+                return self.state["aps"][mac].get("hostname", "AP")
+            return "AP"
 
     def set_my_mac(self, mac):
         with self.lock:

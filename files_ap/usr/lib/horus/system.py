@@ -514,17 +514,41 @@ def get_ethernet_ports():
 
 def ban_mac_locally(mac):
     try:
+        # 1. Hardware RF deauth & instant association rejection via hostapd ubus
         out = subprocess.check_output("ubus list | grep hostapd", shell=True, text=True)
         for h in out.splitlines():
             h = h.strip()
             if not h or not h.startswith("hostapd."): continue
-            subprocess.run(f"ubus call {h} del_client '{{\"addr\":\"{mac}\", \"ban_time\": 0}}'", shell=True)
+            subprocess.run(f"ubus call {h} del_client '{{\"addr\":\"{mac}\", \"ban_time\": 0, \"deauth\": true}}'", shell=True)
+        
+        # 2. Hardware MAC ACL in Wireless configuration (Drops probe requests & blocks auth)
+        try:
+            raw_wl = subprocess.check_output("uci -q get wireless.@wifi-iface[0].maclist", shell=True, text=True).strip()
+            if mac not in raw_wl:
+                subprocess.run("uci -q set wireless.@wifi-iface[0].macfilter='deny'", shell=True)
+                subprocess.run(f"uci -q add_list wireless.@wifi-iface[0].maclist='{mac}'", shell=True)
+                subprocess.run("uci -q set wireless.@wifi-iface[1].macfilter='deny'", shell=True)
+                subprocess.run(f"uci -q add_list wireless.@wifi-iface[1].maclist='{mac}'", shell=True)
+                subprocess.run("uci commit wireless", shell=True)
+        except Exception:
+            pass
+        
+        # 3. Layer 3 Firewall drop
         subprocess.run(f"iptables -I FORWARD 1 -m mac --mac-source {mac} -j DROP", shell=True)
     except Exception:
         pass
 
 def unban_mac_locally(mac):
     try:
+        # 1. Remove from Hardware MAC ACL in Wireless configuration
+        try:
+            subprocess.run(f"uci -q del_list wireless.@wifi-iface[0].maclist='{mac}'", shell=True)
+            subprocess.run(f"uci -q del_list wireless.@wifi-iface[1].maclist='{mac}'", shell=True)
+            subprocess.run("uci commit wireless", shell=True)
+        except Exception:
+            pass
+
+        # 2. Remove Layer 3 Firewall drop
         subprocess.run(f"iptables -D FORWARD -m mac --mac-source {mac} -j DROP", shell=True)
     except Exception:
         pass

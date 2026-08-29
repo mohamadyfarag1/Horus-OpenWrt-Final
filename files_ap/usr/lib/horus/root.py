@@ -239,6 +239,26 @@ class RootNode:
                                 ban_mac_locally(cmac) # Ensure cleanup
                                 unban_mac_locally(cmac)
                                 self.send_cmd({"type": "unban", "src_mac": self.my_mac, "target_mac": cmac})
+                            elif action == "allow_on_ap":
+                                exempt_ap = cmd.get("exempt_ap", "").upper()
+                                # 1. If exempt_ap is Root, unban locally
+                                if exempt_ap == self.my_mac:
+                                    unban_mac_locally(cmac)
+                                else:
+                                    target_ip = self.db.get_ap_ip(exempt_ap)
+                                    self.send_cmd({"type": "unban", "src_mac": self.my_mac, "target_mac": cmac}, dst_mac=exempt_ap, dst_ip=target_ip)
+                                
+                                # 2. Ensure all other APs have the ban enforced!
+                                for ap_mac, ap_info in self.db.get_aps().items():
+                                    if ap_mac != exempt_ap:
+                                        if ap_mac == self.my_mac:
+                                            ban_mac_locally(cmac)
+                                        else:
+                                            target_ip = self.db.get_ap_ip(ap_mac)
+                                            self.send_cmd({"type": "ban", "src_mac": self.my_mac, "target_mac": cmac, "duration": 0}, dst_mac=ap_mac, dst_ip=target_ip)
+                                
+                                exempt_host = self.db.get_ap_hostname(exempt_ap) or exempt_ap
+                                self.db.add_log("unban", cmac, f"تم قفل الماك والسماح له فقط على إكسس ({exempt_host}) وحظره على باقي الشبكة", now)
                     except Exception:
                         pass
                 

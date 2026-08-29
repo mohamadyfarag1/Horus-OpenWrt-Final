@@ -339,9 +339,9 @@ return view.extend({
 					var dateStr = b.banned_at ? new Date(b.banned_at * 1000).toLocaleString('ar-EG') : '-';
 					var durStr = (b.duration === 0 || !b.duration) ? '🔒 دائم' : Math.round(b.duration / 3600) + ' ساعة';
 
-					var btnUnban = E('button', { class: 'btn-unban' }, '🔓 فك الحظر');
+					var btnUnban = E('button', { class: 'btn-unban' }, '🔓 فك الحظر بالكامل');
 					btnUnban.onclick = function() {
-						if (confirm('فك الحظر عن الماك (' + mac + ')؟')) {
+						if (confirm('فك الحظر بالكامل عن الماك (' + mac + ') على جميع الإكسسات؟')) {
 							fetch('/cgi-bin/horus_ban_action', {
 								method: 'POST',
 								headers: { 'Content-Type': 'application/json' },
@@ -353,13 +353,39 @@ return view.extend({
 						}
 					};
 
+					var btnAllowAp = E('button', { class: 'btn-unban', style: 'background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); margin-right:6px;' }, '🎯 السماح بإكسس منزله فقط');
+					btnAllowAp.onclick = function() {
+						var apKeys = Object.keys(state.knownAps);
+						if (apKeys.length === 0) { alert('لا توجد إكسسات متاحة'); return; }
+						var apOptions = apKeys.map(function(k, idx){
+							return (idx + 1) + '. ' + (state.knownAps[k].hostname || 'AP') + ' (' + (state.knownAps[k].ip || k) + ')';
+						}).join('\n');
+						var selIdx = prompt('اختر رقم الإكسس المسموح للمشترك الأصلي بالعمل عليه (وحظره على باقي الشبكة):\n\n' + apOptions);
+						if (selIdx) {
+							var num = parseInt(selIdx, 10);
+							if (num >= 1 && num <= apKeys.length) {
+								var chosenAp = apKeys[num - 1];
+								fetch('/cgi-bin/horus_ban_action', {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json' },
+									body: JSON.stringify({ action: 'allow_on_ap', mac: mac, exempt_ap: chosenAp })
+								}).then(function(){
+									ui.addNotification(null, E('p', '✅ تم قفل المشترك على إكسسه الأصلي وحظره على باقي الشبكة بنجاح!'));
+									loadData();
+								});
+							} else {
+								alert('اختيار غير صحيح');
+							}
+						}
+					};
+
 					rows.push(E('tr', {}, [
 						E('td', { style: 'font-family:monospace; font-weight:700; color:#f87171;' }, mac),
 						E('td', { style: 'color:#00e676; font-weight:700;' }, dispName),
 						E('td', {}, E('span', { class: 'badge badge-danger' }, b.reason || 'حظر يدوي')),
 						E('td', { style: 'font-size:12px; color:#94a3b8;' }, dateStr),
 						E('td', {}, durStr),
-						E('td', { style: 'text-align:center;' }, btnUnban)
+						E('td', { style: 'text-align:center; display:flex; gap:6px; justify-content:center;' }, [btnUnban, btnAllowAp])
 					]));
 				});
 			}
