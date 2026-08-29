@@ -3,7 +3,7 @@
 'require dom';
 'require ui';
 
-return baseclass.singleton({
+return baseclass.extend({
 	buildGroupsSection: function(state, refreshCb, ui) {
 		var groupForm = E('div', { class: 'glass-card', style: 'text-align:right;' }, [
 			E('h3', { style: 'margin-top:0; color:#00e676; font-size:17px;' }, '➕ إنشاء قالب مجموعة وايرليس جديدة'),
