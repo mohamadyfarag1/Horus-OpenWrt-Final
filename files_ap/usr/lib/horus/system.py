@@ -59,56 +59,178 @@ def get_wifi_info():
     info = []
     try:
         out = subprocess.check_output("uci show wireless", shell=True, text=True)
-        ifaces = {}
         devices = {}
+        ifaces = {}
         for line in out.splitlines():
             line = line.strip()
-            if not line or '=' not in line:
-                continue
-            key, val = line.split('=', 1)
-            val = val.strip("'")
-            parts = key.split('.')
+            if not line or '=' not in line: continue
+            k, v = line.split('=', 1)
+            v = v.strip("'")
+            parts = k.split('.')
             if len(parts) >= 3:
-                if parts[1].startswith('@wifi-iface'):
-                    idx = parts[1]
-                    if idx not in ifaces: ifaces[idx] = {}
-                    ifaces[idx][parts[2]] = val
+                sec = parts[1]
+                prop = parts[2]
+                if prop == 'type' and v == 'mac80211':
+                    devices[sec] = devices.get(sec, {})
+                if prop == 'device':
+                    ifaces[sec] = ifaces.get(sec, {})
+                    ifaces[sec]['device'] = v
+                if sec in devices: devices[sec][prop] = v
+                elif sec in ifaces: ifaces[sec][prop] = v
                 else:
-                    dev = parts[1]
-                    if dev not in devices: devices[dev] = {}
-                    devices[dev][parts[2]] = val
-                    
-        for idx, data in ifaces.items():
-            if 'device' in data:
-                dev = data['device']
-                iface = data.get('ifname', dev)
-                ssid = data.get('ssid', '')
-                enc = data.get('encryption', 'none')
-                mode = data.get('mode', 'ap')
-                has_pw = 'key' in data
-                
-                ch = 0
-                band = "unknown"
-                if dev in devices:
-                    ch_str = devices[dev].get('channel', '0')
-                    if ch_str == 'auto': ch_str = '0'
-                    try: ch = int(ch_str)
-                    except: ch = 0
-                    band = devices[dev].get('band', 'unknown')
-                
-                info.append({
-                    "iface": iface,
-                    "device": dev,
-                    "ssid": ssid,
-                    "band": band,
-                    "channel": ch,
-                    "mode": mode,
-                    "encryption": enc,
-                    "has_password": has_pw
-                })
+                    if 'radio' in sec:
+                        devices[sec] = devices.get(sec, {})
+                        devices[sec][prop] = v
+                    else:
+                        ifaces[sec] = ifaces.get(sec, {})
+                        ifaces[sec][prop] = v
+        
+        iw_data = {}
+        try:
+            iw_out = subprocess.check_output("iwinfo", shell=True, text=True)
+            cur_iface = None
+            for line in iw_out.splitlines():
+                if line and not line.startswith(' '):
+                    cur_iface = line.split()[0]
+                    iw_data[cur_iface] = {'iface': cur_iface}
+                elif cur_iface and line:
+                    if 'ESSID:' in line:
+                        m = re.search(r'ESSID:\s*"(.*?)"', line)
+                        if m: iw_data[cur_iface]['ssid'] = m.group(1)
+                    if 'Channel:' in line:
+                        m = re.search(r'Channel:\s*(\d+)\s*\((.*?)\)', line)
+                        if m:
+                            iw_data[cur_iface]['channel'] = int(m.group(1))
+                            iw_data[cur_iface]['freq'] = m.group(2)
+                    if 'HT Mode:' in line:
+                        m = re.search(r'HT Mode:\s*(\S+)', line)
+                        if m: iw_data[cur_iface]['htmode'] = m.group(1)
+                    if 'Tx-Power:' in line:
+                        m = re.search(r'Tx-Power:\s*(\d+)\s*dBm', line)
+                        if m: iw_data[cur_iface]['txpower'] = int(m.group(1))
+                    if 'Mode:' in line:
+                        m = re.search(r'Mode:\s*(\S+)', line)
+                        if m: iw_data[cur_iface]['mode'] = m.group(1)
+                    if 'Encryption:' in line:
+                        m = re.search(r'Encryption:\s*(.*)', line)
+                        if m: iw_data[cur_iface]['encryption'] = m.group(1).strip()
+        except Exception:
+            pass
+
+        for dev_name, dev in devices.items():
+            band = dev.get('band', '')
+            if not band:
+                band = '5g' if ('5' in dev_name or '1' in dev_name) else '2g'
+            ch = dev.get('channel', 'auto')
+            htmode = dev.get('htmode', 'HT20')
+            txpower = dev.get('txpower', '20')
+            disabled = (dev.get('disabled', '0') == '1')
+            
+            matched_iface = {}
+            for if_name, if_data in ifaces.items():
+                if if_data.get('device') == dev_name:
+                    matched_iface = if_data
+                    break
+            
+            ssid = matched_iface.get('ssid', '')
+            enc = matched_iface.get('encryption', 'none')
+            mode = matched_iface.get('mode', 'ap')
+            
+            for iw_k, iw_v in iw_data.items():
+                if (ssid and iw_v.get('ssid') == ssid) or (band == '2g' and iw_v.get('channel', 99) <= 14) or (band in ['5g', '6g'] and iw_v.get('channel', 0) >= 36):
+                    if iw_v.get('channel'): ch = str(iw_v['channel'])
+                    if iw_v.get('htmode'): htmode = iw_v['htmode']
+                    if iw_v.get('txpower'): txpower = str(iw_v['txpower'])
+                    if iw_v.get('ssid'): ssid = iw_v['ssid']
+                    break
+            
+            info.append({
+                'device': dev_name,
+                'band': '2.4GHz' if band in ['2g', '2.4g', '2.4GHz'] else '5GHz',
+                'band_code': '2g' if band in ['2g', '2.4g', '2.4GHz'] else '5g',
+                'ssid': ssid or 'Horus-WiFi',
+                'channel': str(ch),
+                'htmode': htmode,
+                'txpower': str(txpower),
+                'disabled': disabled,
+                'encryption': enc,
+                'mode': mode
+            })
     except Exception:
         pass
     return info
+
+def get_ethernet_ports():
+    ports = []
+    try:
+        arp_map = {}
+        try:
+            with open("/proc/net/arp", "r") as f:
+                for line in f.readlines()[1:]:
+                    parts = line.split()
+                    if len(parts) >= 6:
+                        ip_addr, mac_addr = parts[0], parts[3].upper()
+                        if mac_addr != "00:00:00:00:00:00":
+                            arp_map[mac_addr] = ip_addr
+        except Exception:
+            pass
+
+        port_macs = {}
+        try:
+            out = subprocess.check_output("brctl showmacs br-lan 2>/dev/null", shell=True, text=True)
+            for line in out.splitlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 3 and parts[2] == "no":
+                    p_num = parts[0]
+                    cmac = parts[1].upper()
+                    if p_num not in port_macs: port_macs[p_num] = []
+                    port_macs[p_num].append(cmac)
+        except Exception:
+            pass
+
+        for p in ['lan1', 'lan2', 'lan3', 'lan4', 'wan']:
+            p_path = f"/sys/class/net/{p}"
+            if os.path.exists(p_path):
+                oper = "down"
+                speed = 0
+                duplex = "full"
+                try:
+                    with open(f"{p_path}/operstate", "r") as f:
+                        oper = f.read().strip()
+                except Exception:
+                    pass
+                try:
+                    with open(f"{p_path}/speed", "r") as f:
+                        speed = int(f.read().strip())
+                except Exception:
+                    pass
+                try:
+                    with open(f"{p_path}/duplex", "r") as f:
+                        duplex = f.read().strip()
+                except Exception:
+                    pass
+                
+                attached_clients = []
+                p_num = p.replace('lan', '')
+                if p_num in port_macs:
+                    for cmac in port_macs[p_num]:
+                        attached_clients.append({
+                            "mac": cmac,
+                            "ip": arp_map.get(cmac, "")
+                        })
+
+                ports.append({
+                    "port": p,
+                    "label": p.upper(),
+                    "state": oper,
+                    "is_up": (oper == "up"),
+                    "speed": speed if oper == "up" else 0,
+                    "speed_str": f"{speed} Mbps {duplex}" if oper == "up" and speed > 0 else ("متصل" if oper == "up" else "مفصول"),
+                    "clients": attached_clients
+                })
+    except Exception:
+        pass
+    return ports
 
 def ban_mac_locally(mac):
     try:

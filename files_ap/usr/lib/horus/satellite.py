@@ -6,7 +6,7 @@ import subprocess
 from .config import HELLO_INTERVAL, TELEMETRY_INTERVAL
 from .system import (
     get_my_mac, get_lan_ip, get_hostname, get_wireless_macs,
-    get_wifi_info, ban_mac_locally, unban_mac_locally, apply_wifi_config
+    get_wifi_info, get_ethernet_ports, ban_mac_locally, unban_mac_locally, apply_wifi_config
 )
 from .protocol import send_hmp_frame, parse_incoming_data
 from .rrm import get_scan_data
@@ -31,7 +31,8 @@ class SatelliteNode:
                     "src_mac": self.my_mac,
                     "hostname": self.hostname,
                     "ip": get_lan_ip(),
-                    "wifi": get_wifi_info()
+                    "wifi": get_wifi_info(),
+                    "ports": get_ethernet_ports()
                 }
                 self.send_to_root(payload)
             except Exception:
@@ -47,6 +48,8 @@ class SatelliteNode:
                     "hostname": self.hostname,
                     "ip": get_lan_ip(),
                     "clients": get_wireless_macs(),
+                    "wifi": get_wifi_info(),
+                    "ports": get_ethernet_ports(),
                     "scan_data": get_scan_data()
                 }
                 self.send_to_root(payload)
@@ -150,21 +153,32 @@ class SatelliteNode:
                                 except Exception:
                                     pass
                         
-                        elif action == "wifi_radio":
-                            state = str(data.get("state"))
-                            if state in ['0', '1']:
-                                try:
-                                    out = subprocess.check_output("uci -q show wireless", shell=True, text=True)
-                                    for line in out.splitlines():
-                                        if "wifi-device" in line:
-                                            dev = line.split('.')[1].split('=')[0]
-                                            subprocess.run(f"uci set wireless.{dev}.disabled='{state}'", shell=True)
-                                    subprocess.run("uci commit wireless", shell=True)
-                                    subprocess.run("wifi reload", shell=True)
-                                except Exception:
-                                    pass
+                        elif action == "wifi_radio" or action == "radio_toggle":
+                            target_radio = data.get("radio", "all")
+                            state = str(data.get("state", "0")) # 0=enable, 1=disable
+                            try:
+                                out = subprocess.check_output("uci -q show wireless", shell=True, text=True)
+                                devs = [l.split('.')[1].split('=')[0] for l in out.splitlines() if 'wifi-device' in l]
+                                for dev in devs:
+                                    is_2g = ('0' in dev or '2g' in dev)
+                                    is_5g = ('1' in dev or '5g' in dev)
+                                    match = False
+                                    if target_radio in [dev, 'all', 'both', None]: match = True
+                                    elif target_radio in ['2g', 'radio0'] and is_2g: match = True
+                                    elif target_radio in ['5g', 'radio1'] and is_5g: match = True
+                                    if match:
+                                        subprocess.run(f"uci set wireless.{dev}.disabled='{state}'", shell=True)
+                                subprocess.run("uci commit wireless", shell=True)
+                                subprocess.run("wifi reload", shell=True)
+                            except Exception:
+                                pass
                         
-                        elif action == "port_state":
+                        elif action == "radio_restart":
+                            target_radio = data.get("radio", "all")
+                            if target_radio == "all": subprocess.run("wifi reload", shell=True)
+                            else: subprocess.run(f"wifi reload {target_radio}", shell=True)
+                        
+                        elif action == "port_state" or action == "port_toggle":
                             port = data.get("port")
                             state = data.get("state")
                             if port and state in ['up', 'down']:

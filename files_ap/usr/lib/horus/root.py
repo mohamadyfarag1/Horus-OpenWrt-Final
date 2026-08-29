@@ -67,7 +67,8 @@ class RootNode:
                                 ip=data.get("ip", ""),
                                 last_seen=now,
                                 wifi_info=data.get("wifi", []),
-                                scan_data={} # Don't overwrite scan on hello
+                                scan_data={},
+                                ports=data.get("ports", [])
                             )
                     elif msg_type == "telemetry":
                         clients = data.get("clients", [])
@@ -78,8 +79,9 @@ class RootNode:
                                 hostname=data.get("hostname", "unknown"),
                                 ip=data.get("ip", ""),
                                 last_seen=now,
-                                wifi_info=data.get("wifi", []), # Fallback, usually empty in telemetry
-                                scan_data=scan_data
+                                wifi_info=data.get("wifi", []),
+                                scan_data=scan_data,
+                                ports=data.get("ports", [])
                             )
                             self.db.update_clients(src_mac, clients, now)
                             self.handle_anti_spoofing(now)
@@ -111,7 +113,8 @@ class RootNode:
                         ip=get_lan_ip(),
                         last_seen=now,
                         wifi_info=get_wifi_info(),
-                        scan_data={} 
+                        scan_data={},
+                        ports=get_ethernet_ports()
                     )
                     self.db.update_clients(self.my_mac, own_clients, now)
                     self.handle_anti_spoofing(now)

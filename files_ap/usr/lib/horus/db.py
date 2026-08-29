@@ -33,7 +33,7 @@ class HorusDB:
         except Exception:
             pass
 
-    def update_ap(self, mac, hostname, ip, last_seen, wifi_info, scan_data):
+    def update_ap(self, mac, hostname, ip, last_seen, wifi_info, scan_data, ports=None):
         with self.lock:
             if mac not in self.state["aps"]:
                 self.state["aps"][mac] = {"clients": []}
@@ -43,6 +43,8 @@ class HorusDB:
             ap["last_seen"] = last_seen
             if wifi_info:
                 ap["wifi"] = wifi_info
+            if ports:
+                ap["ports"] = ports
             ap["scan_data"] = scan_data
             self.save()
 
