@@ -50,8 +50,18 @@ return view.extend({
 			state.currentDetailApMac = null;
 		};
 
-		// 1. Dashboard View Elements
-		var cardsDiv = E('div', { class: 'dash-cards' });
+		// 1. Dashboard View Top Cards (Built once, updated in-place)
+		var cardTotalH3 = E('h3', {}, '0');
+		var cardOnlineH3 = E('h3', {}, '0');
+		var cardOfflineH3 = E('h3', {}, '0');
+		var cardClientsH3 = E('h3', {}, '0');
+
+		var cardsDiv = E('div', { class: 'dash-cards' }, [
+			E('div', { class: 'dash-card total' }, [ cardTotalH3, E('p', {}, 'إجمالي الإكسسات') ]),
+			E('div', { class: 'dash-card online' }, [ cardOnlineH3, E('p', {}, 'متصل 🟢') ]),
+			E('div', { class: 'dash-card offline' }, [ cardOfflineH3, E('p', {}, 'مفصول 🔴') ]),
+			E('div', { class: 'dash-card clients' }, [ cardClientsH3, E('p', {}, 'العملاء المتصلين') ])
+		]);
 		viewDash.appendChild(cardsDiv);
 
 		// Bulk Bar
@@ -137,6 +147,184 @@ return view.extend({
 			window.scrollTo({ top: 0, behavior: 'smooth' });
 		}
 
+		function createApTableRow(ap) {
+			var isSelected = state.selectedAps.has(ap.mac);
+			var rowCb = E('input', { type: 'checkbox', class: 'ap-row-cb', style: 'width:18px; height:18px; cursor:pointer; accent-color:#00e676;' });
+			rowCb.checked = isSelected;
+
+			var tr = E('tr', { 'data-mac': ap.mac, class: isSelected ? 'selected' : '' });
+
+			rowCb.onchange = function() {
+				if (rowCb.checked) state.selectedAps.add(ap.mac);
+				else state.selectedAps.delete(ap.mac);
+				tr.className = rowCb.checked ? 'selected' : '';
+				horusBulk.updateBulkBar(state, bulkBar, bulkTitle);
+			};
+
+			var dot = E('span', { class: 'live-ap-dot status-dot ' + (ap.isOnline ? 'status-online' : 'status-offline') });
+			var statusText = E('span', { class: 'live-ap-status-text' }, ap.isOnline ? 'متصل 🟢' : 'مفصول 🔴');
+
+			var wifiPills = [];
+			if (ap.wifi && ap.wifi.length > 0) {
+				ap.wifi.forEach(function(w) {
+					var is5G = (w.band_code === '5g' || w.band === '5GHz' || w.channel >= 36);
+					var bColor = is5G ? '#38bdf8' : '#4ade80';
+					var bIcon = is5G ? '⚡' : '📶';
+					var bLabel = is5G ? '5G' : '2.4G';
+					var bChan = (w.channel || 'Auto');
+					wifiPills.push(E('div', { class: 'ap-wifi-pill' }, [
+						E('span', { style: 'color:' + bColor + '; font-weight:800;' }, bIcon + ' ' + bLabel + ' (' + bChan + '):'),
+						E('span', { style: 'color:#f8fafc; font-weight:600;' }, w.ssid || '-')
+					]));
+				});
+			}
+			var wifiBox = E('div', { class: 'ap-wifi-box live-ap-wifi-box' }, wifiPills.length > 0 ? wifiPills : [E('span', { style: 'color:#64748b;' }, '-')]);
+
+			var btnManage = E('button', { class: 'btn-ctrl btn-ctrl-steer', style: 'padding: 7px 14px; font-size: 12px;' }, '🖥️ تحكم وإدارة');
+			btnManage.onclick = function() { openApDetailView(ap.mac); };
+
+			var btnReboot = E('button', { class: 'btn-ctrl btn-ctrl-kick', style: 'padding: 7px 14px; font-size: 12px;' }, '🔄 ريستارت');
+			btnReboot.onclick = function() {
+				if (confirm('إعادة تشغيل الإكسس (' + ap.mac + ')؟')) {
+					fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: ap.mac, action: 'reboot' }) });
+					ui.addNotification(null, E('p', 'تم إرسال أمر إعادة التشغيل'));
+				}
+			};
+
+			var actionBox = E('div', { class: 'ap-action-group' }, [btnManage, btnReboot]);
+
+			var pillWifi = E('span', { class: 'pill-wifi live-pill-wifi' }, '📶 ' + ap.clients + ' وايرليس');
+			var pillWired = E('span', { class: 'pill-wired live-pill-wired', style: ap.wired > 0 ? '' : 'display:none;' }, '🔌 ' + ap.wired + ' كابل');
+			var clientBox = E('div', { class: 'ap-clients-box' }, [ pillWifi, pillWired ]);
+
+			var hwCpuB = E('b', { class: 'live-hw-cpu', style: 'color:#38bdf8;' }, ap.stats.cpu_load || '0.0');
+			var hwTempDiv = E('div', { class: 'live-hw-temp-row', style: (ap.stats.cpu_temp && ap.stats.cpu_temp !== '-') ? 'display:flex; justify-content:space-between; gap:6px;' : 'display:none;' }, [
+				E('span', {}, '🌡️ الحرارة:'),
+				E('b', { class: 'live-hw-temp', style: 'color:#f87171;' }, ap.stats.cpu_temp || '')
+			]);
+			var hwRamB = E('b', { class: 'live-hw-ram', style: 'color:#4ade80;' }, (ap.stats.mem_pct || 0) + '%');
+
+			var hwBox = E('div', { class: 'ap-hw-box' }, [
+				E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [ E('span', {}, '🧠 المعالج:'), hwCpuB ]),
+				hwTempDiv,
+				E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [ E('span', {}, '💾 الرام:'), hwRamB ])
+			]);
+
+			var speedRxSpan = E('span', { class: 'live-ap-rx' }, ap.stats.rx_speed || '0 bps');
+			var speedTxSpan = E('span', { class: 'live-ap-tx' }, ap.stats.tx_speed || '0 bps');
+
+			var speedBox = E('div', { class: 'speed-meter-box', style: 'min-width:115px;' }, [
+				E('div', { class: 'speed-meter-row rx' }, [ E('span', {}, '⬇️ سحب:'), speedRxSpan ]),
+				E('div', { class: 'speed-meter-row tx' }, [ E('span', {}, '⬆️ رفع:'), speedTxSpan ])
+			]);
+
+			dom.content(tr, [
+				E('td', { style: 'text-align:center;' }, rowCb),
+				E('td', { style: 'white-space:nowrap;' }, [dot, ' ', statusText]),
+				E('td', { class: 'live-ap-host', style: 'font-weight:800; font-size:14px; color:#f8fafc;' }, ap.hostname),
+				E('td', {}, [
+					E('div', { class: 'live-ap-ip', style: 'color:#38bdf8; font-family:monospace; font-weight:800;' }, ap.ip),
+					E('div', { style: 'font-family:monospace; font-size:11px; color:#94a3b8;' }, ap.mac)
+				]),
+				E('td', {}, speedBox),
+				E('td', {}, hwBox),
+				E('td', {}, clientBox),
+				E('td', {}, wifiBox),
+				E('td', { style: 'text-align:center;' }, actionBox)
+			]);
+
+			return tr;
+		}
+
+		function updateDashboardTableInPlace(processed) {
+			var q = searchInput.value.toLowerCase().trim();
+			var filtered = processed.filter(function(ap) {
+				var matchSearch = (ap.mac.toLowerCase().indexOf(q) > -1) || 
+								  (ap.hostname.toLowerCase().indexOf(q) > -1) || 
+								  (ap.ip.toLowerCase().indexOf(q) > -1);
+				var matchFilter = true;
+				if (filterSelect.value === 'online' && !ap.isOnline) matchFilter = false;
+				if (filterSelect.value === 'offline' && ap.isOnline) matchFilter = false;
+				return matchSearch && matchFilter;
+			});
+
+			if (filtered.length === 0) {
+				var emptyEl = tableBody.querySelector('.empty-ap-row');
+				if (!emptyEl) {
+					dom.content(tableBody, [
+						E('tr', { class: 'empty-ap-row' }, E('td', { colspan: 9, style: 'text-align:center; padding: 25px; color: #64748b;' }, 'لا توجد إكسسات مطابقة.'))
+					]);
+				}
+				return;
+			}
+
+			var emptyRow = tableBody.querySelector('.empty-ap-row');
+			if (emptyRow) emptyRow.remove();
+
+			var activeMacSet = new Set();
+
+			filtered.forEach(function(ap) {
+				activeMacSet.add(ap.mac);
+				var existingRow = tableBody.querySelector('tr[data-mac="' + ap.mac + '"]');
+
+				if (existingRow) {
+					// In-place Update (Zero flicker)
+					var dot = existingRow.querySelector('.live-ap-dot');
+					if (dot) dot.className = 'live-ap-dot status-dot ' + (ap.isOnline ? 'status-online' : 'status-offline');
+
+					var stText = existingRow.querySelector('.live-ap-status-text');
+					var nStText = ap.isOnline ? 'متصل 🟢' : 'مفصول 🔴';
+					if (stText && stText.textContent !== nStText) stText.textContent = nStText;
+
+					var hostEl = existingRow.querySelector('.live-ap-host');
+					if (hostEl && hostEl.textContent !== ap.hostname) hostEl.textContent = ap.hostname;
+
+					var ipEl = existingRow.querySelector('.live-ap-ip');
+					if (ipEl && ipEl.textContent !== ap.ip) ipEl.textContent = ap.ip;
+
+					var rxEl = existingRow.querySelector('.live-ap-rx');
+					var nRx = ap.stats.rx_speed || '0 bps';
+					if (rxEl && rxEl.textContent !== nRx) rxEl.textContent = nRx;
+
+					var txEl = existingRow.querySelector('.live-ap-tx');
+					var nTx = ap.stats.tx_speed || '0 bps';
+					if (txEl && txEl.textContent !== nTx) txEl.textContent = nTx;
+
+					var cpuEl = existingRow.querySelector('.live-hw-cpu');
+					var nCpu = ap.stats.cpu_load || '0.0';
+					if (cpuEl && cpuEl.textContent !== nCpu) cpuEl.textContent = nCpu;
+
+					var ramEl = existingRow.querySelector('.live-hw-ram');
+					var nRam = (ap.stats.mem_pct || 0) + '%';
+					if (ramEl && ramEl.textContent !== nRam) ramEl.textContent = nRam;
+
+					var pWifi = existingRow.querySelector('.live-pill-wifi');
+					var nWifi = '📶 ' + ap.clients + ' وايرليس';
+					if (pWifi && pWifi.textContent !== nWifi) pWifi.textContent = nWifi;
+
+					var pWired = existingRow.querySelector('.live-pill-wired');
+					if (pWired) {
+						if (ap.wired > 0) {
+							pWired.style.display = '';
+							pWired.textContent = '🔌 ' + ap.wired + ' كابل';
+						} else {
+							pWired.style.display = 'none';
+						}
+					}
+				} else {
+					tableBody.appendChild(createApTableRow(ap));
+				}
+			});
+
+			var currentRows = tableBody.querySelectorAll('tr[data-mac]');
+			currentRows.forEach(function(r) {
+				var rMac = r.getAttribute('data-mac');
+				if (rMac && !activeMacSet.has(rMac)) {
+					r.remove();
+				}
+			});
+		}
+
 		function fetchNetworkData() {
 			Promise.all([
 				fetch('/cgi-bin/horus_map_data?_=' + Date.now()).then(function(r){ return r.json(); }).catch(function(){ return {}; }),
@@ -190,7 +378,12 @@ return view.extend({
 			if (isChecked) {
 				Object.keys(aps).forEach(function(m){ state.selectedAps.add(m); });
 			}
-			renderDashboard();
+			tableBody.querySelectorAll('tr[data-mac]').forEach(function(tr){
+				var cb = tr.querySelector('.ap-row-cb');
+				if (cb) cb.checked = isChecked;
+				tr.className = isChecked ? 'selected' : '';
+			});
+			horusBulk.updateBulkBar(state, bulkBar, bulkTitle);
 		};
 
 		function renderDashboard() {
@@ -233,124 +426,23 @@ return view.extend({
 				});
 			});
 
-			dom.content(cardsDiv, [
-				E('div', { class: 'dash-card total' }, [ E('h3', {}, total), E('p', {}, 'إجمالي الإكسسات') ]),
-				E('div', { class: 'dash-card online' }, [ E('h3', {}, online), E('p', {}, 'متصل 🟢') ]),
-				E('div', { class: 'dash-card offline' }, [ E('h3', {}, offline), E('p', {}, 'مفصول 🔴') ]),
-				E('div', { class: 'dash-card clients' }, [ E('h3', {}, totalClients), E('p', {}, 'العملاء المتصلين') ])
-			]);
+			// Update Summary Cards smoothly in-place
+			if (cardTotalH3.textContent !== total.toString()) cardTotalH3.textContent = total;
+			if (cardOnlineH3.textContent !== online.toString()) cardOnlineH3.textContent = online;
+			if (cardOfflineH3.textContent !== offline.toString()) cardOfflineH3.textContent = offline;
+			if (cardClientsH3.textContent !== totalClients.toString()) cardClientsH3.textContent = totalClients;
 
-			var q = searchInput.value.toLowerCase().trim();
-			var filtered = processed.filter(function(ap) {
-				var matchSearch = (ap.mac.toLowerCase().indexOf(q) > -1) || 
-								  (ap.hostname.toLowerCase().indexOf(q) > -1) || 
-								  (ap.ip.toLowerCase().indexOf(q) > -1);
-				var matchFilter = true;
-				if (filterSelect.value === 'online' && !ap.isOnline) matchFilter = false;
-				if (filterSelect.value === 'offline' && ap.isOnline) matchFilter = false;
-				return matchSearch && matchFilter;
-			});
-
-			var rows = [];
-			if (filtered.length === 0) {
-				rows.push(E('tr', {}, E('td', { colspan: 9, style: 'text-align:center; padding: 25px; color: #64748b;' }, 'لا توجد إكسسات مطابقة.')));
-			} else {
-				filtered.forEach(function(ap) {
-					var isSelected = state.selectedAps.has(ap.mac);
-					var rowCb = E('input', { type: 'checkbox', style: 'width:18px; height:18px; cursor:pointer; accent-color:#00e676;' });
-					rowCb.checked = isSelected;
-
-					var tr = E('tr', { class: isSelected ? 'selected' : '' });
-
-					rowCb.onchange = function() {
-						if (rowCb.checked) state.selectedAps.add(ap.mac);
-						else state.selectedAps.delete(ap.mac);
-						tr.className = rowCb.checked ? 'selected' : '';
-						horusBulk.updateBulkBar(state, bulkBar, bulkTitle);
-					};
-
-					var dot = E('span', { class: ap.isOnline ? 'status-dot status-online' : 'status-dot status-offline' });
-					
-					var wifiPills = [];
-					if (ap.wifi && ap.wifi.length > 0) {
-						ap.wifi.forEach(function(w) {
-							var is5G = (w.band_code === '5g' || w.band === '5GHz' || w.channel >= 36);
-							var bColor = is5G ? '#38bdf8' : '#4ade80';
-							var bIcon = is5G ? '⚡' : '📶';
-							var bLabel = is5G ? '5G' : '2.4G';
-							var bChan = (w.channel || 'Auto');
-							wifiPills.push(E('div', { class: 'ap-wifi-pill' }, [
-								E('span', { style: 'color:' + bColor + '; font-weight:800;' }, bIcon + ' ' + bLabel + ' (' + bChan + '):'),
-								E('span', { style: 'color:#f8fafc; font-weight:600;' }, w.ssid || '-')
-							]));
-						});
-					}
-					var wifiBox = E('div', { class: 'ap-wifi-box' }, wifiPills.length > 0 ? wifiPills : [E('span', { style: 'color:#64748b;' }, '-')]);
-
-					var btnManage = E('button', { class: 'btn-ctrl btn-ctrl-steer', style: 'padding: 7px 14px; font-size: 12px;' }, '🖥️ تحكم وإدارة');
-					btnManage.onclick = function() { openApDetailView(ap.mac); };
-
-					var btnReboot = E('button', { class: 'btn-ctrl btn-ctrl-kick', style: 'padding: 7px 14px; font-size: 12px;' }, '🔄 ريستارت');
-					btnReboot.onclick = function() {
-						if (confirm('إعادة تشغيل الإكسس (' + ap.mac + ')؟')) {
-							fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: ap.mac, action: 'reboot' }) });
-							ui.addNotification(null, E('p', 'تم إرسال أمر إعادة التشغيل'));
-						}
-					};
-
-					var actionBox = E('div', { class: 'ap-action-group' }, [btnManage, btnReboot]);
-
-					var clientPills = [
-						E('span', { class: 'pill-wifi' }, '📶 ' + ap.clients + ' وايرليس')
-					];
-					if (ap.wired > 0) {
-						clientPills.push(E('span', { class: 'pill-wired' }, '🔌 ' + ap.wired + ' كابل'));
-					}
-					var clientBox = E('div', { class: 'ap-clients-box' }, clientPills);
-
-					var hwBox = E('div', { class: 'ap-hw-box' }, [
-						E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [
-							E('span', {}, '🧠 المعالج:'),
-							E('b', { style: 'color:#38bdf8;' }, ap.stats.cpu_load || '0.0')
-						]),
-						(ap.stats.cpu_temp && ap.stats.cpu_temp !== '-') ? E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [
-							E('span', {}, '🌡️ الحرارة:'),
-							E('b', { style: 'color:#f87171;' }, ap.stats.cpu_temp)
-						]) : '',
-						E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [
-							E('span', {}, '💾 الرام:'),
-							E('b', { style: 'color:#4ade80;' }, (ap.stats.mem_pct || 0) + '%')
-						])
-					]);
-
-					var speedBox = E('div', { class: 'speed-meter-box', style: 'min-width:115px;' }, [
-						E('div', { class: 'speed-meter-row rx' }, [ E('span', {}, '⬇️ سحب:'), E('span', {}, ap.stats.rx_speed || '0 bps') ]),
-						E('div', { class: 'speed-meter-row tx' }, [ E('span', {}, '⬆️ رفع:'), E('span', {}, ap.stats.tx_speed || '0 bps') ])
-					]);
-
-					dom.content(tr, [
-						E('td', { style: 'text-align:center;' }, rowCb),
-						E('td', { style: 'white-space:nowrap;' }, [dot, ' ', ap.isOnline ? 'متصل 🟢' : 'مفصول 🔴']),
-						E('td', { style: 'font-weight:800; font-size:14px; color:#f8fafc;' }, ap.hostname),
-						E('td', {}, [
-							E('div', { style: 'color:#38bdf8; font-family:monospace; font-weight:800;' }, ap.ip),
-							E('div', { style: 'font-family:monospace; font-size:11px; color:#94a3b8;' }, ap.mac)
-						]),
-						E('td', {}, speedBox),
-						E('td', {}, hwBox),
-						E('td', {}, clientBox),
-						E('td', {}, wifiBox),
-						E('td', { style: 'text-align:center;' }, actionBox)
-					]);
-					rows.push(tr);
-				});
-			}
-			dom.content(tableBody, rows);
+			updateDashboardTableInPlace(processed);
 			horusBulk.updateBulkBar(state, bulkBar, bulkTitle);
 		}
 
-		searchInput.oninput = renderDashboard;
-		filterSelect.onchange = renderDashboard;
+		searchInput.oninput = function() {
+			renderDashboard();
+		};
+		filterSelect.onchange = function() {
+			tableBody.innerHTML = '';
+			renderDashboard();
+		};
 
 		fetchNetworkData();
 		setInterval(fetchNetworkData, 4000);

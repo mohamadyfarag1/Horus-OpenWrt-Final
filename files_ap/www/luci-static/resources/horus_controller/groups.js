@@ -68,7 +68,13 @@ return baseclass.extend({
 		};
 	},
 
+	lastGroupsHash: '',
+
 	renderGroupsTable: function(state, gTableBody, refreshCb) {
+		var currentHash = JSON.stringify({ g: state.groups, a: state.assignments });
+		if (this.lastGroupsHash === currentHash) return;
+		this.lastGroupsHash = currentHash;
+
 		var gRows = [];
 		if (!state.groups || state.groups.length === 0) {
 			gRows.push(E('tr', {}, E('td', { colspan: 5, style: 'text-align:center; padding: 20px; color:#64748b;' }, 'لا توجد مجموعات حتى الآن.')));

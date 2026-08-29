@@ -6,108 +6,177 @@
 return baseclass.extend({
 	apDetailElements: null,
 
-	buildClientRows: function(clientsList, apMac, state, ui) {
-		var rows = [];
+	createClientRow: function(c, apMac, state, ui) {
+		var cmac = (c.mac || '').toUpperCase();
+		var rUser = (state.radiusMap && state.radiusMap[cmac]) ? state.radiusMap[cmac] : {};
+		var isRegistered = !!(rUser.name || rUser.username);
+		var dispName = rUser.name || rUser.username || 'مشترك محلي (غير مسجل)';
+		var prof = rUser.profile ? '🪙 ' + rUser.profile : '';
+		var quota = rUser.quota ? ' | 📊 متبقي: ' + rUser.quota : '';
+		var uptimeStr = rUser.uptime ? ' | ⏱️ ' + rUser.uptime : '';
+
+		var sigVal = parseInt(c.signal, 10) || -100;
+		var sigBadgeColor = sigVal >= -65 ? 'background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid rgba(34,197,94,0.4);' :
+						   (sigVal >= -75 ? 'background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.4);' :
+											'background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.4);');
+
+		var btnSteer = E('button', { class: 'btn-ctrl btn-ctrl-steer', title: 'توجيه ذكي ونقل لأقرب إكسس' }, '⚡ توجيه');
+		btnSteer.onclick = function() {
+			if (confirm('توجيه العميل (' + cmac + ') لإجباره على الانتقال لإكسس أقرب وأقوى؟')) {
+				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'steer_client', mac: cmac, ban_time: 3000 }) });
+				ui.addNotification(null, E('p', '⚡ تم إرسال أمر التوجيه الذكي بنجاح!'));
+			}
+		};
+
+		var btnKick = E('button', { class: 'btn-ctrl btn-ctrl-kick', title: 'فصل مؤقت' }, '❌ فصل');
+		btnKick.onclick = function() {
+			if (confirm('فصل العميل (' + cmac + ')؟')) {
+				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'kick', mac: cmac }) });
+				ui.addNotification(null, E('p', 'تم فصل العميل'));
+			}
+		};
+
+		var btnBan = E('button', { class: 'btn-ctrl btn-ctrl-ban', title: 'حظر دائم' }, '🚫 حظر');
+		btnBan.onclick = function() {
+			if (confirm('حظر هذا الماك (' + cmac + ') على جميع الإكسسات؟')) {
+				fetch('/cgi-bin/horus_ban_action', { method: 'POST', body: JSON.stringify({ action: 'ban', mac: cmac, scope: 'all', duration: 0 }) });
+				ui.addNotification(null, E('p', 'تم حظر الماك بنجاح'));
+			}
+		};
+
+		var vIcon = c.vendor_icon || '📱';
+		var vName = c.vendor || 'جهاز غير معروف';
+
+		var radBadge = isRegistered ? 
+			E('span', { class: 'live-rad-badge', style: 'background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; white-space:nowrap;' }, '✔ SAS') :
+			E('span', { class: 'live-rad-badge', style: 'background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:2px 6px; border-radius:4px; font-size:10px; white-space:nowrap;' }, 'غير مسجل');
+
+		var tr = E('tr', { 'data-mac': cmac }, [
+			// Col 1: MAC & Device Brand
+			E('td', { style: 'white-space:nowrap;' }, [
+				E('div', { class: 'live-cmac', style: 'font-family:monospace; font-weight:800; font-size:13px; color:#38bdf8;' }, cmac),
+				E('div', { style: 'display:inline-flex; align-items:center; gap:4px; background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-size:11px; color:#cbd5e1; margin-top:4px;' }, [
+					E('span', { class: 'live-vendor-icon' }, vIcon),
+					E('span', { class: 'live-vendor-name', style: 'font-weight:600;' }, vName)
+				])
+			]),
+			// Col 2: Subscriber & Radius
+			E('td', {}, [
+				E('div', { style: 'display:flex; align-items:center; gap:8px;' }, [
+					E('span', { class: 'live-disp-name', style: 'color:#00e676; font-weight:800; font-size:14px;' }, dispName),
+					radBadge
+				]),
+				E('div', { class: 'live-radius-details', style: 'font-size:11px; color:#94a3b8; margin-top:3px;' }, (prof || quota) ? (prof + quota + uptimeStr) : '')
+			]),
+			// Col 3: Live Speed Meter
+			E('td', { style: 'white-space:nowrap;' }, [
+				E('div', { class: 'speed-meter-box' }, [
+					E('div', { class: 'speed-meter-row rx' }, [ E('span', {}, '⬇️ سحب:'), E('span', { class: 'live-rx-speed' }, c.rx_speed || '0 bps') ]),
+					E('div', { class: 'speed-meter-row tx' }, [ E('span', {}, '⬆️ رفع:'), E('span', { class: 'live-tx-speed' }, c.tx_speed || '0 bps') ])
+				])
+			]),
+			// Col 4: Session Total Data
+			E('td', { style: 'white-space:nowrap;' }, [
+				E('div', { class: 'session-data-box' }, [
+					E('div', { class: 'live-total-rx', style: 'color:#38bdf8;' }, '📥 ' + (c.total_rx || '-')),
+					E('div', { class: 'live-total-tx', style: 'color:#4ade80;' }, '📤 ' + (c.total_tx || '-'))
+				])
+			]),
+			// Col 5: Wireless Signal & PHY Rate
+			E('td', { style: 'text-align:center; white-space:nowrap;' }, [
+				E('div', { class: 'wireless-health-box' }, [
+					E('span', { class: 'live-signal-badge', style: 'padding:3px 8px; border-radius:6px; font-weight:800; font-size:12px;' + sigBadgeColor }, (c.signal || '-') + ' dBm'),
+					E('span', { class: 'live-link-rate', style: 'font-size:11px; color:#94a3b8; font-family:monospace;' }, '📶 ' + (c.link_rate || '-'))
+				])
+			]),
+			// Col 6: IP & Interface
+			E('td', { style: 'white-space:nowrap;' }, [
+				E('div', { class: 'live-ip', style: 'font-family:monospace; font-weight:700; color:#f8fafc; font-size:12px;' }, rUser.ip || '-'),
+				E('div', { class: 'live-iface', style: 'font-size:11px; color:#64748b;' }, c.iface || '-')
+			]),
+			// Col 7: Actions Group
+			E('td', { style: 'text-align:center; white-space:nowrap;' }, [
+				E('div', { class: 'client-ctrl-group' }, [btnSteer, btnKick, btnBan])
+			])
+		]);
+
+		return tr;
+	},
+
+	updateClientsTableInPlace: function(tbody, clientsList, apMac, state, ui) {
+		var self = this;
+		if (!tbody) return;
+
 		if (!clientsList || clientsList.length === 0) {
-			rows.push(E('tr', {}, E('td', { colspan: 7, style: 'text-align:center; padding:30px; color:#64748b; font-size:14px;' }, 'لا توجد أجهزة متصلة لاسلكياً على هذا الإكسس حالياً.')));
-			return rows;
+			var emptyRow = tbody.querySelector('.empty-clients-row');
+			if (!emptyRow) {
+				dom.content(tbody, [
+					E('tr', { class: 'empty-clients-row' }, E('td', { colspan: 7, style: 'text-align:center; padding:30px; color:#64748b; font-size:14px;' }, 'لا توجد أجهزة متصلة لاسلكياً على هذا الإكسس حالياً.'))
+				]);
+			}
+			return;
 		}
+
+		// Remove empty placeholder if clients are present
+		var emptyPlaceholder = tbody.querySelector('.empty-clients-row');
+		if (emptyPlaceholder) emptyPlaceholder.remove();
+
+		var activeMacSet = new Set();
 
 		clientsList.forEach(function(c) {
 			var cmac = (c.mac || '').toUpperCase();
-			var rUser = (state.radiusMap && state.radiusMap[cmac]) ? state.radiusMap[cmac] : {};
-			var isRegistered = !!(rUser.name || rUser.username);
-			var dispName = rUser.name || rUser.username || 'مشترك محلي (غير مسجل)';
-			var prof = rUser.profile ? '🪙 ' + rUser.profile : '';
-			var quota = rUser.quota ? ' | 📊 متبقي: ' + rUser.quota : '';
-			var uptimeStr = rUser.uptime ? ' | ⏱️ ' + rUser.uptime : '';
+			activeMacSet.add(cmac);
 
-			var sigVal = parseInt(c.signal, 10) || -100;
-			var sigBadgeColor = sigVal >= -65 ? 'background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid rgba(34,197,94,0.4);' :
-							   (sigVal >= -75 ? 'background:rgba(245,158,11,0.18); color:#fbbf24; border:1px solid rgba(245,158,11,0.4);' :
-												'background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.4);');
+			var existingRow = tbody.querySelector('tr[data-mac="' + cmac + '"]');
+			if (existingRow) {
+				// 1. In-place Update existing cells (Zero DOM rebuild)
+				var elRxSpeed = existingRow.querySelector('.live-rx-speed');
+				if (elRxSpeed && elRxSpeed.textContent !== (c.rx_speed || '0 bps')) elRxSpeed.textContent = c.rx_speed || '0 bps';
 
-			var btnSteer = E('button', { class: 'btn-ctrl btn-ctrl-steer', title: 'توجيه ذكي ونقل لأقرب إكسس' }, '⚡ توجيه');
-			btnSteer.onclick = function() {
-				if (confirm('توجيه العميل (' + cmac + ') لإجباره على الانتقال لإكسس أقرب وأقوى؟')) {
-					fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'steer_client', mac: cmac, ban_time: 3000 }) });
-					ui.addNotification(null, E('p', '⚡ تم إرسال أمر التوجيه الذكي بنجاح!'));
+				var elTxSpeed = existingRow.querySelector('.live-tx-speed');
+				if (elTxSpeed && elTxSpeed.textContent !== (c.tx_speed || '0 bps')) elTxSpeed.textContent = c.tx_speed || '0 bps';
+
+				var elTotalRx = existingRow.querySelector('.live-total-rx');
+				if (elTotalRx && elTotalRx.textContent !== ('📥 ' + (c.total_rx || '-'))) elTotalRx.textContent = '📥 ' + (c.total_rx || '-');
+
+				var elTotalTx = existingRow.querySelector('.live-total-tx');
+				if (elTotalTx && elTotalTx.textContent !== ('📤 ' + (c.total_tx || '-'))) elTotalTx.textContent = '📤 ' + (c.total_tx || '-');
+
+				var elSig = existingRow.querySelector('.live-signal-badge');
+				if (elSig) {
+					var sigVal = parseInt(c.signal, 10) || -100;
+					var sText = (c.signal || '-') + ' dBm';
+					if (elSig.textContent !== sText) elSig.textContent = sText;
+					var bCol = sigVal >= -65 ? 'rgba(34,197,94,0.18)' : (sigVal >= -75 ? 'rgba(245,158,11,0.18)' : 'rgba(239,68,68,0.18)');
+					var tCol = sigVal >= -65 ? '#4ade80' : (sigVal >= -75 ? '#fbbf24' : '#f87171');
+					elSig.style.background = bCol;
+					elSig.style.color = tCol;
 				}
-			};
 
-			var btnKick = E('button', { class: 'btn-ctrl btn-ctrl-kick', title: 'فصل مؤقت' }, '❌ فصل');
-			btnKick.onclick = function() {
-				if (confirm('فصل العميل (' + cmac + ')؟')) {
-					fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'kick', mac: cmac }) });
-					ui.addNotification(null, E('p', 'تم فصل العميل'));
-				}
-			};
+				var elRate = existingRow.querySelector('.live-link-rate');
+				if (elRate && elRate.textContent !== ('📶 ' + (c.link_rate || '-'))) elRate.textContent = '📶 ' + (c.link_rate || '-');
 
-			var btnBan = E('button', { class: 'btn-ctrl btn-ctrl-ban', title: 'حظر دائم' }, '🚫 حظر');
-			btnBan.onclick = function() {
-				if (confirm('حظر هذا الماك (' + cmac + ') على جميع الإكسسات؟')) {
-					fetch('/cgi-bin/horus_ban_action', { method: 'POST', body: JSON.stringify({ action: 'ban', mac: cmac, scope: 'all', duration: 0 }) });
-					ui.addNotification(null, E('p', 'تم حظر الماك بنجاح'));
-				}
-			};
+				var rUser = (state.radiusMap && state.radiusMap[cmac]) ? state.radiusMap[cmac] : {};
+				var elIp = existingRow.querySelector('.live-ip');
+				if (elIp && elIp.textContent !== (rUser.ip || '-')) elIp.textContent = rUser.ip || '-';
 
-			var vIcon = c.vendor_icon || '📱';
-			var vName = c.vendor || 'جهاز غير معروف';
-
-			var radBadge = isRegistered ? 
-				E('span', { style: 'background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; white-space:nowrap;' }, '✔ SAS') :
-				E('span', { style: 'background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:2px 6px; border-radius:4px; font-size:10px; white-space:nowrap;' }, 'غير مسجل');
-
-			rows.push(E('tr', {}, [
-				// Col 1: MAC & Device Brand
-				E('td', { style: 'white-space:nowrap;' }, [
-					E('div', { style: 'font-family:monospace; font-weight:800; font-size:13px; color:#38bdf8;' }, cmac),
-					E('div', { style: 'display:inline-flex; align-items:center; gap:4px; background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; font-size:11px; color:#cbd5e1; margin-top:4px;' }, [
-						E('span', {}, vIcon),
-						E('span', { style: 'font-weight:600;' }, vName)
-					])
-				]),
-				// Col 2: Subscriber & Radius
-				E('td', {}, [
-					E('div', { style: 'display:flex; align-items:center; gap:8px;' }, [
-						E('span', { style: 'color:#00e676; font-weight:800; font-size:14px;' }, dispName),
-						radBadge
-					]),
-					(prof || quota) ? E('div', { style: 'font-size:11px; color:#94a3b8; margin-top:3px;' }, prof + quota + uptimeStr) : ''
-				]),
-				// Col 3: Live Speed Meter
-				E('td', { style: 'white-space:nowrap;' }, [
-					E('div', { class: 'speed-meter-box' }, [
-						E('div', { class: 'speed-meter-row rx' }, [ E('span', {}, '⬇️ سحب:'), E('span', {}, c.rx_speed || '0 bps') ]),
-						E('div', { class: 'speed-meter-row tx' }, [ E('span', {}, '⬆️ رفع:'), E('span', {}, c.tx_speed || '0 bps') ])
-					])
-				]),
-				// Col 4: Session Total Data
-				E('td', { style: 'white-space:nowrap;' }, [
-					E('div', { class: 'session-data-box' }, [
-						E('div', { style: 'color:#38bdf8;' }, '📥 ' + (c.total_rx || '-')),
-						E('div', { style: 'color:#4ade80;' }, '📤 ' + (c.total_tx || '-'))
-					])
-				]),
-				// Col 5: Wireless Signal & PHY Rate
-				E('td', { style: 'text-align:center; white-space:nowrap;' }, [
-					E('div', { class: 'wireless-health-box' }, [
-						E('span', { style: 'padding:3px 8px; border-radius:6px; font-weight:800; font-size:12px;' + sigBadgeColor }, (c.signal || '-') + ' dBm'),
-						E('span', { style: 'font-size:11px; color:#94a3b8; font-family:monospace;' }, '📶 ' + (c.link_rate || '-'))
-					])
-				]),
-				// Col 6: IP & Interface
-				E('td', { style: 'white-space:nowrap;' }, [
-					E('div', { style: 'font-family:monospace; font-weight:700; color:#f8fafc; font-size:12px;' }, rUser.ip || '-'),
-					E('div', { style: 'font-size:11px; color:#64748b;' }, c.iface || '-')
-				]),
-				// Col 7: Actions Group
-				E('td', { style: 'text-align:center; white-space:nowrap;' }, [
-					E('div', { class: 'client-ctrl-group' }, [btnSteer, btnKick, btnBan])
-				])
-			]));
+				var dispName = rUser.name || rUser.username || 'مشترك محلي (غير مسجل)';
+				var elName = existingRow.querySelector('.live-disp-name');
+				if (elName && elName.textContent !== dispName) elName.textContent = dispName;
+			} else {
+				// 2. Client joined: Append new row cleanly
+				tbody.appendChild(self.createClientRow(c, apMac, state, ui));
+			}
 		});
-		return rows;
+
+		// 3. Client disconnected: Remove stale row cleanly
+		var currentRows = tbody.querySelectorAll('tr[data-mac]');
+		currentRows.forEach(function(r) {
+			var rMac = r.getAttribute('data-mac');
+			if (rMac && !activeMacSet.has(rMac)) {
+				r.remove();
+			}
+		});
 	},
 
 	buildApDetailView: function(apMac, state, viewApDetail, backCb, ui) {
@@ -332,7 +401,14 @@ return baseclass.extend({
 			E('h3', { id: 'detail_clients_heading', style: 'margin-top:0; color:#fbbf24; font-size:17px;' }, '👥 المشتركون المتصلون لاسلكياً على هذا الإكسس (' + clientsList.length + ')')
 		]);
 
-		var detailClientsTbody = E('tbody', { id: 'detail_clients_tbody' }, self.buildClientRows(clientsList, apMac, state, ui));
+		var detailClientsTbody = E('tbody', { id: 'detail_clients_tbody' });
+		if (clientsList.length === 0) {
+			detailClientsTbody.appendChild(E('tr', { class: 'empty-clients-row' }, E('td', { colspan: 7, style: 'text-align:center; padding:30px; color:#64748b; font-size:14px;' }, 'لا توجد أجهزة متصلة لاسلكياً على هذا الإكسس حالياً.')));
+		} else {
+			clientsList.forEach(function(c) {
+				detailClientsTbody.appendChild(self.createClientRow(c, apMac, state, ui));
+			});
+		}
 
 		clientsSection.appendChild(E('div', { class: 'table-box' }, [
 			E('table', { class: 'custom-table' }, [
@@ -423,20 +499,20 @@ return baseclass.extend({
 		var st = ap.stats || {};
 		var clientsList = ap.clients || [];
 
-		// 1. Update Metrics smoothly
-		self.apDetailElements.mRxSpeed.textContent = '⬇️ ' + (st.rx_speed || '0 bps');
-		self.apDetailElements.mRxTotal.textContent = 'سرعة التحميل اللحظية | الإجمالي: ' + (st.total_rx || '-');
-		self.apDetailElements.mTxSpeed.textContent = '⬆️ ' + (st.tx_speed || '0 bps');
-		self.apDetailElements.mTxTotal.textContent = 'سرعة الرفع اللحظية | الإجمالي: ' + (st.total_tx || '-');
-		self.apDetailElements.mClients.textContent = '👥 ' + clientsList.length + ' متصل';
-		self.apDetailElements.mCpuStats.textContent = '🧠 ' + (st.cpu_load || '0.0') + ' | 💾 ' + (st.mem_pct || 0) + '%' + ((st.cpu_temp && st.cpu_temp !== '-') ? ' | 🌡️ ' + st.cpu_temp : '');
+		// 1. Update Metrics smoothly in-place
+		if (self.apDetailElements.mRxSpeed) self.apDetailElements.mRxSpeed.textContent = '⬇️ ' + (st.rx_speed || '0 bps');
+		if (self.apDetailElements.mRxTotal) self.apDetailElements.mRxTotal.textContent = 'سرعة التحميل اللحظية | الإجمالي: ' + (st.total_rx || '-');
+		if (self.apDetailElements.mTxSpeed) self.apDetailElements.mTxSpeed.textContent = '⬆️ ' + (st.tx_speed || '0 bps');
+		if (self.apDetailElements.mTxTotal) self.apDetailElements.mTxTotal.textContent = 'سرعة الرفع اللحظية | الإجمالي: ' + (st.total_tx || '-');
+		if (self.apDetailElements.mClients) self.apDetailElements.mClients.textContent = '👥 ' + clientsList.length + ' متصل';
+		if (self.apDetailElements.mCpuStats) self.apDetailElements.mCpuStats.textContent = '🧠 ' + (st.cpu_load || '0.0') + ' | 💾 ' + (st.mem_pct || 0) + '%' + ((st.cpu_temp && st.cpu_temp !== '-') ? ' | 🌡️ ' + st.cpu_temp : '');
 
-		// 2. Update Clients Heading & Rows (Smooth in-place DOM diff)
+		// 2. Update Clients Heading & in-place Row Reconciliation (True Zero-Flicker)
 		if (self.apDetailElements.detailClientsHeading) {
 			self.apDetailElements.detailClientsHeading.textContent = '👥 المشتركون المتصلون لاسلكياً على هذا الإكسس (' + clientsList.length + ')';
 		}
 		if (self.apDetailElements.detailClientsTbody) {
-			dom.content(self.apDetailElements.detailClientsTbody, self.buildClientRows(clientsList, apMac, state, ui));
+			self.updateClientsTableInPlace(self.apDetailElements.detailClientsTbody, clientsList, apMac, state, ui);
 		}
 		return true;
 	}
