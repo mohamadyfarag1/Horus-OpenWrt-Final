@@ -7,15 +7,22 @@ USE_PROCD=1
 PROG=/usr/bin/horus-radius.py
 
 start_service() {
+    # Auto-Restore backup if config was wiped by an untracked file copy
+    if [ ! -s /etc/config/horus_controller ] || [ "$(uci -q get horus_controller.main.enabled)" = "0" -a -z "$(uci -q get horus_controller.main.base_url)" ]; then
+        if [ -s /etc/horus_controller.bak ]; then
+            cp -f /etc/horus_controller.bak /etc/config/horus_controller 2>/dev/null
+        fi
+    fi
+
     config_load horus_controller
     config_get_bool enabled main enabled 0
-
-    if ! grep -q "horus_injector.js" /www/luci-static/resources/luci.js 2>/dev/null; then
-        [ -x /etc/uci-defaults/99_horus-controller-patch ] && /etc/uci-defaults/99_horus-controller-patch >/dev/null 2>&1
-    fi
-    chmod +x /www/cgi-bin/* /usr/bin/horus-* /etc/init.d/horus_controller 2>/dev/null
-
     config_get role main role "standalone"
+    config_get base_url main base_url ""
+
+    # Auto-Backup valid user configuration
+    if [ -n "$base_url" ] || [ "$role" != "standalone" ]; then
+        cp -f /etc/config/horus_controller /etc/horus_controller.bak 2>/dev/null
+    fi
 
     if [ "$enabled" -eq 1 ]; then
         # Start RADIUS Sync Daemon
