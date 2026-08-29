@@ -9,64 +9,70 @@ return view.extend({
 	handleReset: null,
 
 	render: function() {
-		var container = E('div', { class: 'horus-dashboard', id: 'horus-dashboard-container' });
+		var container = E('div', { class: 'horus-dashboard', id: 'horus-dashboard-container', style: 'direction:rtl; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;' });
 
-		// 1. Theme-Adaptive Modern Dark/Light Styles
+		// Professional Glassmorphism Styles
 		var styles = E('style', {}, `
-			.horus-dashboard { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; direction: rtl; color: inherit; }
-			.horus-tabs { display: flex; border-bottom: 2px solid rgba(128,128,128,0.3); margin-bottom: 20px; }
-			.horus-tab { padding: 10px 22px; cursor: pointer; font-size: 15px; font-weight: bold; color: inherit; opacity: 0.7; background: rgba(128,128,128,0.06); border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; margin-left: 6px; transition: 0.2s; }
-			.horus-tab.active { background: rgba(0, 123, 255, 0.15); opacity: 1; color: #00e676; border-color: rgba(0, 230, 118, 0.4); border-bottom-color: transparent; margin-bottom: -2px; }
-			.horus-tab:hover:not(.active) { background: rgba(128,128,128,0.12); opacity: 0.95; }
+			.horus-dashboard { color: #f8fafc; }
+			.glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 20px; margin-bottom: 22px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4); }
 			
-			.dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-			.dash-card { background: rgba(128,128,128,0.06); padding: 18px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border: 1px solid rgba(128,128,128,0.2); text-align: center; color: inherit; }
-			.dash-card h3 { margin: 0; font-size: 30px; font-weight: bold; color: inherit; }
-			.dash-card p { margin: 5px 0 0 0; opacity: 0.85; font-size: 14px; font-weight: 500; }
-			.dash-card.total { border-bottom: 4px solid #007bff; }
-			.dash-card.online { border-bottom: 4px solid #00e676; }
-			.dash-card.offline { border-bottom: 4px solid #ff5252; }
-			.dash-card.clients { border-bottom: 4px solid #ffd54f; }
+			.horus-tabs { display: flex; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 20px; gap: 8px; }
+			.horus-tab { padding: 12px 24px; cursor: pointer; font-size: 15px; font-weight: 700; color: #94a3b8; background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.08); border-bottom: none; border-radius: 10px 10px 0 0; transition: all 0.2s; }
+			.horus-tab.active { background: rgba(30, 41, 59, 0.9); color: #00e676; border-color: rgba(0, 230, 118, 0.4); border-bottom: 2px solid #00e676; margin-bottom: -2px; }
+			.horus-tab:hover:not(.active) { background: rgba(51, 65, 85, 0.5); color: #f8fafc; }
 			
-			.toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px; background: rgba(128,128,128,0.06); padding: 14px; border-radius: 8px; border: 1px solid rgba(128,128,128,0.2); }
-			.toolbar input, .toolbar select { padding: 8px 12px; background: rgba(128,128,128,0.1); color: inherit; border: 1px solid rgba(128,128,128,0.3); border-radius: 4px; outline: none; font-size: 14px; }
-			.toolbar input { flex-grow: 1; min-width: 200px; }
+			.dash-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 22px; }
+			.dash-card { background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(10px); padding: 20px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transition: transform 0.2s; }
+			.dash-card:hover { transform: translateY(-2px); }
+			.dash-card h3 { margin: 0; font-size: 32px; font-weight: 800; }
+			.dash-card p { margin: 6px 0 0 0; font-size: 13px; font-weight: 600; color: #94a3b8; }
+			.dash-card.total h3 { color: #38bdf8; text-shadow: 0 0 15px rgba(56, 189, 248, 0.3); }
+			.dash-card.online h3 { color: #4ade80; text-shadow: 0 0 15px rgba(74, 222, 128, 0.3); }
+			.dash-card.offline h3 { color: #f87171; text-shadow: 0 0 15px rgba(248, 113, 113, 0.3); }
+			.dash-card.clients h3 { color: #fbbf24; text-shadow: 0 0 15px rgba(251, 191, 36, 0.3); }
 			
-			.table-wrapper { background: rgba(128,128,128,0.04); border-radius: 8px; overflow-x: auto; border: 1px solid rgba(128,128,128,0.2); margin-bottom: 20px; }
-			.table-wrapper table { width: 100%; border-collapse: collapse; }
-			.table-wrapper th, .table-wrapper td { padding: 12px 14px; text-align: right; border-bottom: 1px solid rgba(128,128,128,0.15); font-size: 13px; }
-			.table-wrapper th { background: rgba(128,128,128,0.12); font-weight: bold; border-bottom: 2px solid rgba(128,128,128,0.25); }
-			.table-wrapper tr:hover { background: rgba(128,128,128,0.08); }
+			.toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; background: rgba(30, 41, 59, 0.5); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
+			.toolbar input, .toolbar select { padding: 9px 14px; background: rgba(15, 23, 42, 0.6); color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; outline: none; font-size: 13px; }
+			.toolbar input { flex-grow: 1; min-width: 220px; }
+			.toolbar input:focus { border-color: #00e676; }
+			
+			.table-box { background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; overflow-x: auto; margin-bottom: 20px; }
+			.custom-table { width: 100%; border-collapse: collapse; text-align: right; }
+			.custom-table th { background: rgba(30, 41, 59, 0.8); padding: 14px 16px; font-size: 13px; font-weight: 700; color: #94a3b8; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+			.custom-table td { padding: 14px 16px; font-size: 13px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); color: #e2e8f0; }
+			.custom-table tr:hover td { background: rgba(255, 255, 255, 0.03); }
 			
 			.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 6px; }
-			.status-online { background: #00e676; box-shadow: 0 0 6px #00e676; }
-			.status-offline { background: #ff5252; box-shadow: 0 0 6px #ff5252; }
+			.status-online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+			.status-offline { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
 			
-			.btn-action { padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; margin-left: 4px; transition: 0.2s; }
-			.btn-manage { background: #007bff; color: #fff; }
-			.btn-manage:hover { background: #0056b3; }
-			.btn-reboot { background: #ff9800; color: #fff; }
-			.btn-reboot:hover { background: #e65100; }
-			.btn-kick { background: #dc3545; color: #fff; }
-			.btn-kick:hover { background: #bd2130; }
-			.btn-primary { padding: 9px 18px; background: #00e676; color: #000; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
-			.btn-primary:hover { background: #00c853; }
+			.btn-action { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 700; margin-left: 5px; transition: all 0.2s; }
+			.btn-manage { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #fff; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3); }
+			.btn-manage:hover { background: #0284c7; transform: translateY(-1px); }
+			.btn-reboot { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+			.btn-reboot:hover { background: #f59e0b; color: #000; }
+			.btn-kick { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+			.btn-kick:hover { background: #ef4444; color: #fff; }
+			.btn-primary { padding: 10px 22px; background: linear-gradient(135deg, #00e676 0%, #00b0ff 100%); color: #000; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 14px; }
+			.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(0, 230, 118, 0.3); }
 			
-			.modal-box { padding: 10px; direction: rtl; text-align: right; }
-			.modal-tabs { display: flex; border-bottom: 1px solid rgba(128,128,128,0.3); margin-bottom: 15px; }
-			.modal-tab { padding: 8px 16px; cursor: pointer; font-weight: bold; font-size: 13px; opacity: 0.7; border-bottom: 2px solid transparent; }
-			.modal-tab.active { opacity: 1; color: #00e676; border-bottom-color: #00e676; }
-			.modal-section { margin-bottom: 15px; }
-			.modal-row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-			.modal-field { flex: 1; min-width: 180px; display: flex; flex-direction: column; }
-			.modal-field label { font-size: 12px; font-weight: bold; margin-bottom: 4px; opacity: 0.85; }
-			.modal-field input, .modal-field select { padding: 8px 10px; border-radius: 4px; border: 1px solid rgba(128,128,128,0.3); background: rgba(128,128,128,0.1); color: inherit; font-size: 13px; }
+			/* Modal Box */
+			.modal-box { padding: 14px; direction: rtl; text-align: right; color: #f8fafc; }
+			.modal-tabs { display: flex; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 18px; gap: 8px; }
+			.modal-tab { padding: 9px 18px; cursor: pointer; font-weight: 700; font-size: 13px; color: #94a3b8; border-radius: 8px 8px 0 0; }
+			.modal-tab.active { color: #00e676; background: rgba(0,230,118,0.1); border-bottom: 2px solid #00e676; }
+			.modal-section { margin-bottom: 16px; }
+			.modal-row { display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+			.modal-field { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 5px; }
+			.modal-field label { font-size: 12px; font-weight: 700; color: #cbd5e1; }
+			.modal-field input, .modal-field select { padding: 9px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(15, 23, 42, 0.6); color: #f8fafc; font-size: 13px; }
+			.modal-field input:focus, .modal-field select:focus { border-color: #00e676; outline: none; }
 			
 			.hidden { display: none !important; }
 		`);
 		container.appendChild(styles);
 
-		// 2. Navigation Tabs
+		// Navigation Tabs
 		var tabsNav = E('div', { class: 'horus-tabs' });
 		var tabDash = E('div', { class: 'horus-tab active' }, '📊 لوحة التحكم والإكسسات (Dashboard)');
 		var tabGroups = E('div', { class: 'horus-tab' }, '📁 المجموعات والقوالب (AP Groups)');
@@ -74,7 +80,7 @@ return view.extend({
 		tabsNav.appendChild(tabGroups);
 		container.appendChild(tabsNav);
 
-		// 3. Views Containers
+		// Views Containers
 		var viewDash = E('div', { id: 'view-dashboard' });
 		var viewGroups = E('div', { id: 'view-groups', class: 'hidden' });
 		container.appendChild(viewDash);
@@ -90,14 +96,14 @@ return view.extend({
 			viewGroups.classList.remove('hidden'); viewDash.classList.add('hidden');
 		};
 
-		// 4. Dashboard View Elements
+		// Dashboard View Elements
 		var cardsDiv = E('div', { class: 'dash-cards' });
 		viewDash.appendChild(cardsDiv);
 
 		var toolbar = E('div', { class: 'toolbar' });
-		var searchInput = E('input', { type: 'text', placeholder: '🔍 بحث بالاسم، الآي بي، أو الماك...' });
+		var searchInput = E('input', { type: 'text', placeholder: '🔍 بحث بالاسم، الآي بي، أو عنوان الماك...' });
 		var filterSelect = E('select', {}, [
-			E('option', { value: 'all' }, 'جميع الإكسسات'),
+			E('option', { value: 'all' }, 'جميع الإكسسات (All APs)'),
 			E('option', { value: 'online' }, 'المتصلة فقط 🟢'),
 			E('option', { value: 'offline' }, 'المفصولة فقط 🔴')
 		]);
@@ -106,8 +112,8 @@ return view.extend({
 		viewDash.appendChild(toolbar);
 
 		var tableBody = E('tbody');
-		var tableWrapper = E('div', { class: 'table-wrapper' }, [
-			E('table', {}, [
+		var tableWrapper = E('div', { class: 'table-box' }, [
+			E('table', { class: 'custom-table' }, [
 				E('thead', {}, [
 					E('tr', {}, [
 						E('th', {}, 'الحالة'),
@@ -125,9 +131,9 @@ return view.extend({
 		]);
 		viewDash.appendChild(tableWrapper);
 
-		// 5. Groups View Elements
-		var groupForm = E('div', { class: 'dash-card', style: 'text-align:right; margin-bottom:20px;' }, [
-			E('h4', { style: 'margin-top:0; color:#00e676;' }, '➕ إنشاء قالب مجموعة وايرليس جديدة'),
+		// Groups View Elements
+		var groupForm = E('div', { class: 'glass-card', style: 'text-align:right;' }, [
+			E('h3', { style: 'margin-top:0; color:#00e676; font-size:17px;' }, '➕ إنشاء قالب مجموعة وايرليس جديدة'),
 			E('div', { class: 'modal-row' }, [
 				E('div', { class: 'modal-field' }, [ E('label', {}, 'اسم المجموعة:'), E('input', { id: 'g_name', placeholder: 'مثال: الدور الأول' }) ]),
 				E('div', { class: 'modal-field' }, [ E('label', {}, 'اسم الشبكة (SSID):'), E('input', { id: 'g_ssid', placeholder: 'RedaNet_WiFi' }) ]),
@@ -146,8 +152,8 @@ return view.extend({
 		viewGroups.appendChild(groupForm);
 
 		var gTableBody = E('tbody');
-		var gTableWrapper = E('div', { class: 'table-wrapper' }, [
-			E('table', {}, [
+		var gTableWrapper = E('div', { class: 'table-box' }, [
+			E('table', { class: 'custom-table' }, [
 				E('thead', {}, [
 					E('tr', {}, [
 						E('th', {}, 'اسم المجموعة'),
@@ -162,9 +168,7 @@ return view.extend({
 		]);
 		viewGroups.appendChild(gTableWrapper);
 
-		// ----------------------------------------------------
-		// STATE & DATA MANAGEMENT
-		// ----------------------------------------------------
+		// State & Logic
 		var state = {
 			data: { aps: {}, clients: {} },
 			radiusMap: {},
@@ -203,9 +207,7 @@ return view.extend({
 			});
 		}
 
-		// ----------------------------------------------------
-		// MODAL: AP COMPREHENSIVE CONTROL & SETTINGS
-		// ----------------------------------------------------
+		// Modal: AP Comprehensive Control & Settings
 		function openApControlModal(apMac) {
 			var ap = state.data.aps[apMac] || {};
 			var wifiList = ap.wifi || [];
@@ -218,13 +220,13 @@ return view.extend({
 
 			var modalContent = E('div', { class: 'modal-box' });
 
-			// Modal Header
-			modalContent.appendChild(E('div', { style: 'border-bottom: 2px solid rgba(0,230,118,0.4); padding-bottom: 8px; margin-bottom: 15px;' }, [
-				E('h3', { style: 'margin:0; color:#00e676;' }, '⚙️ تحكم وإدارة الإكسس: ' + (ap.hostname || 'Unknown')),
-				E('div', { style: 'font-size:12px; color:#b0bec5; margin-top:4px;' }, 'MAC: ' + apMac + ' | IP: ' + (ap.ip || '-'))
+			// Header
+			modalContent.appendChild(E('div', { style: 'border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 16px;' }, [
+				E('h3', { style: 'margin:0; color:#00e676; font-size:18px;' }, '⚙️ تحكم وإدارة الإكسس: ' + (ap.hostname || 'Unknown')),
+				E('div', { style: 'font-size:12px; color:#94a3b8; margin-top:4px;' }, 'MAC: ' + apMac + ' | IP: ' + (ap.ip || '-'))
 			]));
 
-			// Modal Tabs Nav
+			// Tabs
 			var mNav = E('div', { class: 'modal-tabs' });
 			var mTabWifi = E('div', { class: 'modal-tab active' }, '📶 إعدادات الوايرليس');
 			var mTabIp = E('div', { class: 'modal-tab' }, '🌐 عنوان الـ IP والشبكة');
@@ -237,7 +239,6 @@ return view.extend({
 			mNav.appendChild(mTabOps);
 			modalContent.appendChild(mNav);
 
-			// Modal Tab Sections
 			var mSecWifi = E('div', { class: 'modal-section' });
 			var mSecIp = E('div', { class: 'modal-section hidden' });
 			var mSecClients = E('div', { class: 'modal-section hidden' });
@@ -260,7 +261,7 @@ return view.extend({
 			mTabClients.onclick = function() { switchModalTab(mTabClients, mSecClients); };
 			mTabOps.onclick = function() { switchModalTab(mTabOps, mSecOps); };
 
-			// --- Section 1: WiFi Settings ---
+			// 1. WiFi Settings
 			var inSsid = E('input', { type: 'text', value: cur2gSsid || cur5gSsid || '', placeholder: 'اسم الشبكة الجديد' });
 			var inPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة (8 أحرف فأكثر)' });
 			var inBand = E('select', {}, [
@@ -284,7 +285,7 @@ return view.extend({
 				E('option', { value: 'sae' }, 'WPA3-SAE (أحدث حماية)')
 			]);
 
-			var btnApplyWifi = E('button', { class: 'btn-primary', style: 'margin-top:10px;' }, '🚀 تطبيق إعدادات الوايرليس فوراً');
+			var btnApplyWifi = E('button', { class: 'btn-primary', style: 'margin-top:12px;' }, '🚀 تطبيق إعدادات الوايرليس فوراً');
 			btnApplyWifi.onclick = function() {
 				var ssid = inSsid.value.trim();
 				var pass = inPass.value.trim();
@@ -307,7 +308,7 @@ return view.extend({
 						channel: channel,
 						encryption: enc
 					})
-				}).then(function(r){ return r.json(); }).then(function(res) {
+				}).then(function(){
 					btnApplyWifi.disabled = false;
 					btnApplyWifi.textContent = '🚀 تطبيق إعدادات الوايرليس فوراً';
 					ui.addNotification(null, E('p', '✅ تم إرسال أوامر ضبط الوايرليس إلى الإكسس بنجاح!'));
@@ -330,13 +331,13 @@ return view.extend({
 				btnApplyWifi
 			]));
 
-			// --- Section 2: Network & IP Settings ---
+			// 2. Network & IP Settings
 			var inNewIp = E('input', { type: 'text', value: ap.ip !== '-' ? ap.ip : '', placeholder: '192.168.169.224' });
 			var inNetmask = E('input', { type: 'text', value: '255.255.255.0', placeholder: '255.255.255.0' });
 			var inGateway = E('input', { type: 'text', value: '192.168.169.1', placeholder: '192.168.169.1' });
 			var inHostname = E('input', { type: 'text', value: ap.hostname || '', placeholder: 'اسم الإكسس الجديد' });
 
-			var btnApplyIp = E('button', { class: 'btn-primary', style: 'margin-top:10px;' }, '💾 تغيير عنوان الـ IP والاسم فوراً');
+			var btnApplyIp = E('button', { class: 'btn-primary', style: 'margin-top:12px;' }, '💾 تغيير عنوان الـ IP والاسم فوراً');
 			btnApplyIp.onclick = function() {
 				var newIp = inNewIp.value.trim();
 				var newHost = inHostname.value.trim();
@@ -374,11 +375,11 @@ return view.extend({
 				btnApplyIp
 			]));
 
-			// --- Section 3: Connected Clients on this AP ---
+			// 3. Connected Clients on this AP
 			var clientsList = ap.clients || [];
 			var cRows = [];
 			if (clientsList.length === 0) {
-				cRows.push(E('tr', {}, E('td', { colspan: 5, style: 'text-align:center; padding:15px;' }, 'لا توجد أجهزة متصلة على هذا الإكسس حالياً.')));
+				cRows.push(E('tr', {}, E('td', { colspan: 5, style: 'text-align:center; padding:15px; color:#64748b;' }, 'لا توجد أجهزة متصلة على هذا الإكسس حالياً.')));
 			} else {
 				clientsList.forEach(function(c) {
 					var cmac = (c.mac || '').toUpperCase();
@@ -394,7 +395,7 @@ return view.extend({
 						}
 					};
 
-					var btnBan = E('button', { class: 'btn-action', style: 'background:#6a1b9a; color:#fff;' }, 'حظر 🚫');
+					var btnBan = E('button', { class: 'btn-action', style: 'background:#7c3aed; color:#fff;' }, 'حظر 🚫');
 					btnBan.onclick = function() {
 						if (confirm('حظر هذا الماك (' + cmac + ') على جميع الإكسسات؟')) {
 							fetch('/cgi-bin/horus_ban_action', { method: 'POST', body: JSON.stringify({ action: 'ban', mac: cmac, scope: 'all', duration: 0 }) });
@@ -403,7 +404,7 @@ return view.extend({
 					};
 
 					cRows.push(E('tr', {}, [
-						E('td', { style: 'font-family:monospace; font-weight:bold;' }, cmac),
+						E('td', { style: 'font-family:monospace; font-weight:bold; color:#38bdf8;' }, cmac),
 						E('td', {}, [E('span', { style: 'color:#00e676; font-weight:bold;' }, dispName), E('small', { style: 'color:#80deea;' }, prof)]),
 						E('td', {}, (c.signal || '-') + ' dBm'),
 						E('td', {}, c.iface || '-'),
@@ -412,8 +413,8 @@ return view.extend({
 				});
 			}
 
-			mSecClients.appendChild(E('div', { class: 'table-wrapper' }, [
-				E('table', {}, [
+			mSecClients.appendChild(E('div', { class: 'table-box' }, [
+				E('table', { class: 'custom-table' }, [
 					E('thead', {}, [
 						E('tr', {}, [
 							E('th', {}, 'الماك (MAC)'),
@@ -427,7 +428,7 @@ return view.extend({
 				])
 			]));
 
-			// --- Section 4: Hardware Operations ---
+			// 4. Hardware Operations
 			var btnReboot = E('button', { class: 'btn-action btn-reboot', style: 'padding:10px 18px; font-size:13px; margin:5px;' }, '🔄 إعادة تشغيل الإكسس (Reboot)');
 			btnReboot.onclick = function() {
 				if (confirm('هل أنت متأكد من إعادة تشغيل الإكسس (' + apMac + ')؟')) {
@@ -448,7 +449,7 @@ return view.extend({
 				ui.addNotification(null, E('p', 'تم إيقاف بث الوايرليس'));
 			};
 
-			var btnWifiOn = E('button', { class: 'btn-action btn-manage', style: 'background:#00c853; padding:10px 18px; font-size:13px; margin:5px;' }, '✔️ تشغيل بث الواي فاي (Radio On)');
+			var btnWifiOn = E('button', { class: 'btn-action btn-manage', style: 'background:#16a34a; padding:10px 18px; font-size:13px; margin:5px;' }, '✔️ تشغيل بث الواي فاي (Radio On)');
 			btnWifiOn.onclick = function() {
 				fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'wifi_radio', state: '0' }) });
 				ui.addNotification(null, E('p', 'تم تشغيل بث الوايرليس'));
@@ -466,9 +467,7 @@ return view.extend({
 			]);
 		}
 
-		// ----------------------------------------------------
-		// RENDER DASHBOARD
-		// ----------------------------------------------------
+		// Render Dashboard
 		function renderDashboard() {
 			var aps = state.data.aps || {};
 			var apKeys = Object.keys(aps);
@@ -522,7 +521,7 @@ return view.extend({
 
 			var rows = [];
 			if (filtered.length === 0) {
-				rows.push(E('tr', {}, E('td', { colspan: 8, style: 'text-align:center; padding: 25px; color: #888;' }, 'لا توجد إكسسات مطابقة.')));
+				rows.push(E('tr', {}, E('td', { colspan: 8, style: 'text-align:center; padding: 25px; color: #64748b;' }, 'لا توجد إكسسات مطابقة.')));
 			} else {
 				filtered.forEach(function(ap) {
 					var dot = E('span', { class: ap.isOnline ? 'status-dot status-online' : 'status-dot status-offline' });
@@ -530,10 +529,10 @@ return view.extend({
 					if (ap.wifi && ap.wifi.length > 0) {
 						ap.wifi.forEach(function(w) {
 							var bText = (w.band === '2g' ? '2.4G' : (w.band === '5g' ? '5G' : 'WiFi')) + ': ' + (w.ssid || '-');
-							wifiBadges.push(E('span', { style: 'display:inline-block; margin:2px; padding:2px 6px; border-radius:3px; background:rgba(0,230,118,0.1); border:1px solid rgba(0,230,118,0.3); font-size:11px;' }, bText));
+							wifiBadges.push(E('span', { style: 'display:inline-block; margin:2px; padding:2px 8px; border-radius:4px; background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-size:11px; font-weight:600;' }, bText));
 						});
 					} else {
-						wifiBadges.push(E('span', { style: 'color:#888; font-size:11px;' }, '-'));
+						wifiBadges.push(E('span', { style: 'color:#64748b; font-size:11px;' }, '-'));
 					}
 
 					var btnManage = E('button', { class: 'btn-action btn-manage' }, '⚙️ تحكم وإعدادات');
@@ -549,11 +548,11 @@ return view.extend({
 
 					rows.push(E('tr', {}, [
 						E('td', {}, [dot, ' ', ap.isOnline ? 'متصل' : 'مفصول']),
-						E('td', { style: 'font-weight:bold;' }, ap.hostname),
-						E('td', { style: 'color:#80deea; font-family:monospace;' }, ap.ip),
-						E('td', { style: 'font-family:monospace;' }, ap.mac),
-						E('td', { style: 'color:#007bff; font-weight:bold;' }, ap.group),
-						E('td', {}, E('span', { style: 'background:rgba(255,213,79,0.15); color:#ffd54f; padding:2px 8px; border-radius:10px; font-weight:bold;' }, ap.clients)),
+						E('td', { style: 'font-weight:700; color:#f8fafc;' }, ap.hostname),
+						E('td', { style: 'color:#38bdf8; font-family:monospace;' }, ap.ip),
+						E('td', { style: 'font-family:monospace; color:#94a3b8;' }, ap.mac),
+						E('td', { style: 'color:#a855f7; font-weight:700;' }, ap.group),
+						E('td', {}, E('span', { style: 'background:rgba(251,191,36,0.15); color:#fbbf24; padding:2px 10px; border-radius:12px; font-weight:700;' }, ap.clients)),
 						E('td', {}, wifiBadges),
 						E('td', { style: 'text-align: center;' }, [btnManage, btnReboot])
 					]));
@@ -562,13 +561,11 @@ return view.extend({
 			dom.content(tableBody, rows);
 		}
 
-		// ----------------------------------------------------
-		// RENDER GROUPS
-		// ----------------------------------------------------
+		// Render Groups
 		function renderGroups() {
 			var gRows = [];
 			if (state.groups.length === 0) {
-				gRows.push(E('tr', {}, E('td', { colspan: 5, style: 'text-align:center; padding: 20px;' }, 'لا توجد مجموعات حتى الآن.')));
+				gRows.push(E('tr', {}, E('td', { colspan: 5, style: 'text-align:center; padding: 20px; color:#64748b;' }, 'لا توجد مجموعات حتى الآن.')));
 			} else {
 				state.groups.forEach(function(g) {
 					var count = 0;
@@ -586,10 +583,10 @@ return view.extend({
 					var bandLabel = g.band === '2g' ? '2.4GHz فقط' : (g.band === '5g' ? '5GHz فقط' : 'الترددين معاً');
 
 					gRows.push(E('tr', {}, [
-						E('td', { style: 'font-weight:bold;' }, g.name),
+						E('td', { style: 'font-weight:700;' }, g.name),
 						E('td', {}, g.ssid),
-						E('td', {}, E('span', { style: 'background:rgba(128,128,128,0.15); padding:2px 6px; border-radius:3px;' }, bandLabel)),
-						E('td', {}, E('span', { style: 'color:#00e676; font-weight:bold;' }, count)),
+						E('td', {}, E('span', { style: 'background:rgba(255,255,255,0.08); padding:3px 8px; border-radius:4px;' }, bandLabel)),
+						E('td', {}, E('span', { style: 'color:#00e676; font-weight:700;' }, count)),
 						E('td', {}, btnDel)
 					]));
 				});
@@ -597,7 +594,7 @@ return view.extend({
 			dom.content(gTableBody, gRows);
 		}
 
-		// Create Group Action
+		// Create Group
 		var btnCreate = groupForm.querySelector('#btn_create_group');
 		btnCreate.onclick = function() {
 			var n = groupForm.querySelector('#g_name').value.trim();

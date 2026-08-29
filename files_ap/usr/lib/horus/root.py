@@ -176,14 +176,25 @@ class RootNode:
                         action = cmd.get("action")
                         cmac = cmd.get("mac", "").upper()
                         duration = cmd.get("duration", 0)
+                        target_aps = cmd.get("target_aps", cmd.get("scope", "all"))
                         
                         with self.lock:
                             if action == "ban":
                                 self.db.ban_client(cmac, "manual", duration, now)
-                                ban_mac_locally(cmac)
-                                self.send_cmd({"type": "ban", "src_mac": self.my_mac, "target_mac": cmac, "duration": duration})
+                                if target_aps == "all" or self.my_mac in target_aps or not target_aps:
+                                    ban_mac_locally(cmac)
+                                
+                                if target_aps == "all":
+                                    self.send_cmd({"type": "ban", "src_mac": self.my_mac, "target_mac": cmac, "duration": duration})
+                                elif isinstance(target_aps, list):
+                                    for ap_target in target_aps:
+                                        ap_target = str(ap_target).upper()
+                                        if ap_target != self.my_mac:
+                                            target_ip = self.db.get_ap_ip(ap_target)
+                                            self.send_cmd({"type": "ban", "src_mac": self.my_mac, "target_mac": cmac, "duration": duration}, dst_mac=ap_target, dst_ip=target_ip)
                             elif action == "unban":
                                 self.db.unban_client(cmac)
+                                ban_mac_locally(cmac) # Ensure cleanup
                                 unban_mac_locally(cmac)
                                 self.send_cmd({"type": "unban", "src_mac": self.my_mac, "target_mac": cmac})
                     except Exception:
