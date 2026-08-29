@@ -11,7 +11,7 @@ return baseclass.extend({
 		var cmac = (c.mac || '').toUpperCase();
 		var rUser = (state.radiusMap && state.radiusMap[cmac]) ? state.radiusMap[cmac] : {};
 		var isRegistered = !!(rUser.name || rUser.username);
-		var dispName = rUser.name || rUser.username || (horusI18n.getLang() === 'ar' ? 'مشترك محلي (غير مسجل)' : 'Local Client (Unregistered)');
+		var dispName = rUser.name || rUser.username || horusI18n.t('unregistered_client');
 		var prof = rUser.profile ? '🪙 ' + rUser.profile : '';
 		var quota = rUser.quota ? ' | 📊 ' + rUser.quota : '';
 		var uptimeStr = rUser.uptime ? ' | ⏱️ ' + rUser.uptime : '';
@@ -46,11 +46,11 @@ return baseclass.extend({
 		};
 
 		var vIcon = c.vendor_icon || '📱';
-		var vName = c.vendor || (horusI18n.getLang() === 'ar' ? 'جهاز غير معروف' : 'Unknown Device');
+		var vName = c.vendor || horusI18n.t('unknown_device');
 
 		var radBadge = isRegistered ? 
 			E('span', { class: 'live-rad-badge', style: 'background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:800; white-space:nowrap;' }, '✔ SAS') :
-			E('span', { class: 'live-rad-badge', style: 'background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:2px 6px; border-radius:4px; font-size:10px; white-space:nowrap;' }, horusI18n.getLang() === 'ar' ? 'غير مسجل' : 'Unregistered');
+			E('span', { class: 'live-rad-badge', style: 'background:rgba(148,163,184,0.15); color:#94a3b8; border:1px solid rgba(148,163,184,0.3); padding:2px 6px; border-radius:4px; font-size:10px; white-space:nowrap;' }, horusI18n.t('unregistered'));
 
 		var tr = E('tr', { 'data-mac': cmac }, [
 			// Col 1: MAC & Device Brand
@@ -159,7 +159,7 @@ return baseclass.extend({
 				var elIp = existingRow.querySelector('.live-ip');
 				if (elIp && elIp.textContent !== (rUser.ip || '-')) elIp.textContent = rUser.ip || '-';
 
-				var dispName = rUser.name || rUser.username || (horusI18n.getLang() === 'ar' ? 'مشترك محلي (غير مسجل)' : 'Local Client (Unregistered)');
+				var dispName = rUser.name || rUser.username || horusI18n.t('unregistered_client');
 				var elName = existingRow.querySelector('.live-disp-name');
 				if (elName && elName.textContent !== dispName) elName.textContent = dispName;
 			} else {

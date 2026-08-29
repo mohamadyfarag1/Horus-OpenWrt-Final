@@ -2,76 +2,81 @@
 'require baseclass';
 'require dom';
 'require ui';
+'require horus_controller.i18n as horusI18n';
 
 return baseclass.extend({
-	runBulkHardware: function(actName, actParam, state, ui, val) {
-		if (!state.selectedAps || state.selectedAps.size === 0) return;
-		var targetList = Array.from(state.selectedAps);
-		if (confirm('هل أنت متأكد من تنفيذ (' + actName + ') على (' + targetList.length + ') إكسس؟')) {
-			var p = { target_ap: targetList, action: actParam };
-			if (val !== undefined) p.state = val;
-			fetch('/cgi-bin/horus_ap_action', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(p)
-			}).then(function(){
-				ui.addNotification(null, E('p', '✅ تم إرسال أمر ' + actName + ' إلى الأجهزة المحددة بنجاح!'));
-			});
-		}
-	},
-
 	updateBulkBar: function(state, bulkBar, bulkTitle) {
-		if (!bulkBar || !bulkTitle) return;
-		if (state.selectedAps && state.selectedAps.size > 0) {
+		var count = state.selectedAps.size;
+		if (count > 0) {
 			bulkBar.classList.remove('hidden');
-			bulkTitle.textContent = '🎯 تم تحديد (' + state.selectedAps.size + ') إكسس - الإجراءات الجماعية:';
+			bulkTitle.textContent = horusI18n.t('bulk_title', { n: count });
 		} else {
 			bulkBar.classList.add('hidden');
 		}
 	},
 
-	openBulkWifiModal: function(state, ui) {
-		if (!state.selectedAps || state.selectedAps.size === 0) return;
+	runBulkHardware: function(actLabel, actName, state, ui, extraVal) {
 		var targetList = Array.from(state.selectedAps);
+		if (targetList.length === 0) return;
+		if (confirm(actLabel + ' for (' + targetList.length + ') APs?')) {
+			var payload = { action: actName, target_aps: targetList };
+			if (extraVal !== undefined) payload.value = extraVal;
+			fetch('/cgi-bin/horus_ap_action', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			}).then(function(){
+				ui.addNotification(null, E('p', '✅ ' + actLabel + ' command dispatched.'));
+			});
+		}
+	},
 
+	openBulkWifiModal: function(state, ui) {
+		var targetList = Array.from(state.selectedAps);
+		if (targetList.length === 0) return;
+
+		var inSsid = E('input', { type: 'text', placeholder: 'New SSID (Leave empty to keep)' });
+		var inPass = E('input', { type: 'password', placeholder: 'New Password (Leave empty to keep)' });
 		var inBand = E('select', {}, [
-			E('option', { value: 'both' }, 'الترددين معاً (2.4GHz + 5GHz)'),
-			E('option', { value: '2g' }, 'تردد 2.4GHz فقط'),
-			E('option', { value: '5g' }, 'تردد 5GHz فقط')
+			E('option', { value: 'both' }, horusI18n.t('both_bands')),
+			E('option', { value: '2g' }, horusI18n.t('only_2g')),
+			E('option', { value: '5g' }, horusI18n.t('only_5g'))
 		]);
-		var inSsid = E('input', { type: 'text', placeholder: 'اسم الشبكة الجديد (SSID)' });
-		var inPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة (8 أحرف فأكثر)' });
-		var inChannel = E('select', {}, [
-			E('option', { value: '' }, 'بدون تغيير (الحالي)'),
-			E('option', { value: 'auto' }, 'Auto (تلقائي)')
-		]);
-		for (var c = 1; c <= 13; c++) inChannel.appendChild(E('option', { value: c.toString() }, 'قناة ' + c));
-		[36, 40, 44, 48, 149, 153, 157, 161, 165].forEach(function(c5){ inChannel.appendChild(E('option', { value: c5.toString() }, 'قناة ' + c5)); });
-
-		var modalBox = E('div', { style: 'direction:rtl; text-align:right; color:#f8fafc;' }, [
-			E('h3', { style: 'color:#00e676; margin-top:0;' }, '⚡ تطبيق إعدادات الوايرليس على (' + targetList.length + ') إكسس'),
-			E('p', { style: 'font-size:13px; color:#cbd5e1;' }, 'سيتم إرسال إعدادات الواي فاي وتطبيقها فوراً عبر بروتوكول HMP:'),
-			E('div', { class: 'form-row' }, [
-				E('div', { class: 'form-field' }, [ E('label', {}, 'التردد المستهدف:'), inBand ]),
-				E('div', { class: 'form-field' }, [ E('label', {}, 'اسم الشبكة (SSID):'), inSsid ])
-			]),
-			E('div', { class: 'form-row' }, [
-				E('div', { class: 'form-field' }, [ E('label', {}, 'كلمة السر الجديدة (اختياري):'), inPass ]),
-				E('div', { class: 'form-field' }, [ E('label', {}, 'القناة:'), inChannel ])
-			])
+		var inChan = E('select', {}, [
+			E('option', { value: '' }, 'Auto / Keep Current'),
+			E('option', { value: 'auto' }, 'Auto Channel'),
+			E('option', { value: '1' }, '2.4G - Channel 1'),
+			E('option', { value: '6' }, '2.4G - Channel 6'),
+			E('option', { value: '11' }, '2.4G - Channel 11'),
+			E('option', { value: '36' }, '5G - Channel 36'),
+			E('option', { value: '44' }, '5G - Channel 44'),
+			E('option', { value: '149' }, '5G - Channel 149'),
+			E('option', { value: '157' }, '5G - Channel 157')
 		]);
 
-		ui.showModal('تعديل إعدادات الواي فاي الجماعي', [
-			modalBox,
+		var modalContent = E('div', { style: 'direction:' + horusI18n.getDir() + '; text-align:' + (horusI18n.getDir() === 'rtl' ? 'right' : 'left') + '; color:#f8fafc;' }, [
+			E('h3', { style: 'color:#38bdf8; margin-top:0;' }, horusI18n.t('bulk_wifi_modal_title')),
+			E('p', { style: 'font-size:13px; color:#cbd5e1;' }, 'Apply wireless settings across (' + targetList.length + ') selected Access Points simultaneously:'),
+			E('div', { class: 'form-field', style: 'margin-bottom:12px;' }, [ E('label', {}, horusI18n.t('target_band')), inBand ]),
+			E('div', { class: 'form-field', style: 'margin-bottom:12px;' }, [ E('label', {}, horusI18n.t('ssid_name')), inSsid ]),
+			E('div', { class: 'form-field', style: 'margin-bottom:12px;' }, [ E('label', {}, horusI18n.t('new_password')), inPass ]),
+			E('div', { class: 'form-field', style: 'margin-bottom:16px;' }, [ E('label', {}, horusI18n.t('current_channel')), inChan ])
+		]);
+
+		ui.showModal(horusI18n.t('bulk_wifi_modal_title'), [
+			modalContent,
 			E('div', { class: 'right', style: 'margin-top:18px; display:flex; gap:10px; justify-content:flex-end;' }, [
-				E('button', { class: 'btn', click: ui.hideModal }, 'إلغاء'),
+				E('button', { class: 'btn', click: ui.hideModal }, horusI18n.t('cancel')),
 				E('button', {
 					class: 'btn primary',
+					style: 'background:linear-gradient(135deg, #00e676 0%, #00b0ff 100%); color:#000; border:none;',
 					click: function() {
-						var ssidVal = inSsid.value.trim();
-						var passVal = inPass.value.trim();
-						if (!ssidVal && !passVal && !inChannel.value) {
-							alert('يرجى إدخال اسم شبكة أو كلمة سر أو اختيار قناة.');
+						var s = inSsid.value.trim();
+						var p = inPass.value.trim();
+						var b = inBand.value;
+						var c = inChan.value;
+						if (!s && !p && !c) {
+							alert('Please provide SSID, password, or channel.');
 							return;
 						}
 						ui.hideModal();
@@ -79,45 +84,45 @@ return baseclass.extend({
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
 							body: JSON.stringify({
-								target_ap: targetList,
-								action: 'apply_profile',
-								band: inBand.value,
-								ssid: ssidVal,
-								password: passVal,
-								channel: inChannel.value
+								action: 'bulk_apply_profile',
+								target_aps: targetList,
+								band: b,
+								ssid: s,
+								password: p,
+								channel: c
 							})
 						}).then(function(){
-							ui.addNotification(null, E('p', '✅ تم إرسال أمر تعديل الواي فاي الجماعي بنجاح!'));
+							ui.addNotification(null, E('p', '✅ Bulk WiFi profile dispatched.'));
 						});
 					}
-				}, '🚀 تطبيق فوري على الأجهزة')
+				}, horusI18n.t('bulk_apply_btn'))
 			])
 		]);
 	},
 
 	openBulkPassModal: function(state, ui) {
-		if (!state.selectedAps || state.selectedAps.size === 0) return;
 		var targetList = Array.from(state.selectedAps);
-		var inNewAdminPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة للوحة التحكم' });
+		if (targetList.length === 0) return;
 
-		var modalBox = E('div', { style: 'direction:rtl; text-align:right; color:#f8fafc;' }, [
-			E('h3', { style: 'color:#8b5cf6; margin-top:0;' }, '🔐 تغيير باسورد لوحة التحكم لـ (' + targetList.length + ') إكسس'),
-			E('p', { style: 'font-size:13px; color:#cbd5e1;' }, 'سيتم تغيير كلمة سر الـ Root للإكسسات المحددة وتحديث HMP Secret فوراً:'),
-			E('div', { class: 'form-row' }, [
-				E('div', { class: 'form-field' }, [ E('label', {}, 'كلمة السر الجديدة:'), inNewAdminPass ])
-			])
+		var inPass = E('input', { type: 'password', placeholder: 'New Admin Password' });
+
+		var modalContent = E('div', { style: 'direction:' + horusI18n.getDir() + '; text-align:' + (horusI18n.getDir() === 'rtl' ? 'right' : 'left') + '; color:#f8fafc;' }, [
+			E('h3', { style: 'color:#fbbf24; margin-top:0;' }, horusI18n.t('bulk_pass_modal_title', { n: targetList.length })),
+			E('p', { style: 'font-size:13px; color:#cbd5e1;' }, 'Update administrator LuCI/SSH password for all (' + targetList.length + ') selected APs:'),
+			E('div', { class: 'form-field', style: 'margin-bottom:16px;' }, [ E('label', {}, horusI18n.t('admin_password')), inPass ])
 		]);
 
-		ui.showModal('تغيير باسورد الإكسسات الجماعي', [
-			modalBox,
+		ui.showModal(horusI18n.t('bulk_pass_modal_title', { n: targetList.length }), [
+			modalContent,
 			E('div', { class: 'right', style: 'margin-top:18px; display:flex; gap:10px; justify-content:flex-end;' }, [
-				E('button', { class: 'btn', click: ui.hideModal }, 'إلغاء'),
+				E('button', { class: 'btn', click: ui.hideModal }, horusI18n.t('cancel')),
 				E('button', {
 					class: 'btn primary',
+					style: 'background:linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); color:#000; border:none;',
 					click: function() {
-						var pass = inNewAdminPass.value.trim();
-						if (!pass || pass.length < 5) {
-							alert('يرجى إدخال كلمة سر صالحة لا تقل عن 5 أحرف.');
+						var p = inPass.value.trim();
+						if (!p || p.length < 5) {
+							alert('Please enter a valid password (at least 5 chars).');
 							return;
 						}
 						ui.hideModal();
@@ -125,15 +130,15 @@ return baseclass.extend({
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
 							body: JSON.stringify({
-								target_ap: targetList,
-								action: 'admin_password',
-								password: pass
+								action: 'bulk_admin_password',
+								target_aps: targetList,
+								password: p
 							})
 						}).then(function(){
-							ui.addNotification(null, E('p', '✅ تم إرسال أمر تحديث الباسورد الجماعي للإكسسات بنجاح!'));
+							ui.addNotification(null, E('p', '✅ Bulk admin password updated.'));
 						});
 					}
-				}, '🔐 تحديث الباسورد فوراً')
+				}, horusI18n.t('bulk_pass_apply_btn'))
 			])
 		]);
 	}
