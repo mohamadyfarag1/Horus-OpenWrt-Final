@@ -22,9 +22,9 @@ return view.extend({
 		container.appendChild(horusStyles.getStyles());
 
 		// Header Bar with Navigation Tabs and Language Switcher
-		var tabsNav = E('div', { class: 'horus-tabs', style: 'display:flex; justify-content:space-between; align-items:flex-end;' });
+		var tabsNav = E('div', { class: 'horus-tabs' });
 		
-		var tabsLeft = E('div', { style: 'display:flex; gap:8px;' });
+		var tabsLeft = E('div', { class: 'horus-tab-group' });
 		var tabDash = E('div', { class: 'horus-tab active' }, horusI18n.t('wlc_dashboard'));
 		var tabGroups = E('div', { class: 'horus-tab' }, horusI18n.t('ap_groups'));
 		tabsLeft.appendChild(tabDash);

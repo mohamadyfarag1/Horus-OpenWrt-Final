@@ -76,9 +76,8 @@ return view.extend({
 		`);
 		container.appendChild(styles);
 
-		// Navigation Tabs with Language Switcher
-		var tabsNav = E('div', { class: 'horus-tabs', style: 'display:flex; justify-content:space-between; align-items:flex-end;' });
-		var tabsLeft = E('div', { style: 'display:flex; gap:8px;' });
+		var tabsNav = E('div', { class: 'horus-tabs' });
+		var tabsLeft = E('div', { class: 'horus-tab-group' });
 		var tabBanned = E('div', { class: 'horus-tab active' }, horusI18n.t('banned_registry'));
 		var tabSpoofLogs = E('div', { class: 'horus-tab' }, horusI18n.t('spoof_audit'));
 		var tabRoamLogs = E('div', { class: 'horus-tab' }, horusI18n.t('roam_log'));
@@ -96,7 +95,7 @@ return view.extend({
 		});
 
 		tabsNav.appendChild(tabsLeft);
-		tabsNav.appendChild(E('div', { style: 'margin-bottom:8px;' }, langBtn));
+		tabsNav.appendChild(langBtn);
 		container.appendChild(tabsNav);
 
 		// Sections
