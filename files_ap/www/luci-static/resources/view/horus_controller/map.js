@@ -574,17 +574,37 @@ return view.extend({
 				portsGrid.appendChild(E('div', { style: 'color:#64748b; font-size:13px;' }, 'جاري قراءة منافذ اللان السلكية عبر HMP...'));
 			} else {
 				portsList.forEach(function(p) {
-					var isUp = p.is_up;
+					var isUp = !!p.is_up;
+					var isEnabled = (p.is_enabled !== undefined) ? !!p.is_enabled : (p.state !== 'down');
+					var hasCable = isUp && (p.carrier === 1 || p.speed > 0);
+
+					var statusBadge = '';
+					var statusClass = '';
+					if (hasCable) {
+						statusBadge = '🟢 ' + (p.speed_str || 'متصل بكابل');
+						statusClass = 'port-status-up';
+					} else if (isEnabled) {
+						statusBadge = '⚪ مفعل (لا يوجد كابل)';
+						statusClass = 'port-status-down';
+					} else {
+						statusBadge = '🔴 معطل برمجياً';
+						statusClass = 'port-status-down';
+					}
+
 					var pCard = E('div', { class: 'port-card' }, [
 						E('div', { class: 'port-header' }, [
 							E('span', { class: 'port-name' }, '🔌 ' + p.label),
-							E('span', { class: isUp ? 'port-status-up' : 'port-status-down' }, isUp ? '🟢 ' + p.speed_str : '⚪ مفصول')
+							E('span', { class: statusClass, style: 'font-size:11px; font-weight:700;' }, statusBadge)
 						])
 					]);
 
-					var btnPortToggle = E('button', { class: 'btn-sm-op', style: isUp ? 'background:rgba(239,68,68,0.2); color:#f87171;' : 'background:rgba(34,197,94,0.2); color:#4ade80;' }, isUp ? '📴 إيقاف المنفذ' : '✔️ تفعيل المنفذ');
+					var btnPortToggle = E('button', {
+						class: 'btn-sm-op',
+						style: isEnabled ? 'background:rgba(239,68,68,0.18); color:#f87171; border:1px solid rgba(239,68,68,0.35);' : 'background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid rgba(34,197,94,0.35);'
+					}, isEnabled ? '📴 إيقاف المنفذ' : '✔️ تفعيل المنفذ');
+
 					btnPortToggle.onclick = function() {
-						var nState = isUp ? 'down' : 'up';
+						var nState = isEnabled ? 'down' : 'up';
 						fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: apMac, action: 'port_state', port: p.port, state: nState }) });
 						ui.addNotification(null, E('p', 'تم إرسال أمر ' + (nState === 'up' ? 'تفعيل' : 'إيقاف') + ' للمنفذ: ' + p.label));
 					};

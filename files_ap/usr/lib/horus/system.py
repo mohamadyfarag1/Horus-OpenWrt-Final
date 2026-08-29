@@ -472,11 +472,23 @@ def get_ethernet_ports():
             p_path = f"/sys/class/net/{p}"
             if os.path.exists(p_path):
                 oper = "down"
+                carrier = 0
+                flags_val = 0
                 speed = 0
                 duplex = "full"
                 try:
                     with open(f"{p_path}/operstate", "r") as f:
                         oper = f.read().strip()
+                except Exception:
+                    pass
+                try:
+                    with open(f"{p_path}/carrier", "r") as f:
+                        carrier = int(f.read().strip())
+                except Exception:
+                    pass
+                try:
+                    with open(f"{p_path}/flags", "r") as f:
+                        flags_val = int(f.read().strip(), 16)
                 except Exception:
                     pass
                 try:
@@ -490,6 +502,9 @@ def get_ethernet_ports():
                 except Exception:
                     pass
                 
+                is_admin_enabled = bool(flags_val & 1) if flags_val > 0 else (oper != "down")
+                is_link_up = (carrier == 1) or (oper == "up")
+
                 attached_clients = []
                 p_num = p.replace('lan', '')
                 if p_num in port_macs:
@@ -499,13 +514,26 @@ def get_ethernet_ports():
                             "ip": arp_map.get(cmac, "")
                         })
 
+                if not is_admin_enabled:
+                    speed_str = "معطل برمجياً"
+                    status_label = "معطل"
+                elif is_link_up:
+                    speed_str = f"{speed} Mbps {duplex}" if speed > 0 else "متصل بكابل"
+                    status_label = "متصل"
+                else:
+                    speed_str = "مفعل (لا يوجد كابل)"
+                    status_label = "مفعل - بانتظار كابل"
+
                 ports.append({
                     "port": p,
                     "label": p.upper(),
                     "state": oper,
-                    "is_up": (oper == "up"),
-                    "speed": speed if oper == "up" else 0,
-                    "speed_str": f"{speed} Mbps {duplex}" if oper == "up" and speed > 0 else ("متصل" if oper == "up" else "مفصول"),
+                    "is_enabled": is_admin_enabled,
+                    "is_up": is_link_up,
+                    "carrier": carrier,
+                    "speed": speed if is_link_up else 0,
+                    "speed_str": speed_str,
+                    "status_label": status_label,
                     "clients": attached_clients
                 })
     except Exception:
