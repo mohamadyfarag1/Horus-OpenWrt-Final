@@ -31,28 +31,182 @@ def get_hostname():
     except Exception:
         return "Horus-AP"
 
-def get_wireless_macs():
-    clients = []
+import time
+import json
+
+PREV_CLIENT_STATS = {}
+PREV_SYS_NET = {"rx": 0, "tx": 0, "ts": 0}
+
+def format_speed(bps):
+    if bps >= 1000000:
+        return f"{bps / 1000000:.1f} Mbps"
+    elif bps >= 1000:
+        return f"{bps / 1000:.0f} Kbps"
+    else:
+        return f"{bps:.0f} bps"
+
+def format_bytes(b):
+    if b >= 1073741824:
+        return f"{b / 1073741824:.2f} GB"
+    elif b >= 1048576:
+        return f"{b / 1048576:.1f} MB"
+    elif b >= 1024:
+        return f"{b / 1024:.0f} KB"
+    else:
+        return f"{b} B"
+
+def get_system_stats():
+    global PREV_SYS_NET
+    now = time.time()
+    cpu_load = "0.0"
+    mem_used_pct = 0
+    rx_speed_bps = 0
+    tx_speed_bps = 0
+    total_rx = 0
+    total_tx = 0
+
+    # CPU Load
     try:
-        out = subprocess.check_output("iwinfo | grep -E '^[a-zA-Z0-9_-]+'", shell=True, text=True)
-        interfaces = [line.split()[0] for line in out.splitlines() if line.strip()]
-        for iface in interfaces:
+        with open("/proc/loadavg", "r") as f:
+            cpu_load = f.read().split()[0]
+    except Exception:
+        pass
+
+    # RAM Usage
+    try:
+        mem_total = 0
+        mem_free = 0
+        mem_avail = 0
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    mem_total = int(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    mem_avail = int(line.split()[1])
+                elif line.startswith("MemFree:") and mem_avail == 0:
+                    mem_free = int(line.split()[1])
+        if mem_avail > 0 and mem_total > 0:
+            mem_used_pct = int(((mem_total - mem_avail) / mem_total) * 100)
+        elif mem_free > 0 and mem_total > 0:
+            mem_used_pct = int(((mem_total - mem_free) / mem_total) * 100)
+    except Exception:
+        pass
+
+    # Bandwidth Throughput on br-lan
+    try:
+        rx_p = f"/sys/class/net/{INTERFACE}/statistics/rx_bytes"
+        tx_p = f"/sys/class/net/{INTERFACE}/statistics/tx_bytes"
+        if os.path.exists(rx_p) and os.path.exists(tx_p):
+            with open(rx_p, "r") as f: total_rx = int(f.read().strip())
+            with open(tx_p, "r") as f: total_tx = int(f.read().strip())
+            
+            if PREV_SYS_NET["ts"] > 0:
+                dt = now - PREV_SYS_NET["ts"]
+                if dt > 0.5:
+                    rx_speed_bps = max(0, total_rx - PREV_SYS_NET["rx"]) * 8 / dt
+                    tx_speed_bps = max(0, total_tx - PREV_SYS_NET["tx"]) * 8 / dt
+            PREV_SYS_NET = {"rx": total_rx, "tx": total_tx, "ts": now}
+    except Exception:
+        pass
+
+    return {
+        "cpu_load": cpu_load,
+        "mem_pct": mem_used_pct,
+        "rx_speed": format_speed(rx_speed_bps),
+        "tx_speed": format_speed(tx_speed_bps),
+        "rx_speed_bps": int(rx_speed_bps),
+        "tx_speed_bps": int(tx_speed_bps),
+        "total_rx": format_bytes(total_rx),
+        "total_tx": format_bytes(total_tx)
+    }
+
+def get_wireless_macs():
+    global PREV_CLIENT_STATS
+    now = time.time()
+    clients = []
+    seen_macs = set()
+
+    # 1. Primary: Query hostapd ubus for deep stats (rx_bytes, tx_bytes, rate, signal)
+    try:
+        out = subprocess.check_output("ubus list | grep hostapd", shell=True, text=True)
+        for h in out.splitlines():
+            h = h.strip()
+            if not h: continue
+            iface_name = h.replace("hostapd.", "")
             try:
-                assoc = subprocess.check_output(f"iwinfo {iface} assoclist", shell=True, text=True)
-                for line in assoc.splitlines():
-                    if ' dBm' in line or 'SNR' in line:
-                        parts = line.split()
-                        mac = parts[0].upper()
-                        signal = -100
-                        for p in parts:
-                            if p.startswith('-') and p.lstrip('-').isdigit():
-                                signal = int(p)
-                                break
-                        clients.append({"mac": mac, "signal": signal, "iface": iface})
+                raw = subprocess.check_output(f"ubus call {h} get_clients", shell=True, text=True)
+                data = json.loads(raw)
+                cl_dict = data.get("clients", {})
+                for mac_str, info in cl_dict.items():
+                    mac = mac_str.upper()
+                    seen_macs.add(mac)
+                    sig = info.get("signal", -100)
+                    rx_b = info.get("bytes", {}).get("rx", 0)
+                    tx_b = info.get("bytes", {}).get("tx", 0)
+                    rate_tx = info.get("rate", {}).get("tx", 0)
+
+                    rx_speed_bps = 0
+                    tx_speed_bps = 0
+                    if mac in PREV_CLIENT_STATS:
+                        dt = now - PREV_CLIENT_STATS[mac]["ts"]
+                        if dt > 0.5:
+                            rx_speed_bps = max(0, rx_b - PREV_CLIENT_STATS[mac]["rx"]) * 8 / dt
+                            tx_speed_bps = max(0, tx_b - PREV_CLIENT_STATS[mac]["tx"]) * 8 / dt
+                    PREV_CLIENT_STATS[mac] = {"rx": rx_b, "tx": tx_b, "ts": now}
+
+                    clients.append({
+                        "mac": mac,
+                        "signal": sig,
+                        "iface": iface_name,
+                        "rx_speed": format_speed(rx_speed_bps),
+                        "tx_speed": format_speed(tx_speed_bps),
+                        "rx_speed_bps": int(rx_speed_bps),
+                        "tx_speed_bps": int(tx_speed_bps),
+                        "total_rx": format_bytes(rx_b),
+                        "total_tx": format_bytes(tx_b),
+                        "link_rate": format_speed(rate_tx) if rate_tx > 0 else "-"
+                    })
             except Exception:
                 pass
     except Exception:
         pass
+
+    # 2. Fallback: iwinfo assoclist if ubus returned no clients
+    if len(clients) == 0:
+        try:
+            out = subprocess.check_output("iwinfo | grep -E '^[a-zA-Z0-9_-]+'", shell=True, text=True)
+            interfaces = [line.split()[0] for line in out.splitlines() if line.strip()]
+            for iface in interfaces:
+                try:
+                    assoc = subprocess.check_output(f"iwinfo {iface} assoclist", shell=True, text=True)
+                    for line in assoc.splitlines():
+                        if ' dBm' in line or 'SNR' in line:
+                            parts = line.split()
+                            mac = parts[0].upper()
+                            if mac in seen_macs: continue
+                            seen_macs.add(mac)
+                            signal = -100
+                            for p in parts:
+                                if p.startswith('-') and p.lstrip('-').isdigit():
+                                    signal = int(p)
+                                    break
+                            clients.append({
+                                "mac": mac,
+                                "signal": signal,
+                                "iface": iface,
+                                "rx_speed": "0 bps",
+                                "tx_speed": "0 bps",
+                                "rx_speed_bps": 0,
+                                "tx_speed_bps": 0,
+                                "total_rx": "-",
+                                "total_tx": "-",
+                                "link_rate": "-"
+                            })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     return clients
 
 def get_wifi_info():

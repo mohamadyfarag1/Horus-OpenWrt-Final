@@ -163,11 +163,11 @@ return view.extend({
 						E('th', { style: 'width:40px; text-align:center;' }, cbSelectAll),
 						E('th', {}, 'الحالة'),
 						E('th', {}, 'اسم الإكسس / Hostname'),
-						E('th', {}, 'عنوان الـ IP'),
-						E('th', {}, 'الماك (MAC)'),
-						E('th', {}, 'المجموعة'),
-						E('th', {}, 'العملاء (واي فاي / كابل)'),
-						E('th', {}, 'ترددات وقنوات الواي فاي'),
+						E('th', {}, 'عنوان الـ IP والماك'),
+						E('th', {}, 'السرعة والترافيك اللحظي'),
+						E('th', {}, 'أداء الجهاز'),
+						E('th', {}, 'المتصلين (وايرليس / سلك)'),
+						E('th', {}, 'ترددات الواي فاي'),
 						E('th', { style: 'text-align: center;' }, 'إجراءات وتحكم شامل')
 					])
 				]),
@@ -429,6 +429,28 @@ return view.extend({
 			};
 			viewApDetail.appendChild(headerBox);
 
+			// Real-Time Speed & Capacity Metrics Banner
+			var st = ap.stats || {};
+			var statsBanner = E('div', { style: 'display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom: 20px;' }, [
+				E('div', { class: 'dash-card', style: 'border:1px solid rgba(56,189,248,0.3); background:rgba(15,23,42,0.6); padding:16px; border-radius:10px;' }, [
+					E('h3', { style: 'color:#38bdf8; font-size:22px; margin:0;' }, '⬇️ ' + (st.rx_speed || '0 bps')),
+					E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'سرعة التحميل اللحظية | الإجمالي: ' + (st.total_rx || '-'))
+				]),
+				E('div', { class: 'dash-card', style: 'border:1px solid rgba(34,197,94,0.3); background:rgba(15,23,42,0.6); padding:16px; border-radius:10px;' }, [
+					E('h3', { style: 'color:#4ade80; font-size:22px; margin:0;' }, '⬆️ ' + (st.tx_speed || '0 bps')),
+					E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'سرعة الرفع اللحظية | الإجمالي: ' + (st.total_tx || '-'))
+				]),
+				E('div', { class: 'dash-card', style: 'border:1px solid rgba(251,191,36,0.3); background:rgba(15,23,42,0.6); padding:16px; border-radius:10px;' }, [
+					E('h3', { style: 'color:#fbbf24; font-size:22px; margin:0;' }, '👥 ' + clientsList.length + ' متصل'),
+					E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'عدد عملاء الوايرليس النشطين')
+				]),
+				E('div', { class: 'dash-card', style: 'border:1px solid rgba(168,85,247,0.3); background:rgba(15,23,42,0.6); padding:16px; border-radius:10px;' }, [
+					E('h3', { style: 'color:#a855f7; font-size:22px; margin:0;' }, '🧠 ' + (st.cpu_load || '0.0') + ' | 💾 ' + (st.mem_pct || 0) + '%'),
+					E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'استهلاك المعالج والذاكرة')
+				])
+			]);
+			viewApDetail.appendChild(statsBanner);
+
 			// --- Section 1: Independent Radios (2.4GHz & 5GHz) ---
 			var radiosGrid = E('div', { class: 'radios-grid' });
 
@@ -612,7 +634,13 @@ return view.extend({
 							E('span', { style: 'color:#00e676; font-weight:700;' }, dispName),
 							E('small', { style: 'color:#80deea;' }, prof + quota)
 						]),
+						E('td', {}, [
+							E('div', { style: 'color:#38bdf8; font-weight:700; font-size:12px;' }, '⬇️ ' + (c.rx_speed || '0 bps')),
+							E('div', { style: 'color:#4ade80; font-weight:700; font-size:12px;' }, '⬆️ ' + (c.tx_speed || '0 bps'))
+						]),
+						E('td', { style: 'font-size:11px; color:#cbd5e1;' }, (c.total_rx || '-') + ' / ' + (c.total_tx || '-')),
 						E('td', {}, E('span', { style: 'padding:3px 8px; border-radius:4px; font-weight:700; font-size:11px;' + sigBadgeColor }, (c.signal || '-') + ' dBm')),
+						E('td', { style: 'font-size:11px; color:#94a3b8;' }, c.link_rate || '-'),
 						E('td', {}, c.iface || '-'),
 						E('td', {}, rUser.ip || '-'),
 						E('td', { style: 'text-align:center;' }, [btnSteer, btnKick, btnBan])
@@ -626,7 +654,10 @@ return view.extend({
 						E('tr', {}, [
 							E('th', {}, 'الماك (MAC)'),
 							E('th', {}, 'المشترك (Radius Details)'),
+							E('th', {}, 'السرعة الحالية'),
+							E('th', {}, 'إجمالي الاستهلاك'),
 							E('th', {}, 'قوة الإشارة'),
+							E('th', {}, 'معدل الربط'),
 							E('th', {}, 'الواجهة'),
 							E('th', {}, 'عنوان الآي بي'),
 							E('th', { style: 'text-align:center;' }, 'تحكم')
@@ -742,7 +773,8 @@ return view.extend({
 					clients: cCount,
 					wired: wiredCount,
 					isOnline: isOnline,
-					wifi: ap.wifi || []
+					wifi: ap.wifi || [],
+					stats: ap.stats || {}
 				});
 			});
 
@@ -809,9 +841,18 @@ return view.extend({
 						E('td', { style: 'text-align:center;' }, rowCb),
 						E('td', {}, [dot, ' ', ap.isOnline ? 'متصل' : 'مفصول']),
 						E('td', { style: 'font-weight:700; color:#f8fafc;' }, ap.hostname),
-						E('td', { style: 'color:#38bdf8; font-family:monospace;' }, ap.ip),
-						E('td', { style: 'font-family:monospace; color:#94a3b8;' }, ap.mac),
-						E('td', { style: 'color:#a855f7; font-weight:700;' }, ap.group),
+						E('td', {}, [
+							E('div', { style: 'color:#38bdf8; font-family:monospace; font-weight:700;' }, ap.ip),
+							E('div', { style: 'font-family:monospace; font-size:11px; color:#94a3b8;' }, ap.mac)
+						]),
+						E('td', {}, [
+							E('div', { style: 'color:#38bdf8; font-weight:700; font-size:12px;' }, '⬇️ ' + (ap.stats.rx_speed || '0 bps')),
+							E('div', { style: 'color:#4ade80; font-weight:700; font-size:12px;' }, '⬆️ ' + (ap.stats.tx_speed || '0 bps'))
+						]),
+						E('td', {}, [
+							E('div', { style: 'font-size:12px; color:#cbd5e1; font-weight:600;' }, '🧠 ' + (ap.stats.cpu_load || '0.0')),
+							E('div', { style: 'font-size:11px; color:#94a3b8;' }, '💾 ' + (ap.stats.mem_pct || 0) + '% RAM')
+						]),
 						E('td', {}, [
 							E('span', { style: 'background:rgba(251,191,36,0.15); color:#fbbf24; padding:2px 8px; border-radius:10px; font-weight:700; margin-left:4px;' }, '📶 ' + ap.clients),
 							ap.wired > 0 ? E('span', { style: 'background:rgba(56,189,248,0.15); color:#38bdf8; padding:2px 8px; border-radius:10px; font-weight:700;' }, '🔌 ' + ap.wired) : ''

@@ -10,10 +10,12 @@ from .config import (
 )
 from .system import (
     get_my_mac, get_lan_ip, get_hostname, get_wireless_macs,
-    get_wifi_info, get_ethernet_ports, get_uci, ban_mac_locally, unban_mac_locally,
-    apply_wifi_config, steer_client_locally, enable_80211kv_locally
+    get_wifi_info, get_ethernet_ports, get_system_stats, get_uci,
+    ban_mac_locally, unban_mac_locally, apply_wifi_config,
+    steer_client_locally, enable_80211kv_locally
 )
 from .protocol import send_hmp_frame, parse_incoming_data
+from .rrm import get_scan_data
 from .db import HorusDB
 
 class RootNode:
@@ -76,12 +78,13 @@ class RootNode:
                         with self.lock:
                             self.db.update_ap(
                                 mac=src_mac,
-                                hostname=data.get("hostname", "unknown"),
+                                hostname=data.get("hostname", "Horus-AP"),
                                 ip=data.get("ip", ""),
                                 last_seen=now,
                                 wifi_info=data.get("wifi", []),
                                 scan_data=scan_data,
-                                ports=data.get("ports", [])
+                                ports=data.get("ports", []),
+                                stats=data.get("stats", {})
                             )
                             self.db.update_clients(src_mac, clients, now)
                             self.handle_anti_spoofing(now)
@@ -92,7 +95,7 @@ class RootNode:
         # Fetch clients that have exceeded the grace period
         suspicious_macs = self.db.get_suspicious_clients(self.grace_period, now)
         for cmac in suspicious_macs:
-            self.db.ban_client(cmac, "spoofing", 0, now)
+            self.db.ban_client(cmac, "تكرار ماك وسرقة (MAC Spoofing)", 0, now)
             ban_mac_locally(cmac)
             self.send_cmd({"type": "ban", "src_mac": self.my_mac, "target_mac": cmac, "duration": 0})
 
@@ -103,9 +106,9 @@ class RootNode:
                 time.sleep(1)
                 now = time.time()
                 loop_tick += 1
-                
+
                 with self.lock:
-                    # 1. Register Root as an AP
+                    # 1. Register Root as an AP with live telemetry and stats
                     own_clients = get_wireless_macs()
                     self.db.update_ap(
                         mac=self.my_mac,
@@ -113,8 +116,9 @@ class RootNode:
                         ip=get_lan_ip(),
                         last_seen=now,
                         wifi_info=get_wifi_info(),
-                        scan_data={},
-                        ports=get_ethernet_ports()
+                        scan_data=get_scan_data(),
+                        ports=get_ethernet_ports(),
+                        stats=get_system_stats()
                     )
                     self.db.update_clients(self.my_mac, own_clients, now)
                     self.handle_anti_spoofing(now)

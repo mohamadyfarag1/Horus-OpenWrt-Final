@@ -6,7 +6,9 @@ import subprocess
 from .config import HELLO_INTERVAL, TELEMETRY_INTERVAL
 from .system import (
     get_my_mac, get_lan_ip, get_hostname, get_wireless_macs,
-    get_wifi_info, get_ethernet_ports, ban_mac_locally, unban_mac_locally, apply_wifi_config
+    get_wifi_info, get_ethernet_ports, get_system_stats,
+    ban_mac_locally, unban_mac_locally, apply_wifi_config,
+    steer_client_locally, enable_80211kv_locally
 )
 from .protocol import send_hmp_frame, parse_incoming_data
 from .rrm import get_scan_data
@@ -32,7 +34,8 @@ class SatelliteNode:
                     "hostname": self.hostname,
                     "ip": get_lan_ip(),
                     "wifi": get_wifi_info(),
-                    "ports": get_ethernet_ports()
+                    "ports": get_ethernet_ports(),
+                    "stats": get_system_stats()
                 }
                 self.send_to_root(payload)
             except Exception:
@@ -50,6 +53,7 @@ class SatelliteNode:
                     "clients": get_wireless_macs(),
                     "wifi": get_wifi_info(),
                     "ports": get_ethernet_ports(),
+                    "stats": get_system_stats(),
                     "scan_data": get_scan_data()
                 }
                 self.send_to_root(payload)
