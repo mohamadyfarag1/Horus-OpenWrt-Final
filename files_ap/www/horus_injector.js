@@ -222,20 +222,15 @@
                             quotaHtml = '<span style="color:#ffd54f; font-weight:bold; font-size:11px; margin-right:6px;">📊 متبقي: ' + quotaFormatted + '</span> ';
                         }
 
-                        var balanceHtml = '';
-                        if (info.balance !== undefined && info.balance !== null && info.balance !== '') {
-                            var balNum = parseFloat(info.balance);
-                            if (!isNaN(balNum)) {
-                                var balColor = balNum > 0 ? '#ffd700' : '#b0bec5';
-                                balanceHtml = '<span style="color:' + balColor + '; font-weight:bold; font-size:11px; margin-right:6px;">💰 رصيد: ' + balNum.toFixed(2) + ' ج</span> ';
-                            }
-                        }
+                        var balNum = parseFloat(info.balance !== undefined && info.balance !== null && info.balance !== '' ? info.balance : 0);
+                        var balColor = (!isNaN(balNum) && balNum > 0) ? '#ffd700' : '#b0bec5';
+                        var balanceHtml = '<span style="color:' + balColor + '; font-weight:bold; font-size:11px;">💰 رصيد: ' + (isNaN(balNum) ? '0.00' : balNum.toFixed(2)) + ' ج</span>';
 
                         var loanHtml = '';
                         if (info.loan !== undefined && info.loan !== null && info.loan !== '') {
                             var loanNum = parseFloat(info.loan);
                             if (!isNaN(loanNum) && loanNum > 0) {
-                                loanHtml = '<span style="color:#ff5252; font-weight:bold; font-size:11px; margin-right:6px;">💳 سلف: ' + loanNum.toFixed(2) + ' ج</span> ';
+                                loanHtml = '<span style="color:#ff5252; font-weight:bold; font-size:11px;">💳 سلف: ' + loanNum.toFixed(2) + ' ج</span>';
                             }
                         }
 
@@ -243,8 +238,8 @@
                         var daysHtml = '';
                         if (days !== null) {
                             var daysColor = days > 3 ? '#00e676' : (days > 0 ? '#ffb74d' : '#ff5252');
-                            daysHtml = '<span style="color:' + daysColor + '; font-weight:bold; font-size:11px; margin-right:6px;">📅 ' + 
-                                       (days > 0 ? 'متبقي ' + days + ' يوم' : 'منتهي الصلاحية') + '</span> ';
+                            daysHtml = '<span style="color:' + daysColor + '; font-weight:bold; font-size:11px;">📅 ' + 
+                                       (days > 0 ? 'متبقي ' + days + ' يوم' : 'منتهي الصلاحية') + '</span>';
                         }
 
                         var cellKey = [
@@ -264,22 +259,22 @@
                         hostCell.setAttribute('data-sas-done', cellKey);
 
                         hostCell.innerHTML = [
-                            '<div style="line-height:1.5; font-family:sans-serif; text-align:right; direction:rtl; white-space:normal;">',
-                                '<div style="font-weight:bold; color:#00e676; font-size:13px;">',
+                            '<div style="line-height:1.5; font-family:sans-serif; text-align:right; direction:rtl; width:100%; min-width:180px;">',
+                                '<div style="font-weight:bold; color:#00e676; font-size:13px; margin-bottom:2px; word-break:break-word;">',
                                     (isCard ? '💳 كارت: ' : '👤 ') + displayName,
                                 '</div>',
-                                '<div style="font-size:11px; margin-top:2px;">',
-                                    info.profile ? '<span style="color:#69f0ae; font-weight:500;">📦 ' + info.profile + '</span> ' : '',
+                                '<div style="display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; font-size:11px; margin-bottom:2px;">',
+                                    info.profile ? '<span style="color:#69f0ae; font-weight:500;">📦 ' + info.profile + '</span>' : '',
                                     balanceHtml,
                                     loanHtml,
                                 '</div>',
-                                '<div style="font-size:11px; margin-top:2px;">',
+                                '<div style="display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; font-size:11px; margin-bottom:2px;">',
                                     quotaHtml,
                                     daysHtml,
                                 '</div>',
-                                '<div style="font-size:10px; color:#b0bec5; margin-top:2px;">',
-                                    info.ip ? '<span style="color:#80deea; font-family:monospace;">🌐 ' + info.ip + '</span> ' : '',
-                                    info.session ? '<span style="color:#cfd8dc; margin-right:6px;">⏱ ' + formatSession(info.session) + '</span>' : '',
+                                '<div style="display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; font-size:10px; color:#b0bec5;">',
+                                    info.ip ? '<span style="color:#80deea; font-family:monospace;">🌐 ' + info.ip + '</span>' : '',
+                                    info.session ? '<span style="color:#cfd8dc;">⏱ ' + formatSession(info.session) + '</span>' : '',
                                 '</div>',
                             '</div>'
                         ].join('');

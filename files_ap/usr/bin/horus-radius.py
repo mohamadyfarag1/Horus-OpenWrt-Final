@@ -383,7 +383,7 @@ class SasEngine:
             "profile": profile,
             "expiration": expiration,
             "quota": quota,
-            "balance": str(balance) if balance is not None else "",
+            "balance": str(balance) if (balance is not None and balance != "") else "0.00",
             "loan": str(loan) if loan is not None else "",
             "ip": ip,
             "session": session,
