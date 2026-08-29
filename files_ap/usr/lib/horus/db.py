@@ -97,6 +97,8 @@ class HorusDB:
                     "ap_mac": ap_mac,
                     "signal": c.get("signal", -100),
                     "iface": c.get("iface", ""),
+                    "vendor": c.get("vendor", "جهاز غير معروف"),
+                    "vendor_icon": c.get("vendor_icon", "📱"),
                     "rx_speed": c.get("rx_speed", "0 bps"),
                     "tx_speed": c.get("tx_speed", "0 bps"),
                     "rx_speed_bps": c.get("rx_speed_bps", 0),

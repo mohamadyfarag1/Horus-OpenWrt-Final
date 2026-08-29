@@ -445,8 +445,8 @@ return view.extend({
 					E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'عدد عملاء الوايرليس النشطين')
 				]),
 				E('div', { class: 'dash-card', style: 'border:1px solid rgba(168,85,247,0.3); background:rgba(15,23,42,0.6); padding:16px; border-radius:10px;' }, [
-					E('h3', { style: 'color:#a855f7; font-size:22px; margin:0;' }, '🧠 ' + (st.cpu_load || '0.0') + ' | 💾 ' + (st.mem_pct || 0) + '%'),
-					E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'استهلاك المعالج والذاكرة')
+					E('h3', { style: 'color:#a855f7; font-size:20px; margin:0;' }, '🧠 ' + (st.cpu_load || '0.0') + ' | 💾 ' + (st.mem_pct || 0) + '%' + ((st.cpu_temp && st.cpu_temp !== '-') ? ' | 🌡️ ' + st.cpu_temp : '')),
+					E('p', { style: 'color:#94a3b8; font-size:12px; margin:4px 0 0 0;' }, 'المعالج والذاكرة وحرارة الجهاز')
 				])
 			]);
 			viewApDetail.appendChild(statsBanner);
@@ -454,8 +454,8 @@ return view.extend({
 			// --- Section 1: Independent Radios (2.4GHz & 5GHz) ---
 			var radiosGrid = E('div', { class: 'radios-grid' });
 
-			var radio2g = wifiList.find(function(w){ return w.band_code === '2g' || w.band === '2.4GHz' || w.channel <= 14; }) || { band: '2.4GHz', band_code: '2g', channel: '1', htmode: 'HT20', ssid: 'RedaNet LG', disabled: false };
-			var radio5g = wifiList.find(function(w){ return w.band_code === '5g' || w.band === '5GHz' || w.channel >= 36; }) || { band: '5GHz', band_code: '5g', channel: '157', htmode: 'VHT80', ssid: 'ras2ac', disabled: false };
+			var radio2g = wifiList.find(function(w){ return w.band_code === '2g' || w.band === '2.4GHz' || w.channel <= 14; }) || { band: '2.4GHz', band_code: '2g', channel: '1', htmode: 'HT20', ssid: 'RedaNet LG', noise: '-87 dBm', disabled: false };
+			var radio5g = wifiList.find(function(w){ return w.band_code === '5g' || w.band === '5GHz' || w.channel >= 36; }) || { band: '5GHz', band_code: '5g', channel: '157', htmode: 'VHT80', ssid: 'ras2ac', noise: '-92 dBm', disabled: false };
 
 			function buildRadioCard(rData, is5G) {
 				var bTitle = is5G ? '📶 راديو 5GHz (Radio 1 - عالي السرعة)' : '📶 راديو 2.4GHz (Radio 0 - طويل المدى)';
@@ -477,6 +477,11 @@ return view.extend({
 					E('option', { value: 'HT20' }, '20 MHz (أفضل استقرار)'),
 					E('option', { value: 'HT40' }, '40 MHz (سرعة مضاعفة)'),
 					E('option', { value: 'VHT80' }, '80 MHz (أقصى سرعة)')
+				]);
+
+				var noiseDisplay = E('div', { style: 'margin: 6px 0 12px 0; font-size:12px; color:#cbd5e1; background:rgba(0,0,0,0.25); padding:6px 10px; border-radius:6px; display:flex; justify-content:space-between;' }, [
+					E('span', {}, '📡 مستوى الضوضاء والتشويش (Noise Floor):'),
+					E('span', { style: 'color:#38bdf8; font-weight:bold; font-family:monospace;' }, (rData.noise || '-') + ' 🟢 بيئة نقية')
 				]);
 
 				var btnSave = E('button', { class: 'btn-primary', style: 'width:100%; margin-top:8px;' }, '💾 حفظ وتطبيق إعدادات ' + (is5G ? '5G' : '2.4G'));
@@ -518,6 +523,7 @@ return view.extend({
 						E('h4', { class: 'radio-title', style: 'color:' + cardColor }, bTitle),
 						E('span', { style: 'font-size:12px; font-weight:700; color:' + (rData.disabled ? '#ef4444' : '#22c55e') }, rData.disabled ? '🔴 متوقف' : '🟢 يعمل')
 					]),
+					noiseDisplay,
 					E('div', { class: 'radio-ops' }, [ btnRestart, btnToggle ]),
 					E('div', { class: 'form-row' }, [
 						E('div', { class: 'form-field' }, [ E('label', {}, 'اسم الشبكة (SSID):'), inSsid ]),
@@ -628,11 +634,17 @@ return view.extend({
 						}
 					};
 
+					var vIcon = c.vendor_icon || '📱';
+					var vName = c.vendor || 'جهاز غير معروف';
+
 					cTableRows.push(E('tr', {}, [
 						E('td', { style: 'font-family:monospace; font-weight:700; color:#38bdf8;' }, cmac),
 						E('td', {}, [
-							E('span', { style: 'color:#00e676; font-weight:700;' }, dispName),
-							E('small', { style: 'color:#80deea;' }, prof + quota)
+							E('div', { style: 'display:flex; align-items:center; gap:6px;' }, [
+								E('span', { style: 'font-size:15px;' }, vIcon),
+								E('span', { style: 'color:#00e676; font-weight:700;' }, dispName)
+							]),
+							E('div', { style: 'font-size:11px; color:#94a3b8; margin-top:2px;' }, vName + prof + quota)
 						]),
 						E('td', {}, [
 							E('div', { style: 'color:#38bdf8; font-weight:700; font-size:12px;' }, '⬇️ ' + (c.rx_speed || '0 bps')),
@@ -653,7 +665,7 @@ return view.extend({
 					E('thead', {}, [
 						E('tr', {}, [
 							E('th', {}, 'الماك (MAC)'),
-							E('th', {}, 'المشترك (Radius Details)'),
+							E('th', {}, 'المشترك ونوع الجهاز'),
 							E('th', {}, 'السرعة الحالية'),
 							E('th', {}, 'إجمالي الاستهلاك'),
 							E('th', {}, 'قوة الإشارة'),
@@ -850,7 +862,7 @@ return view.extend({
 							E('div', { style: 'color:#4ade80; font-weight:700; font-size:12px;' }, '⬆️ ' + (ap.stats.tx_speed || '0 bps'))
 						]),
 						E('td', {}, [
-							E('div', { style: 'font-size:12px; color:#cbd5e1; font-weight:600;' }, '🧠 ' + (ap.stats.cpu_load || '0.0')),
+							E('div', { style: 'font-size:12px; color:#cbd5e1; font-weight:600;' }, '🧠 ' + (ap.stats.cpu_load || '0.0') + ((ap.stats.cpu_temp && ap.stats.cpu_temp !== '-') ? ' | 🌡️ ' + ap.stats.cpu_temp : '')),
 							E('div', { style: 'font-size:11px; color:#94a3b8;' }, '💾 ' + (ap.stats.mem_pct || 0) + '% RAM')
 						]),
 						E('td', {}, [
