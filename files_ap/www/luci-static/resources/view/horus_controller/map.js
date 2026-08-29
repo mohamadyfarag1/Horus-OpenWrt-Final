@@ -117,6 +117,15 @@ return view.extend({
 			/* Wireless Health Box */
 			.wireless-health-box { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; white-space: nowrap; }
 
+			/* Modern AP Table Specific Styling */
+			.ap-action-group { display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+			.ap-clients-box { display: inline-flex; flex-direction: column; gap: 4px; white-space: nowrap; }
+			.pill-wifi { display: inline-flex; align-items: center; gap: 5px; background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.35); padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 12px; white-space: nowrap; }
+			.pill-wired { display: inline-flex; align-items: center; gap: 5px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 12px; white-space: nowrap; }
+			.ap-hw-box { display: inline-flex; flex-direction: column; gap: 2px; font-size: 11px; color: #cbd5e1; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06); white-space: nowrap; }
+			.ap-wifi-box { display: inline-flex; flex-direction: column; gap: 3px; white-space: nowrap; }
+			.ap-wifi-pill { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+
 			.hidden { display: none !important; }
 		`);
 		container.appendChild(styles);
@@ -184,13 +193,13 @@ return view.extend({
 				E('thead', {}, [
 					E('tr', {}, [
 						E('th', { style: 'width:40px; text-align:center;' }, cbSelectAll),
-						E('th', {}, 'الحالة'),
+						E('th', { style: 'width:100px;' }, 'الحالة'),
 						E('th', {}, 'اسم الإكسس / Hostname'),
 						E('th', {}, 'عنوان الـ IP والماك'),
-						E('th', {}, 'السرعة والترافيك اللحظي'),
-						E('th', {}, 'أداء الجهاز'),
-						E('th', {}, 'المتصلين (وايرليس / سلك)'),
-						E('th', {}, 'ترددات الواي فاي'),
+						E('th', {}, 'السرعة اللحظية الحالية'),
+						E('th', {}, 'أداء المعالج والحرارة'),
+						E('th', {}, 'المتصلين (وايرليس / كابل)'),
+						E('th', {}, 'ترددات الواي فاي النشطة'),
 						E('th', { style: 'text-align: center;' }, 'إجراءات وتحكم شامل')
 					])
 				]),
@@ -951,21 +960,27 @@ return view.extend({
 					};
 
 					var dot = E('span', { class: ap.isOnline ? 'status-dot status-online' : 'status-dot status-offline' });
-					var wifiBadges = [];
+					
+					var wifiPills = [];
 					if (ap.wifi && ap.wifi.length > 0) {
 						ap.wifi.forEach(function(w) {
-							var bColor = (w.band_code === '5g' || w.band === '5GHz') ? '#38bdf8' : '#4ade80';
-							var bText = (w.band === '2.4GHz' ? '2.4G' : (w.band === '5GHz' ? '5G' : w.band)) + ' (قناة ' + w.channel + ' - ' + w.htmode + '): ' + (w.ssid || '-');
-							wifiBadges.push(E('div', { style: 'margin:2px 0; padding:2px 8px; border-radius:4px; background:rgba(255,255,255,0.06); color:' + bColor + '; font-size:11px; font-weight:700;' }, bText));
+							var is5G = (w.band_code === '5g' || w.band === '5GHz' || w.channel >= 36);
+							var bColor = is5G ? '#38bdf8' : '#4ade80';
+							var bIcon = is5G ? '⚡' : '📶';
+							var bLabel = is5G ? '5G' : '2.4G';
+							var bChan = (w.channel || 'Auto');
+							wifiPills.push(E('div', { class: 'ap-wifi-pill' }, [
+								E('span', { style: 'color:' + bColor + '; font-weight:800;' }, bIcon + ' ' + bLabel + ' (' + bChan + '):'),
+								E('span', { style: 'color:#f8fafc; font-weight:600;' }, w.ssid || '-')
+							]));
 						});
-					} else {
-						wifiBadges.push(E('span', { style: 'color:#64748b; font-size:11px;' }, '-'));
 					}
+					var wifiBox = E('div', { class: 'ap-wifi-box' }, wifiPills.length > 0 ? wifiPills : [E('span', { style: 'color:#64748b;' }, '-')]);
 
-					var btnManage = E('button', { class: 'btn-action btn-manage' }, '🖥️ تحكم وإدارة شاملة');
+					var btnManage = E('button', { class: 'btn-ctrl btn-ctrl-steer', style: 'padding: 7px 14px; font-size: 12px;' }, '🖥️ تحكم وإدارة');
 					btnManage.onclick = function() { openApDetailView(ap.mac); };
 
-					var btnReboot = E('button', { class: 'btn-action btn-reboot' }, '🔄 ريستارت');
+					var btnReboot = E('button', { class: 'btn-ctrl btn-ctrl-kick', style: 'padding: 7px 14px; font-size: 12px;' }, '🔄 ريستارت');
 					btnReboot.onclick = function() {
 						if (confirm('إعادة تشغيل الإكسس (' + ap.mac + ')؟')) {
 							fetch('/cgi-bin/horus_ap_action', { method: 'POST', body: JSON.stringify({ target_ap: ap.mac, action: 'reboot' }) });
@@ -973,28 +988,49 @@ return view.extend({
 						}
 					};
 
+					var actionBox = E('div', { class: 'ap-action-group' }, [btnManage, btnReboot]);
+
+					var clientPills = [
+						E('span', { class: 'pill-wifi' }, '📶 ' + ap.clients + ' وايرليس')
+					];
+					if (ap.wired > 0) {
+						clientPills.push(E('span', { class: 'pill-wired' }, '🔌 ' + ap.wired + ' كابل'));
+					}
+					var clientBox = E('div', { class: 'ap-clients-box' }, clientPills);
+
+					var hwBox = E('div', { class: 'ap-hw-box' }, [
+						E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [
+							E('span', {}, '🧠 المعالج:'),
+							E('b', { style: 'color:#38bdf8;' }, ap.stats.cpu_load || '0.0')
+						]),
+						(ap.stats.cpu_temp && ap.stats.cpu_temp !== '-') ? E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [
+							E('span', {}, '🌡️ الحرارة:'),
+							E('b', { style: 'color:#f87171;' }, ap.stats.cpu_temp)
+						]) : '',
+						E('div', { style: 'display:flex; justify-content:space-between; gap:6px;' }, [
+							E('span', {}, '💾 الرام:'),
+							E('b', { style: 'color:#4ade80;' }, (ap.stats.mem_pct || 0) + '%')
+						])
+					]);
+
+					var speedBox = E('div', { class: 'speed-meter-box', style: 'min-width:115px;' }, [
+						E('div', { class: 'speed-meter-row rx' }, [ E('span', {}, '⬇️ سحب:'), E('span', {}, ap.stats.rx_speed || '0 bps') ]),
+						E('div', { class: 'speed-meter-row tx' }, [ E('span', {}, '⬆️ رفع:'), E('span', {}, ap.stats.tx_speed || '0 bps') ])
+					]);
+
 					dom.content(tr, [
 						E('td', { style: 'text-align:center;' }, rowCb),
-						E('td', {}, [dot, ' ', ap.isOnline ? 'متصل' : 'مفصول']),
-						E('td', { style: 'font-weight:700; color:#f8fafc;' }, ap.hostname),
+						E('td', { style: 'white-space:nowrap;' }, [dot, ' ', ap.isOnline ? 'متصل 🟢' : 'مفصول 🔴']),
+						E('td', { style: 'font-weight:800; font-size:14px; color:#f8fafc;' }, ap.hostname),
 						E('td', {}, [
-							E('div', { style: 'color:#38bdf8; font-family:monospace; font-weight:700;' }, ap.ip),
+							E('div', { style: 'color:#38bdf8; font-family:monospace; font-weight:800;' }, ap.ip),
 							E('div', { style: 'font-family:monospace; font-size:11px; color:#94a3b8;' }, ap.mac)
 						]),
-						E('td', {}, [
-							E('div', { style: 'color:#38bdf8; font-weight:700; font-size:12px;' }, '⬇️ ' + (ap.stats.rx_speed || '0 bps')),
-							E('div', { style: 'color:#4ade80; font-weight:700; font-size:12px;' }, '⬆️ ' + (ap.stats.tx_speed || '0 bps'))
-						]),
-						E('td', {}, [
-							E('div', { style: 'font-size:12px; color:#cbd5e1; font-weight:600;' }, '🧠 ' + (ap.stats.cpu_load || '0.0') + ((ap.stats.cpu_temp && ap.stats.cpu_temp !== '-') ? ' | 🌡️ ' + ap.stats.cpu_temp : '')),
-							E('div', { style: 'font-size:11px; color:#94a3b8;' }, '💾 ' + (ap.stats.mem_pct || 0) + '% RAM')
-						]),
-						E('td', {}, [
-							E('span', { style: 'background:rgba(251,191,36,0.15); color:#fbbf24; padding:2px 8px; border-radius:10px; font-weight:700; margin-left:4px;' }, '📶 ' + ap.clients),
-							ap.wired > 0 ? E('span', { style: 'background:rgba(56,189,248,0.15); color:#38bdf8; padding:2px 8px; border-radius:10px; font-weight:700;' }, '🔌 ' + ap.wired) : ''
-						]),
-						E('td', {}, wifiBadges),
-						E('td', { style: 'text-align: center;' }, [btnManage, btnReboot])
+						E('td', {}, speedBox),
+						E('td', {}, hwBox),
+						E('td', {}, clientBox),
+						E('td', {}, wifiBox),
+						E('td', { style: 'text-align:center;' }, actionBox)
 					]);
 					rows.push(tr);
 				});
