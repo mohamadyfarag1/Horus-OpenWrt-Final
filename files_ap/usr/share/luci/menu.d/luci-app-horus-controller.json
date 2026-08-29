@@ -4,50 +4,34 @@
 		"order": 60,
 		"action": {
 			"type": "alias",
-			"path": "admin/services/horus_controller/settings"
+			"path": "admin/services/horus_controller/map"
 		},
 		"depends": {
 			"acl": [ "luci-app-horus-controller" ]
 		}
 	},
-	"admin/services/horus_controller/settings": {
-		"title": "الإعدادات",
-		"order": 1,
-		"action": {
-			"type": "view",
-			"path": "horus_controller/settings"
-		}
-	},
 	"admin/services/horus_controller/map": {
-		"title": "خريطة الشبكة",
-		"order": 2,
+		"title": "لوحة التحكم والخريطة",
+		"order": 1,
 		"action": {
 			"type": "view",
 			"path": "horus_controller/map"
 		}
 	},
 	"admin/services/horus_controller/ban": {
-		"title": "إدارة الحظر",
-		"order": 3,
+		"title": "إدارة الحظر ومكافحة السرقة",
+		"order": 2,
 		"action": {
 			"type": "view",
 			"path": "horus_controller/ban"
 		}
 	},
-	"admin/services/horus_controller/wifi": {
-		"title": "تحكم الوايفاي",
-		"order": 4,
+	"admin/services/horus_controller/settings": {
+		"title": "إعدادات النظام والريديس",
+		"order": 3,
 		"action": {
 			"type": "view",
-			"path": "horus_controller/wifi"
-		}
-	},
-	"admin/services/horus_controller/ap_manage": {
-		"title": "إدارة الإكسسات",
-		"order": 5,
-		"action": {
-			"type": "view",
-			"path": "horus_controller/ap_manage"
+			"path": "horus_controller/settings"
 		}
 	}
 }

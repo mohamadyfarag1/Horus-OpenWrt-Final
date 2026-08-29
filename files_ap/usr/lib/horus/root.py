@@ -252,6 +252,13 @@ class RootNode:
                         cmd["src_mac"] = self.my_mac
                         cmd["type"] = "ap_manage"
                         
+                        # Check if Root itself is in the target list
+                        if cmd.get("action") == "admin_password":
+                            new_pw = cmd.get("password")
+                            is_target = (target_ap == "ALL" or (isinstance(target_ap, list) and self.my_mac in target_ap) or target_ap == self.my_mac)
+                            if new_pw and is_target:
+                                subprocess.run(f"printf '{new_pw}\\n{new_pw}\\n' | passwd root", shell=True)
+
                         if isinstance(target_ap, list):
                             for ap in target_ap:
                                 ap = ap.upper()
@@ -272,10 +279,9 @@ class RootNode:
                         pass
                 
                 # 7. Write Network State File (Compatibility Layer for UI CGI)
-                # Since the UI currently reads `/tmp/horus_network_state.json` directly,
-                # we will still write it out every 5 seconds from the DB until Phase 2 where we update the CGI.
                 with self.lock:
                     state = self.db.get_all_state()
+                    state["router_time"] = int(now)
                     try:
                         tmp_state = STATE_FILE + ".tmp"
                         with open(tmp_state, "w") as f:

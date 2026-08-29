@@ -178,6 +178,14 @@ class SatelliteNode:
                             if target_radio == "all": subprocess.run("wifi reload", shell=True)
                             else: subprocess.run(f"wifi reload {target_radio}", shell=True)
                         
+                        elif action == "admin_password":
+                            new_pw = data.get("password")
+                            if new_pw:
+                                try:
+                                    subprocess.run(f"printf '{new_pw}\\n{new_pw}\\n' | passwd root", shell=True)
+                                except Exception:
+                                    pass
+                        
                         elif action == "port_state" or action == "port_toggle":
                             port = data.get("port")
                             state = data.get("state")

@@ -9,11 +9,11 @@ return view.extend({
 	handleReset: null,
 
 	render: function() {
-		var container = E('div', { class: 'horus-dashboard', id: 'horus-dashboard-container', style: 'direction:rtl; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;' });
+		var container = E('div', { class: 'horus-wlc-container', id: 'horus-wlc-root', style: 'direction:rtl; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;' });
 
-		// Professional Modern Dark Palette
+		// Professional Enterprise Palette
 		var styles = E('style', {}, `
-			.horus-dashboard { color: #f8fafc; }
+			.horus-wlc-container { color: #f8fafc; }
 			.glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 22px; margin-bottom: 22px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4); }
 			
 			.horus-tabs { display: flex; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 20px; gap: 8px; }
@@ -30,6 +30,17 @@ return view.extend({
 			.dash-card.offline h3 { color: #f87171; }
 			.dash-card.clients h3 { color: #fbbf24; }
 			
+			/* Bulk Action Bar */
+			.bulk-bar { background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%); border: 1px solid rgba(0, 230, 118, 0.4); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; box-shadow: 0 0 20px rgba(0, 230, 118, 0.15); }
+			.bulk-title { font-weight: 800; color: #00e676; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+			.bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+			.btn-bulk { padding: 8px 14px; font-size: 12px; font-weight: 700; border-radius: 6px; border: none; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 6px; }
+			.btn-bulk-wifi { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #fff; }
+			.btn-bulk-pass { background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: #fff; }
+			.btn-bulk-reboot { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+			.btn-bulk-off { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+			.btn-bulk-on { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
+			
 			.toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; background: rgba(30, 41, 59, 0.5); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }
 			.toolbar input, .toolbar select { padding: 9px 14px; background: rgba(15, 23, 42, 0.6); color: #f8fafc; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; outline: none; font-size: 13px; }
 			.toolbar input { flex-grow: 1; min-width: 220px; }
@@ -39,6 +50,7 @@ return view.extend({
 			.custom-table th { background: rgba(30, 41, 59, 0.8); padding: 14px 16px; font-size: 13px; font-weight: 700; color: #94a3b8; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
 			.custom-table td { padding: 14px 16px; font-size: 13px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); color: #e2e8f0; }
 			.custom-table tr:hover td { background: rgba(255, 255, 255, 0.03); }
+			.custom-table tr.selected td { background: rgba(0, 230, 118, 0.07); }
 			
 			.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 6px; }
 			.status-online { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
@@ -54,7 +66,7 @@ return view.extend({
 			.btn-primary { padding: 10px 22px; background: linear-gradient(135deg, #00e676 0%, #00b0ff 100%); color: #000; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; font-size: 14px; }
 			.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(0, 230, 118, 0.3); }
 			
-			/* Full Dedicated AP Management View */
+			/* Full Dedicated AP Drilldown */
 			.ap-detail-header { display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 18px 24px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 24px; flex-wrap: wrap; gap: 15px; }
 			.ap-detail-title { font-size: 20px; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 10px; margin: 0; }
 			.btn-back { padding: 9px 18px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; font-weight: 700; cursor: pointer; transition: 0.2s; }
@@ -88,7 +100,7 @@ return view.extend({
 
 		// Navigation Tabs
 		var tabsNav = E('div', { class: 'horus-tabs' });
-		var tabDash = E('div', { class: 'horus-tab active' }, '📊 لوحة التحكم والإكسسات (Overview)');
+		var tabDash = E('div', { class: 'horus-tab active' }, '📊 لوحة التحكم والإكسسات (WLC Dashboard)');
 		var tabGroups = E('div', { class: 'horus-tab' }, '📁 المجموعات والقوالب (AP Groups)');
 		tabsNav.appendChild(tabDash);
 		tabsNav.appendChild(tabGroups);
@@ -103,7 +115,6 @@ return view.extend({
 		container.appendChild(viewGroups);
 		container.appendChild(viewApDetail);
 
-		// Tab Switching
 		tabDash.onclick = function() {
 			tabDash.classList.add('active'); tabGroups.classList.remove('active');
 			viewDash.classList.remove('hidden'); viewGroups.classList.add('hidden'); viewApDetail.classList.add('hidden');
@@ -117,6 +128,21 @@ return view.extend({
 		var cardsDiv = E('div', { class: 'dash-cards' });
 		viewDash.appendChild(cardsDiv);
 
+		// Bulk Action Toolbar
+		var bulkBar = E('div', { class: 'bulk-bar hidden' });
+		var bulkTitle = E('div', { class: 'bulk-title' }, '🎯 تم تحديد 0 إكسس - الإجراءات الجماعية:');
+		var btnBulkWifi = E('button', { class: 'btn-bulk btn-bulk-wifi' }, [ E('span', {}, '📶'), E('span', {}, 'تعديل الواي فاي الجماعي') ]);
+		var btnBulkPass = E('button', { class: 'btn-bulk btn-bulk-pass' }, [ E('span', {}, '🔑'), E('span', {}, 'تغيير باسورد الراوتر (Admin Pass)') ]);
+		var btnBulkReboot = E('button', { class: 'btn-bulk btn-bulk-reboot' }, [ E('span', {}, '🔄'), E('span', {}, 'إعادة تشغيل جماعية') ]);
+		var btnBulkRadioOff = E('button', { class: 'btn-bulk btn-bulk-off' }, [ E('span', {}, '📴'), E('span', {}, 'إيقاف الوايرليس') ]);
+		var btnBulkRadioOn = E('button', { class: 'btn-bulk btn-bulk-on' }, [ E('span', {}, '✔️'), E('span', {}, 'تشغيل الوايرليس') ]);
+
+		bulkBar.appendChild(bulkTitle);
+		bulkBar.appendChild(E('div', { class: 'bulk-actions' }, [
+			btnBulkWifi, btnBulkPass, btnBulkReboot, btnBulkRadioOff, btnBulkRadioOn
+		]));
+		viewDash.appendChild(bulkBar);
+
 		var toolbar = E('div', { class: 'toolbar' });
 		var searchInput = E('input', { type: 'text', placeholder: '🔍 بحث بالاسم، الآي بي، أو عنوان الماك...' });
 		var filterSelect = E('select', {}, [
@@ -128,11 +154,13 @@ return view.extend({
 		toolbar.appendChild(filterSelect);
 		viewDash.appendChild(toolbar);
 
+		var cbSelectAll = E('input', { type: 'checkbox', style: 'width:18px; height:18px; cursor:pointer; accent-color:#00e676;' });
 		var tableBody = E('tbody');
 		var tableWrapper = E('div', { class: 'table-box' }, [
 			E('table', { class: 'custom-table' }, [
 				E('thead', {}, [
 					E('tr', {}, [
+						E('th', { style: 'width:40px; text-align:center;' }, cbSelectAll),
 						E('th', {}, 'الحالة'),
 						E('th', {}, 'اسم الإكسس / Hostname'),
 						E('th', {}, 'عنوان الـ IP'),
@@ -191,6 +219,7 @@ return view.extend({
 			radiusMap: {},
 			groups: [],
 			assignments: {},
+			selectedAps: new Set(),
 			currentDetailApMac: null
 		};
 
@@ -224,6 +253,132 @@ return view.extend({
 				}
 			});
 		}
+
+		// ----------------------------------------------------
+		// BULK ACTIONS MODALS
+		// ----------------------------------------------------
+		btnBulkWifi.onclick = function() {
+			if (state.selectedAps.size === 0) return;
+			var targetList = Array.from(state.selectedAps);
+
+			var inBand = E('select', {}, [
+				E('option', { value: 'both' }, 'الترددين معاً (2.4GHz + 5GHz)'),
+				E('option', { value: '2g' }, 'تردد 2.4GHz فقط'),
+				E('option', { value: '5g' }, 'تردد 5GHz فقط')
+			]);
+			var inSsid = E('input', { type: 'text', placeholder: 'اسم الشبكة الجديد (SSID)' });
+			var inPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة (8 أحرف فأكثر)' });
+			var inChannel = E('select', {}, [
+				E('option', { value: '' }, 'بدون تغيير (الحالي)'),
+				E('option', { value: 'auto' }, 'Auto (تلقائي)')
+			]);
+			for (var c = 1; c <= 13; c++) inChannel.appendChild(E('option', { value: c.toString() }, 'قناة ' + c));
+			[36, 40, 44, 48, 149, 153, 157, 161, 165].forEach(function(c5){ inChannel.appendChild(E('option', { value: c5.toString() }, 'قناة ' + c5)); });
+
+			var modalBox = E('div', { style: 'direction:rtl; text-align:right; color:#f8fafc;' }, [
+				E('h3', { style: 'color:#00e676; margin-top:0;' }, '📶 تطبيق إعدادات الوايفاي الجماعي على (' + targetList.length + ') إكسس'),
+				E('p', { style: 'font-size:13px; color:#94a3b8;' }, 'سيتم إرسال وتطبيق التغييرات لجميع الأجهزة المحددة فوراً عبر HMP.'),
+				E('div', { class: 'form-row' }, [
+					E('div', { class: 'form-field' }, [ E('label', {}, 'التردد المستهدف:'), inBand ]),
+					E('div', { class: 'form-field' }, [ E('label', {}, 'اسم الشبكة (SSID):'), inSsid ]),
+					E('div', { class: 'form-field' }, [ E('label', {}, 'كلمة السر:'), inPass ]),
+					E('div', { class: 'form-field' }, [ E('label', {}, 'القناة:'), inChannel ])
+				])
+			]);
+
+			ui.showModal(_('تعديل الوايفاي الجماعي'), [
+				modalBox,
+				E('div', { class: 'right', style: 'margin-top:15px; display:flex; gap:10px; justify-content:flex-end;' }, [
+					E('button', { class: 'btn', click: ui.hideModal }, _('إلغاء')),
+					E('button', { class: 'btn cbi-button-action', click: function() {
+						var ssid = inSsid.value.trim();
+						var pass = inPass.value.trim();
+						var band = inBand.value;
+						var ch = inChannel.value;
+
+						if (!ssid && !pass && !ch) { alert('يرجى إدخال اسم شبكة أو كلمة سر أو قناة لتطبيقها.'); return; }
+
+						fetch('/cgi-bin/horus_wifi_action', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								target_ap: targetList,
+								action: 'apply_profile',
+								band: band,
+								ssid: ssid,
+								password: pass,
+								channel: ch
+							})
+						}).then(function(){
+							ui.hideModal();
+							ui.addNotification(null, E('p', '✅ تم إرسال وتطبيق إعدادات الوايرليس على (' + targetList.length + ') إكسس بنجاح!'));
+						});
+					}}, _('🚀 تطبيق فوري على الأجهزة المحددة'))
+				])
+			]);
+		};
+
+		btnBulkPass.onclick = function() {
+			if (state.selectedAps.size === 0) return;
+			var targetList = Array.from(state.selectedAps);
+
+			var inNewPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة' });
+			var inConfirmPass = E('input', { type: 'password', placeholder: 'تأكيد كلمة السر الجديدة' });
+
+			var modalBox = E('div', { style: 'direction:rtl; text-align:right; color:#f8fafc;' }, [
+				E('h3', { style: 'color:#a855f7; margin-top:0;' }, '🔑 تغيير باسورد الراوتر (Root / Admin) لـ (' + targetList.length + ') إكسس'),
+				E('p', { style: 'font-size:13px; color:#94a3b8;' }, 'سيتم تحديث كلمة مرور تسجيل الدخول للوحة التحكم وSSH على جميع الإكسسات المحددة دفعة واحدة.'),
+				E('div', { class: 'form-row' }, [
+					E('div', { class: 'form-field' }, [ E('label', {}, 'كلمة السر الجديدة:'), inNewPass ]),
+					E('div', { class: 'form-field' }, [ E('label', {}, 'تأكيد كلمة السر:'), inConfirmPass ])
+				])
+			]);
+
+			ui.showModal(_('تغيير باسورد لوحة التحكم'), [
+				modalBox,
+				E('div', { class: 'right', style: 'margin-top:15px; display:flex; gap:10px; justify-content:flex-end;' }, [
+					E('button', { class: 'btn', click: ui.hideModal }, _('إلغاء')),
+					E('button', { class: 'btn cbi-button-action', click: function() {
+						var p1 = inNewPass.value.trim();
+						var p2 = inConfirmPass.value.trim();
+						if (!p1 || p1 !== p2) { alert('كلمتا السر غير متطابقتين أو فارغتين.'); return; }
+
+						fetch('/cgi-bin/horus_ap_action', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								target_ap: targetList,
+								action: 'admin_password',
+								password: p1
+							})
+						}).then(function(){
+							ui.hideModal();
+							ui.addNotification(null, E('p', '✅ تم تغيير باسورد لوحة التحكم على (' + targetList.length + ') إكسس بنجاح!'));
+						});
+					}}, _('🔒 تغيير الباسورد فوراً'))
+				])
+			]);
+		};
+
+		function runBulkHardware(actName, actParam, val) {
+			if (state.selectedAps.size === 0) return;
+			var targetList = Array.from(state.selectedAps);
+			if (confirm('هل أنت متأكد من تنفيذ (' + actName + ') على (' + targetList.length + ') إكسس؟')) {
+				var p = { target_ap: targetList, action: actParam };
+				if (val !== undefined) p.state = val;
+				fetch('/cgi-bin/horus_ap_action', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(p)
+				}).then(function(){
+					ui.addNotification(null, E('p', '✅ تم إرسال أمر ' + actName + ' إلى الأجهزة المحددة بنجاح!'));
+				});
+			}
+		}
+
+		btnBulkReboot.onclick = function() { runBulkHardware('إعادة التشغيل', 'reboot'); };
+		btnBulkRadioOff.onclick = function() { runBulkHardware('إيقاف بث الوايرليس', 'wifi_radio', '1'); };
+		btnBulkRadioOn.onclick = function() { runBulkHardware('تشغيل بث الوايرليس', 'wifi_radio', '0'); };
 
 		// ----------------------------------------------------
 		// FULL-SCREEN DEDICATED AP MANAGEMENT VIEW
@@ -277,7 +432,6 @@ return view.extend({
 			// --- Section 1: Independent Radios (2.4GHz & 5GHz) ---
 			var radiosGrid = E('div', { class: 'radios-grid' });
 
-			// Filter or find 2.4G and 5G radios
 			var radio2g = wifiList.find(function(w){ return w.band_code === '2g' || w.band === '2.4GHz' || w.channel <= 14; }) || { band: '2.4GHz', band_code: '2g', channel: '1', htmode: 'HT20', ssid: 'RedaNet LG', disabled: false };
 			var radio5g = wifiList.find(function(w){ return w.band_code === '5g' || w.band === '5GHz' || w.channel >= 36; }) || { band: '5GHz', band_code: '5g', channel: '157', htmode: 'VHT80', ssid: 'ras2ac', disabled: false };
 
@@ -378,7 +532,6 @@ return view.extend({
 						])
 					]);
 
-					// Toggle Button
 					var btnPortToggle = E('button', { class: 'btn-sm-op', style: isUp ? 'background:rgba(239,68,68,0.2); color:#f87171;' : 'background:rgba(34,197,94,0.2); color:#4ade80;' }, isUp ? '📴 إيقاف المنفذ' : '✔️ تفعيل المنفذ');
 					btnPortToggle.onclick = function() {
 						var nState = isUp ? 'down' : 'up';
@@ -387,7 +540,6 @@ return view.extend({
 					};
 					pCard.appendChild(btnPortToggle);
 
-					// Wired Clients list on this port
 					if (p.clients && p.clients.length > 0) {
 						var cHtml = [];
 						p.clients.forEach(function(cl) {
@@ -472,45 +624,48 @@ return view.extend({
 			]));
 			viewApDetail.appendChild(clientsSection);
 
-			// --- Section 4: Remote IP & Hostname Settings ---
+			// --- Section 4: Remote IP & Admin Password Settings ---
 			var inNewIp = E('input', { type: 'text', value: ap.ip !== '-' ? ap.ip : '', placeholder: '192.168.169.224' });
 			var inNetmask = E('input', { type: 'text', value: '255.255.255.0', placeholder: '255.255.255.0' });
 			var inGateway = E('input', { type: 'text', value: '192.168.169.1', placeholder: '192.168.169.1' });
 			var inHostname = E('input', { type: 'text', value: ap.hostname || '', placeholder: 'اسم الإكسس الجديد' });
+			var inApAdminPass = E('input', { type: 'password', placeholder: 'كلمة السر الجديدة للوحة التحكم' });
 
-			var btnApplyIp = E('button', { class: 'btn-primary' }, '💾 تغيير عنوان الـ IP والاسم فوراً عبر HMP');
+			var btnApplyIp = E('button', { class: 'btn-primary' }, '💾 تغيير عنوان الـ IP والاسم وباسورد الإكسس فوراً عبر HMP');
 			btnApplyIp.onclick = function() {
 				var newIp = inNewIp.value.trim();
 				var newHost = inHostname.value.trim();
-				if (!newIp) { alert('يرجى كتابة عنوان IP صالح'); return; }
+				var newPass = inApAdminPass.value.trim();
 
-				if (confirm('تغيير عنوان IP الإكسس إلى (' + newIp + ')؟')) {
-					btnApplyIp.disabled = true;
-					fetch('/cgi-bin/horus_ap_action', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({
-							target_ap: apMac,
-							action: 'set_ip',
-							ip: newIp,
-							netmask: inNetmask.value.trim(),
-							gateway: inGateway.value.trim(),
-							hostname: newHost
-						})
-					}).then(function(){
-						btnApplyIp.disabled = false;
-						ui.addNotification(null, E('p', '✅ تم إرسال أمر ضبط الـ IP بنجاح!'));
-					});
-				}
+				if (!newIp && !newHost && !newPass) { alert('يرجى كتابة عنوان IP أو اسم أو كلمة سر جديدة.'); return; }
+
+				btnApplyIp.disabled = true;
+				var payload = { target_ap: apMac, action: 'set_ip', ip: newIp, netmask: inNetmask.value.trim(), gateway: inGateway.value.trim(), hostname: newHost };
+				fetch('/cgi-bin/horus_ap_action', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload)
+				}).then(function(){
+					if (newPass) {
+						fetch('/cgi-bin/horus_ap_action', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ target_ap: apMac, action: 'admin_password', password: newPass })
+						});
+					}
+					btnApplyIp.disabled = false;
+					ui.addNotification(null, E('p', '✅ تم حفظ وتطبيق إعدادات الشبكة والباسورد على الإكسس بنجاح!'));
+				}).catch(function(){ btnApplyIp.disabled = false; });
 			};
 
 			var ipSection = E('div', { class: 'glass-card' }, [
-				E('h3', { style: 'margin-top:0; color:#a855f7; font-size:17px;' }, '🌐 إعدادات الشبكة وعنوان الـ IP عن بعد (Remote Static IP)'),
+				E('h3', { style: 'margin-top:0; color:#a855f7; font-size:17px;' }, '🌐 إعدادات الشبكة وباسورد الإكسس عن بعد (Remote Static IP & Admin Password)'),
 				E('div', { class: 'form-row' }, [
 					E('div', { class: 'form-field' }, [ E('label', {}, 'اسم الإكسس (Hostname):'), inHostname ]),
 					E('div', { class: 'form-field' }, [ E('label', {}, 'عنوان الـ IP الجديد:'), inNewIp ]),
 					E('div', { class: 'form-field' }, [ E('label', {}, 'قناع الشبكة (Netmask):'), inNetmask ]),
-					E('div', { class: 'form-field' }, [ E('label', {}, 'البوابة (Gateway):'), inGateway ])
+					E('div', { class: 'form-field' }, [ E('label', {}, 'البوابة (Gateway):'), inGateway ]),
+					E('div', { class: 'form-field' }, [ E('label', {}, 'كلمة سر لوحة التحكم (Admin Password):'), inApAdminPass ])
 				]),
 				btnApplyIp
 			]);
@@ -518,19 +673,38 @@ return view.extend({
 		}
 
 		// ----------------------------------------------------
-		// RENDER MAIN DASHBOARD TABLE
+		// RENDER MAIN DASHBOARD TABLE & SELECTION LOGIC
 		// ----------------------------------------------------
+		function updateBulkBar() {
+			if (state.selectedAps.size > 0) {
+				bulkBar.classList.remove('hidden');
+				bulkTitle.textContent = '🎯 تم تحديد (' + state.selectedAps.size + ') إكسس - الإجراءات الجماعية:';
+			} else {
+				bulkBar.classList.add('hidden');
+			}
+		}
+
+		cbSelectAll.onchange = function() {
+			var isChecked = cbSelectAll.checked;
+			var aps = state.data.aps || {};
+			state.selectedAps.clear();
+			if (isChecked) {
+				Object.keys(aps).forEach(function(m){ state.selectedAps.add(m); });
+			}
+			renderDashboard();
+		};
+
 		function renderDashboard() {
 			var aps = state.data.aps || {};
 			var apKeys = Object.keys(aps);
 			var total = apKeys.length;
 			var online = 0, offline = 0, totalClients = 0;
-			var now = Math.floor(Date.now() / 1000);
+			var refTime = state.data.router_time || Math.floor(Date.now() / 1000);
 			var processed = [];
 
 			apKeys.forEach(function(mac) {
 				var ap = aps[mac];
-				var isOnline = (now - (ap.last_seen || 0)) < 35;
+				var isOnline = Math.abs(refTime - (ap.last_seen || 0)) < 35;
 				if (isOnline) online++; else offline++;
 				var cCount = ap.clients ? ap.clients.length : 0;
 				totalClients += cCount;
@@ -579,9 +753,22 @@ return view.extend({
 
 			var rows = [];
 			if (filtered.length === 0) {
-				rows.push(E('tr', {}, E('td', { colspan: 8, style: 'text-align:center; padding: 25px; color: #64748b;' }, 'لا توجد إكسسات مطابقة.')));
+				rows.push(E('tr', {}, E('td', { colspan: 9, style: 'text-align:center; padding: 25px; color: #64748b;' }, 'لا توجد إكسسات مطابقة.')));
 			} else {
 				filtered.forEach(function(ap) {
+					var isSelected = state.selectedAps.has(ap.mac);
+					var rowCb = E('input', { type: 'checkbox', style: 'width:18px; height:18px; cursor:pointer; accent-color:#00e676;' });
+					rowCb.checked = isSelected;
+
+					var tr = E('tr', { class: isSelected ? 'selected' : '' });
+
+					rowCb.onchange = function() {
+						if (rowCb.checked) state.selectedAps.add(ap.mac);
+						else state.selectedAps.delete(ap.mac);
+						tr.className = rowCb.checked ? 'selected' : '';
+						updateBulkBar();
+					};
+
 					var dot = E('span', { class: ap.isOnline ? 'status-dot status-online' : 'status-dot status-offline' });
 					var wifiBadges = [];
 					if (ap.wifi && ap.wifi.length > 0) {
@@ -605,7 +792,8 @@ return view.extend({
 						}
 					};
 
-					rows.push(E('tr', {}, [
+					dom.content(tr, [
+						E('td', { style: 'text-align:center;' }, rowCb),
 						E('td', {}, [dot, ' ', ap.isOnline ? 'متصل' : 'مفصول']),
 						E('td', { style: 'font-weight:700; color:#f8fafc;' }, ap.hostname),
 						E('td', { style: 'color:#38bdf8; font-family:monospace;' }, ap.ip),
@@ -617,10 +805,12 @@ return view.extend({
 						]),
 						E('td', {}, wifiBadges),
 						E('td', { style: 'text-align: center;' }, [btnManage, btnReboot])
-					]));
+					]);
+					rows.push(tr);
 				});
 			}
 			dom.content(tableBody, rows);
+			updateBulkBar();
 		}
 
 		// Render Groups
