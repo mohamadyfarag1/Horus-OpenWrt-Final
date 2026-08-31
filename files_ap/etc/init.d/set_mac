@@ -2,7 +2,12 @@
 START=10
 
 boot() {
-    BASE_MAC=$(strings /dev/mtd5 | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+    . /lib/functions.sh
+    local art_part
+    art_part="$(find_mtd_part ART)"
+    [ -n "$art_part" ] || return 0
+
+    BASE_MAC=$(strings "$art_part" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
     if [ -n "$BASE_MAC" ]; then
         ip link set dev eth0 address "$BASE_MAC" 2>/dev/null
     fi

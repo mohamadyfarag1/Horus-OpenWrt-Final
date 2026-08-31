@@ -108,9 +108,12 @@ cat << 'RCEOF' > files/etc/rc.local
 # Put your custom commands here that should be executed once
 # the system init finished. By default this file does nothing.
 
-# === CPU Performance Mode ===
+# === CPU Governor: scale with load instead of pinning max clock 24/7 ===
+# "performance" locks every core at max frequency permanently, which keeps
+# the SoC running hot even at idle in a small enclosure. "ondemand" ramps
+# up under real load and drops back down otherwise.
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-    echo "performance" > $cpu 2>/dev/null
+    echo "ondemand" > $cpu 2>/dev/null
 done
 
 # === Wi-Fi SMP Optimization (Pin 2.4G to CPU1, 5G to CPU2) ===

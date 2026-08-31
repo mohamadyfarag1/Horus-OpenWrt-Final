@@ -9,9 +9,12 @@ cd openwrt
 # ============================================
 # SECTION A: Board Data and Firmware Files
 # ============================================
-mkdir -p files/lib/firmware/ath10k/QCA4019/hw1.0/
-cp ../board-2.bin files/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
-[ -f ../firmware-5.bin ] && cp ../firmware-5.bin files/lib/firmware/ath10k/QCA4019/hw1.0/firmware-5.bin
+# Intentionally NOT copying a custom board-2.bin/firmware-5.bin anymore.
+# The hand-patched "super channel" calibration blob was corrupting ath10k's
+# board data and causing firmware crash-loops (needing multiple reboots
+# before Wi-Fi/LAN worked). CONFIG_PACKAGE_ath10k-firmware-qca4019-ct-fullall
+# in config/horus.config already ships the real, untouched, tested
+# board-2.bin/firmware-5.bin for this chip - let that package provide them.
 # NOTE: files_ap is copied in 05-configure.sh with proper binary file protection
 
 # ============================================

@@ -10,6 +10,7 @@ sync
 
 echo "Disk buffers flushed successfully."
 echo "The router will now reboot into the internal NAND flash."
-echo "You can safely unplug the USB flash drive after the reboot starts."
+echo "DO NOT unplug the USB drive yet - it is still in use until the reboot finishes."
+echo "Wait until the router is back online (LEDs stable / reachable again), THEN unplug it."
 sleep 3
 reboot

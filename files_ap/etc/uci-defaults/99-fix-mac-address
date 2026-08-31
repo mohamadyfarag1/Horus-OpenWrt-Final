@@ -1,5 +1,7 @@
 #!/bin/sh
-BASE_MAC=$(strings /dev/mtd5 | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+. /lib/functions.sh
+ART_PART="$(find_mtd_part ART)"
+BASE_MAC=$([ -n "$ART_PART" ] && strings "$ART_PART" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
 if [ -n "$BASE_MAC" ]; then
     MAC_ETH0=$BASE_MAC
     

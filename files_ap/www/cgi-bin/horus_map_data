@@ -1,5 +1,0 @@
-#!/bin/sh
-echo "Content-Type: application/json"
-echo "Cache-Control: no-cache, no-store, must-revalidate"
-echo ""
-[ -f /tmp/horus_network_state.json ] && cat /tmp/horus_network_state.json || echo '{"aps":{},"banned":[]}'
