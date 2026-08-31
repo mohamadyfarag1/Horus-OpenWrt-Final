@@ -128,71 +128,13 @@ chmod +x files/etc/rc.local
 # ============================================
 mkdir -p files
 
-# ============================================
-# SECTION E1: Generate Custom Unlocked Regulatory DB
-# ============================================
-echo "Building custom regulatory.db..."
-cd ..
-git clone https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git || true
-cd wireless-regdb
-python3 -c "
-countries = [
-    '00',
-    'AD','AE','AF','AL','AM','AN','AR','AT','AU','AW','AZ',
-    'BA','BB','BD','BE','BG','BH','BL','BN','BO','BR','BY',
-    'CA','CF','CH','CI','CL','CN','CO','CR','CY','CZ',
-    'DE','DK','DO','DZ',
-    'EC','EE','EG','ES','ET',
-    'FI','FR',
-    'GB','GE','GH','GL','GP','GR','GT','GU','GY',
-    'HK','HN','HR','HT','HU',
-    'ID','IE','IL','IN','IQ','IR','IS','IT',
-    'JM','JO','JP',
-    'KE','KH','KN','KP','KR','KW','KY','KZ',
-    'LB','LC','LI','LK','LS','LT','LU','LV',
-    'MA','MC','MD','ME','MF','MH','MK','MN','MO','MP','MQ','MR','MT','MU','MW','MX','MY',
-    'NG','NI','NL','NO','NP','NZ',
-    'OM',
-    'PA','PE','PF','PG','PH','PK','PL','PM','PR','PT','PW','PY',
-    'QA',
-    'RE','RO','RS','RU','RW',
-    'SA','SE','SG','SI','SK','SN','SR','SV','SY',
-    'TC','TD','TG','TH','TN','TR','TT','TW','TZ',
-    'UA','UG','US','UY','UZ',
-    'VC','VE','VI','VN','VU',
-    'WF','WS',
-    'YE','YT',
-    'ZA','ZW'
-]
-with open('db.txt', 'w') as f:
-    for c in countries:
-        if c == '00':
-            f.write('country 00:\n')
-        else:
-            f.write(f'country {c}:\n')
-        f.write('\t(2192 - 2732 @ 40), (33)\n')
-        f.write('\t(4900 - 5350 @ 80), (33)\n')
-        f.write('\t(5350 - 5725 @ 80), (33)\n')
-        f.write('\t(5725 - 6100 @ 80), (33)\n\n')
-"
-python3 db2fw.py regulatory.db db.txt || echo "WARNING: db2fw.py failed"
-cd ../openwrt
-
+# Copy files_ap directly (which now contains the PERFECT Golden Router binaries)
+# We exclude .bin and .db from CRLF fixing to prevent corrupting them
 find ../files_ap -type f ! -name '*.db' ! -name '*.bin' -exec sed -i 's/\r$//' {} +
 cp -r ../files_ap/* files/
-
-if [ -f ../wireless-regdb/regulatory.db ]; then
-  mkdir -p files/lib/firmware
-  cp ../wireless-regdb/regulatory.db files/lib/firmware/regulatory.db
-  echo "Using freshly built regulatory.db with super channels!"
-elif [ -f ../regulatory.db ]; then
-  mkdir -p files/lib/firmware
-  cp ../regulatory.db files/lib/firmware/regulatory.db
-  echo "Using existing regulatory.db from repo (6364 bytes)!"
-fi
 
 # ============================================
 # Done
 # ============================================
 
-echo "Done: Feeds updated, config applied, custom files copied, radius sync injected."
+echo "Done: Feeds updated, config applied, custom files copied."
