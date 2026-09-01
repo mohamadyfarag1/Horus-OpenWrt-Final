@@ -53,3 +53,46 @@ for HWF in $(find . -path "*/hostapd*/src/ap/hw_features.c" -o -path "*/wpad*/sr
   sed -i '/iface->conf->ieee80211ac = 0;/d' "$HWF"
   echo "  -> hostapd/hw_features.c patched OK"
 done
+
+#############################################
+# PATCH 5: net/wireless/chan.c (Natively add 5MHz channels)
+# Without this, hostapd will crash and radio drops to 0 dBm 
+# when users select 5MHz superchannel frequencies.
+#############################################
+cat << 'PYEOF' > /tmp/patch_chan.py
+import sys, re
+
+for filepath in sys.argv[1:]:
+    with open(filepath, 'r') as f:
+        data = f.read()
+    
+    # 5GHz Array
+    new_array_5g = "static const struct cfg80211_chan_def cfg80211_chan_def_5g[] = {\n"
+    for f_mhz in range(5115, 5935, 5):
+        ch = int((f_mhz - 5000) / 5) if f_mhz >= 5000 else int((f_mhz - 4000) / 5)
+        new_array_5g += f"\t{{ .center_freq = {f_mhz}, .hw_value = {ch}, }},\n"
+    new_array_5g += "};\n"
+
+    data = re.sub(r'static const struct cfg80211_chan_def cfg80211_chan_def_5g.*?\[\] = \{.*?\};', new_array_5g, data, flags=re.DOTALL)
+    
+    # 2.4GHz Array (Optional but good for 2182-2484)
+    new_array_2g = "static const struct cfg80211_chan_def cfg80211_chan_def_2ghz[] = {\n"
+    for f_mhz in range(2182, 2487, 5):
+        if f_mhz == 2484:
+            ch = 14
+        else:
+            ch = int((f_mhz - 2407) / 5)
+        new_array_2g += f"\t{{ .center_freq = {f_mhz}, .hw_value = {ch}, }},\n"
+    new_array_2g += "};\n"
+    
+    data = re.sub(r'static const struct cfg80211_chan_def cfg80211_chan_def_2ghz.*?\[\] = \{.*?\};', new_array_2g, data, flags=re.DOTALL)
+
+    with open(filepath, 'w') as f:
+        f.write(data)
+PYEOF
+
+for CHANC in $(find . -path "*/net/wireless/chan.c" 2>/dev/null); do
+  echo "[PATCH 5] Patching: $CHANC"
+  python3 /tmp/patch_chan.py "$CHANC"
+  echo "  -> net/wireless/chan.c patched OK with ALL 5MHz channels"
+done

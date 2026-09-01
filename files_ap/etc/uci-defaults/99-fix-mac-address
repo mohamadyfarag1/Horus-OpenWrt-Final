@@ -56,3 +56,8 @@ uci set wireless.default_radio1.macaddr="$MAC_WIFI5G"
 uci commit wireless
 
 exit 0
+
+# Set default WiFi Channels
+uci set wireless.radio0.channel='1'
+uci set wireless.radio1.channel='36'
+uci commit wireless
