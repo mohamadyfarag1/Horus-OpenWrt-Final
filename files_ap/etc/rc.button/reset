@@ -1,0 +1,17 @@
+#!/bin/sh
+
+[ "${ACTION}" = "released" ] || exit 0
+
+. /lib/functions.sh
+
+logger -t button "Reset button released after ${SEEN} seconds"
+
+if [ "${SEEN}" -ge 20 ]; then
+	logger -t button "Factory reset triggered (pressed for >= 20s)"
+	echo "FACTORY RESET" > /dev/console
+	jffs2reset -y && reboot &
+else
+	logger -t button "Quick press detected (${SEEN}s). Doing nothing."
+fi
+
+return 0
