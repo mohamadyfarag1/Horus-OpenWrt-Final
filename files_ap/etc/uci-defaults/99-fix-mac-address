@@ -1,35 +1,58 @@
 #!/bin/sh
+# =============================================
+# Horus 9200 - First Boot MAC Address Fix
+# Reads real base_mac from APPSBLENV (mtd5)
+# Derives unique MACs for LAN / WAN / WiFi-2G / WiFi-5G
+# =============================================
 . /lib/functions.sh
 . /lib/functions/system.sh
 
 ENV_PART="$(find_mtd_part APPSBLENV)"
-RAW_MAC=$([ -n "$ENV_PART" ] && cat "$ENV_PART" | tr '\0' '\n' | grep '^base_mac=' | head -n 1 | cut -d= -f2)
+[ -z "$ENV_PART" ] && exit 0
 
+# Extract MAC using strings (busybox version, always available in OpenWrt)
+RAW_MAC=$(strings "$ENV_PART" 2>/dev/null | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+
+# Validate: must be exactly xx:xx:xx:xx:xx:xx format
 BASE_MAC=$(echo "$RAW_MAC" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
 
-if [ -n "$BASE_MAC" ]; then
-    # Fix corrupted factory MAC (like 01:07:...) which crashes hostapd because it is a Multicast MAC
-    first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
-    if [ "$first_byte" = "01" ] || [ "$first_byte" = "00" ]; then
-        BASE_MAC="02${BASE_MAC#${first_byte}}"
-    fi
-
-    MAC_LAN=$BASE_MAC
-    MAC_WAN=$(macaddr_add "$BASE_MAC" 1)
-    MAC_WIFI2G=$(macaddr_add "$BASE_MAC" 2)
-    MAC_WIFI5G=$(macaddr_add "$BASE_MAC" 3)
-
-    uci set network.lan.macaddr="$MAC_LAN"
-    uci set network.wan.macaddr="$MAC_WAN"
-    uci commit network
-
-    uci -q delete wireless.radio0.country_ie
-    uci -q delete wireless.radio1.country_ie
-
-    uci set wireless.radio0.macaddr="$MAC_WIFI2G"
-    uci set wireless.default_radio0.macaddr="$MAC_WIFI2G"
-    uci set wireless.radio1.macaddr="$MAC_WIFI5G"
-    uci set wireless.default_radio1.macaddr="$MAC_WIFI5G"
-    uci commit wireless
+# If strings didn't work, fallback to cat/tr
+if [ -z "$BASE_MAC" ]; then
+    RAW_MAC2=$(cat "$ENV_PART" | tr '\0' '\n' | grep '^base_mac=' | head -n 1 | cut -d= -f2)
+    BASE_MAC=$(echo "$RAW_MAC2" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
 fi
+
+[ -z "$BASE_MAC" ] && exit 0
+
+# Fix corrupted/multicast factory MAC (e.g. 01:07:89:... from broken EEPROM)
+# A valid Unicast Locally-Administered MAC must have bit0 of byte0 = 0
+first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
+first_dec=$(printf "%d" "0x${first_byte}" 2>/dev/null || echo "0")
+# If bit0 (multicast) is set, clear it and set bit1 (locally administered)
+if [ $(( first_dec & 1 )) -eq 1 ]; then
+    new_first=$(printf "%02x" $(( (first_dec & 0xFE) | 0x02 )))
+    BASE_MAC="${new_first}${BASE_MAC#${first_byte}}"
+fi
+
+# Derive unique MACs for each interface
+MAC_LAN=$BASE_MAC
+MAC_WAN=$(macaddr_add "$BASE_MAC" 1)
+MAC_WIFI2G=$(macaddr_add "$BASE_MAC" 2)
+MAC_WIFI5G=$(macaddr_add "$BASE_MAC" 3)
+
+# Apply Network MACs
+uci set network.lan.macaddr="$MAC_LAN"
+uci set network.wan.macaddr="$MAC_WAN"
+uci commit network
+
+# Apply Wireless MACs
+uci -q delete wireless.radio0.country_ie
+uci -q delete wireless.radio1.country_ie
+
+uci set wireless.radio0.macaddr="$MAC_WIFI2G"
+uci set wireless.default_radio0.macaddr="$MAC_WIFI2G"
+uci set wireless.radio1.macaddr="$MAC_WIFI5G"
+uci set wireless.default_radio1.macaddr="$MAC_WIFI5G"
+uci commit wireless
+
 exit 0

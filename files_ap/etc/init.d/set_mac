@@ -7,17 +7,24 @@ boot() {
     env_part="$(find_mtd_part APPSBLENV)"
     [ -n "$env_part" ] || return 0
 
-    RAW_MAC=$(cat "$env_part" | tr '\0' '\n' | grep '^base_mac=' | head -n 1 | cut -d= -f2)
+    # Try strings first, then fallback to cat/tr
+    RAW_MAC=$(strings "$env_part" 2>/dev/null | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
     BASE_MAC=$(echo "$RAW_MAC" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
-    
-    if [ -n "$BASE_MAC" ]; then
-        # Ensure Unicast and Locally Administered if the factory MAC is corrupted (e.g. starts with 01 multicast)
-        first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
-        # Convert hex to decimal, clear bit 0 (multicast), set bit 1 (locally administered)
-        # We can just blindly force it to start with 02 if it's 01
-        if [ "$first_byte" = "01" ] || [ "$first_byte" = "00" ]; then
-            BASE_MAC="02${BASE_MAC#${first_byte}}"
-        fi
-        ip link set dev eth0 address "$BASE_MAC" 2>/dev/null
+
+    if [ -z "$BASE_MAC" ]; then
+        RAW_MAC2=$(cat "$env_part" | tr '\0' '\n' | grep '^base_mac=' | head -n 1 | cut -d= -f2)
+        BASE_MAC=$(echo "$RAW_MAC2" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
     fi
+
+    [ -z "$BASE_MAC" ] && return 0
+
+    # Fix multicast bit (bit0 of byte0 must be 0 for Unicast)
+    first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
+    first_dec=$(printf "%d" "0x${first_byte}" 2>/dev/null || echo "0")
+    if [ $(( first_dec & 1 )) -eq 1 ]; then
+        new_first=$(printf "%02x" $(( (first_dec & 0xFE) | 0x02 )))
+        BASE_MAC="${new_first}${BASE_MAC#${first_byte}}"
+    fi
+
+    ip link set dev eth0 address "$BASE_MAC" 2>/dev/null
 }

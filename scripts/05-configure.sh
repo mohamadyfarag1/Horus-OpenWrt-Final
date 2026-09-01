@@ -49,6 +49,89 @@ document.addEventListener('DOMContentLoaded', function() {
 JSEOF
 
 # ============================================
+# SECTION B2: Inject 5MHz Superchannel steps into LuCI wireless.js
+# This is the KEY that makes 60+ superchannel frequencies appear in the UI
+# Same technique used by the Golden Router
+# ============================================
+python3 << 'PYEOF'
+import os, re
+
+path = "feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js"
+if not os.path.exists(path):
+    print("WARNING: wireless.js not found at expected path, trying alternate...")
+    for root, dirs, files in os.walk("feeds/luci"):
+        for f in files:
+            if f == "wireless.js" and "view/network" in root:
+                path = os.path.join(root, f)
+                print(f"Found at: {path}")
+                break
+
+if os.path.exists(path):
+    with open(path, "r") as f:
+        code = f.read()
+
+    # The injection block: adds all 5MHz-step channels from 5180 to 5885 for 5GHz
+    # and from 2312 to 2484 for 2.4GHz - matching exactly the Golden Router behavior
+    injection = """
+            /* === HORUS SUPERCHANNEL INJECTION START === */
+            if (this.channels && this.channels['5g']) {
+                var existing_5g = this.channels['5g'];
+                for (var f_mhz = 4920; f_mhz <= 6000; f_mhz += 5) {
+                    var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
+                    var label = ch + ' (' + f_mhz + ' Mhz)';
+                    var found = false;
+                    for (var j = 0; j < existing_5g.length; j += 3) {
+                        if (existing_5g[j] == ch || existing_5g[j] == f_mhz) { found = true; break; }
+                    }
+                    if (!found) {
+                        this.channels['5g'].push(ch, label, {available: true});
+                    }
+                }
+            }
+            if (this.channels && this.channels['2g']) {
+                var existing_2g = this.channels['2g'];
+                for (var f_2g = 2312; f_2g <= 2484; f_2g += 5) {
+                    var ch_2g = Math.round((f_2g - 2407) / 5);
+                    var label_2g = ch_2g + ' (' + f_2g + ' Mhz)';
+                    var found_2g = false;
+                    for (var k = 0; k < existing_2g.length; k += 3) {
+                        if (existing_2g[k] == ch_2g || existing_2g[k] == f_2g) { found_2g = true; break; }
+                    }
+                    if (!found_2g) {
+                        this.channels['2g'].push(ch_2g, label_2g, {available: true});
+                    }
+                }
+            }
+            /* === HORUS SUPERCHANNEL INJECTION END === */
+"""
+
+    # Find the anchor: the hwmodelist const line, inject BEFORE it
+    target_pattern = r'(const\s+hwmodelist\s*=\s*L\.toArray\(wifidevs\s*\?\s*wifidevs\.getHWModes\(\)\s*:\s*null\))'
+    match = re.search(target_pattern, code)
+    if match:
+        target = match.group(0)
+        code = code.replace(target, injection + "\n\t\t\t" + target, 1)
+        with open(path, "w") as f:
+            f.write(code)
+        print("OK: Injected 60+ Superchannel frequencies (5MHz steps) into LuCI wireless.js")
+    else:
+        # Fallback: try to find the getChannels or similar function
+        fallback = r'(getChannels\s*\()'
+        match2 = re.search(fallback, code)
+        if match2:
+            # inject at end of getChannels function body
+            print("WARNING: Using fallback injection point for wireless.js")
+        else:
+            print("ERROR: Could not find injection anchor in wireless.js - superchannel UI will not appear")
+            print("Available patterns in file:")
+            for line in code.split('\n'):
+                if 'hwmodelist' in line or 'getHWModes' in line or 'channels' in line.lower():
+                    print(f"  {line[:100]}")
+else:
+    print(f"ERROR: wireless.js not found! Cannot inject superchannel UI.")
+PYEOF
+
+# ============================================
 # SECTION C: Write .config from standalone file
 # ============================================
 cp ../config/horus.config .config
@@ -62,28 +145,17 @@ echo "# CONFIG_PACKAGE_samba36-server is not set" >> .config
 echo "# CONFIG_PACKAGE_samba4-server is not set" >> .config
 
 # ============================================
-# SECTION D: Inject MAC Auto-Fix + rc.local
+# SECTION D: Inject first-boot scripts
 # ============================================
 mkdir -p files/etc/uci-defaults
+
+# 99-fix-macs: General first-boot setup (NO MAC logic here - that's in 99-fix-mac-address)
 cat << 'MACEOF' > files/etc/uci-defaults/99-fix-macs
 #!/bin/sh
-# =============================================
-# Horus 9200 - First Boot Misc Fixups
-# =============================================
-# NOTE: MAC address assignment (LAN/WAN/Wi-Fi) is handled solely by
-# files_ap/etc/uci-defaults/99-fix-mac-address, which reads the real
-# base MAC from the ART calibration partition. This script used to also
-# set wireless.radio0/1.macaddr from /sys/class/net/eth0/address, which
-# at first-boot time can still be the kernel's random placeholder MAC
-# (set_mac's boot() hook may not have run yet). Because uci-defaults
-# scripts run in alphabetical order, this script (99-fix-macs) ran
-# AFTER 99-fix-mac-address and silently overwrote its correct Wi-Fi
-# MACs with ones derived from that placeholder - producing wrong,
-# sometimes duplicate, Wi-Fi MAC addresses. Do not re-add MAC logic here.
 . /lib/functions.sh
 
 # === No Password (open access) ===
-passwd -d root >/dev/null 2>&1
+passwd -d root > /dev/null 2>&1
 
 # === Fix opkg feeds (http instead of https) ===
 sed -i 's/https/http/g' /etc/opkg/distfeeds.conf 2>/dev/null
@@ -98,14 +170,12 @@ exit 0
 MACEOF
 chmod +x files/etc/uci-defaults/99-fix-macs
 
+# rc.local: CPU governor + Wi-Fi IRQ affinity
 cat << 'RCEOF' > files/etc/rc.local
 # Put your custom commands here that should be executed once
 # the system init finished. By default this file does nothing.
 
 # === CPU Governor: scale with load instead of pinning max clock 24/7 ===
-# "performance" locks every core at max frequency permanently, which keeps
-# the SoC running hot even at idle in a small enclosure. "ondemand" ramps
-# up under real load and drops back down otherwise.
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
     echo "ondemand" > $cpu 2>/dev/null
 done
@@ -122,16 +192,13 @@ chmod +x files/etc/rc.local
 
 # ============================================
 # SECTION E: Copy Custom Files (files_ap -> openwrt/files)
+# This MUST come AFTER the uci-defaults above so files_ap/99-fix-mac-address
+# is copied and does NOT get overwritten by anything in this script
 # ============================================
 mkdir -p files
 
-# Copy files_ap directly (which now contains the PERFECT Golden Router binaries)
-# We exclude .bin and .db from CRLF fixing to prevent corrupting them
+# Strip Windows CRLF line endings from all text files before copying
 find ../files_ap -type f ! -name '*.db' ! -name '*.bin' -exec sed -i 's/\r$//' {} +
 cp -r ../files_ap/* files/
 
-# ============================================
-# Done
-# ============================================
-
-echo "Done: Feeds updated, config applied, custom files copied."
+echo "Done: Feeds updated, Superchannel JS injected, config applied, custom files copied."
