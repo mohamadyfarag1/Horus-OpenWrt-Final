@@ -50,9 +50,9 @@ with open('db.txt', 'w') as f:
             f.write('country 00:\n')
         else:
             f.write(f'country {c}:\n')
-        # Safely bounded frequencies based on Golden board-2.bin EEPROM limits!
-        f.write('\t(2412 - 2484 @ 40), (33)\n')
-        f.write('\t(5150 - 5885 @ 160), (33)\n')
+        # Safely bounded frequencies based EXACTLY on Golden Router Hexdump!
+        f.write('\t(2182 - 2484 @ 40), (33)\n')
+        f.write('\t(5115 - 5930 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')
 "
