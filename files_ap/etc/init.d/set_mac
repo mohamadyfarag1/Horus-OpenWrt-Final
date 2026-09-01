@@ -7,7 +7,9 @@ boot() {
     art_part="$(find_mtd_part ART)"
     [ -n "$art_part" ] || return 0
 
-    BASE_MAC=$(strings "$art_part" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+    RAW_MAC=$(strings "$art_part" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+    BASE_MAC=$(echo "$RAW_MAC" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
+    
     if [ -n "$BASE_MAC" ]; then
         ip link set dev eth0 address "$BASE_MAC" 2>/dev/null
     fi
