@@ -75,17 +75,6 @@ for filepath in sys.argv[1:]:
 
     data = re.sub(r'static const struct cfg80211_chan_def cfg80211_chan_def_5g.*?\[\] = \{.*?\};', new_array_5g, data, flags=re.DOTALL)
     
-    # 2.4GHz Array (Optional but good for 2182-2484)
-    new_array_2g = "static const struct cfg80211_chan_def cfg80211_chan_def_2ghz[] = {\n"
-    for f_mhz in range(2182, 2487, 5):
-        if f_mhz == 2484:
-            ch = 14
-        else:
-            ch = int((f_mhz - 2407) / 5)
-        new_array_2g += f"\t{{ .center_freq = {f_mhz}, .hw_value = {ch}, }},\n"
-    new_array_2g += "};\n"
-    
-    data = re.sub(r'static const struct cfg80211_chan_def cfg80211_chan_def_2ghz.*?\[\] = \{.*?\};', new_array_2g, data, flags=re.DOTALL)
 
     with open(filepath, 'w') as f:
         f.write(data)

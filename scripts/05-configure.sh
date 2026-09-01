@@ -88,20 +88,7 @@ if os.path.exists(path):
                     }
                 }
             }
-            if (this.channels && this.channels['2g']) {
-                var existing_2g = this.channels['2g'];
-                for (var f_2g = 2312; f_2g <= 2484; f_2g += 5) {
-                    var ch_2g = Math.round((f_2g - 2407) / 5);
-                    var label_2g = ch_2g + ' (' + f_2g + ' Mhz)';
-                    var found_2g = false;
-                    for (var k = 0; k < existing_2g.length; k += 3) {
-                        if (existing_2g[k] == ch_2g || existing_2g[k] == f_2g) { found_2g = true; break; }
-                    }
-                    if (!found_2g) {
-                        this.channels['2g'].push(ch_2g, label_2g, {available: true});
-                    }
-                }
-            }
+
             /* === HORUS SUPERCHANNEL INJECTION END === */
 """
 
