@@ -76,7 +76,7 @@ if os.path.exists(path):
             /* === HORUS SUPERCHANNEL INJECTION START === */
             if (this.channels && this.channels['5g']) {
                 var existing_5g = this.channels['5g'];
-                for (var f_mhz = 4920; f_mhz <= 6000; f_mhz += 5) {
+                for (var f_mhz = 5180; f_mhz <= 5885; f_mhz += 5) {
                     var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
                     var label = ch + ' (' + f_mhz + ' Mhz)';
                     var found = false;
