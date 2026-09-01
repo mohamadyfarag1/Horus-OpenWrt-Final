@@ -3,11 +3,11 @@ START=10
 
 boot() {
     . /lib/functions.sh
-    local art_part
-    art_part="$(find_mtd_part ART)"
-    [ -n "$art_part" ] || return 0
+    local env_part
+    env_part="$(find_mtd_part APPSBLENV)"
+    [ -n "$env_part" ] || return 0
 
-    RAW_MAC=$(strings "$art_part" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+    RAW_MAC=$(strings "$env_part" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
     BASE_MAC=$(echo "$RAW_MAC" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
     
     if [ -n "$BASE_MAC" ]; then
