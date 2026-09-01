@@ -1,7 +1,10 @@
 #!/bin/sh
 . /lib/functions.sh
 ART_PART="$(find_mtd_part ART)"
-BASE_MAC=$([ -n "$ART_PART" ] && strings "$ART_PART" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+RAW_MAC=$([ -n "$ART_PART" ] && strings "$ART_PART" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+
+# Sanitize: Extract only the valid 12-hex-digit MAC pattern and force lowercase to avoid math errors
+BASE_MAC=$(echo "$RAW_MAC" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
 
 if [ -n "$BASE_MAC" ]; then
     MAC_LAN=$BASE_MAC
