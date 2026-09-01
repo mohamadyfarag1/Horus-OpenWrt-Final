@@ -3,24 +3,26 @@
 . /lib/functions/system.sh
 
 ENV_PART="$(find_mtd_part APPSBLENV)"
-# Extract MAC without using 'strings'
 RAW_MAC=$([ -n "$ENV_PART" ] && cat "$ENV_PART" | tr '\0' '\n' | grep '^base_mac=' | head -n 1 | cut -d= -f2)
 
-# Sanitize: Extract only the valid 12-hex-digit MAC pattern and force lowercase
 BASE_MAC=$(echo "$RAW_MAC" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
 
 if [ -n "$BASE_MAC" ]; then
+    # Fix corrupted factory MAC (like 01:07:...) which crashes hostapd because it is a Multicast MAC
+    first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
+    if [ "$first_byte" = "01" ] || [ "$first_byte" = "00" ]; then
+        BASE_MAC="02${BASE_MAC#${first_byte}}"
+    fi
+
     MAC_LAN=$BASE_MAC
     MAC_WAN=$(macaddr_add "$BASE_MAC" 1)
     MAC_WIFI2G=$(macaddr_add "$BASE_MAC" 2)
     MAC_WIFI5G=$(macaddr_add "$BASE_MAC" 3)
 
-    # Set Network MACs
     uci set network.lan.macaddr="$MAC_LAN"
     uci set network.wan.macaddr="$MAC_WAN"
     uci commit network
 
-    # Set Wireless MACs
     uci -q delete wireless.radio0.country_ie
     uci -q delete wireless.radio1.country_ie
 
