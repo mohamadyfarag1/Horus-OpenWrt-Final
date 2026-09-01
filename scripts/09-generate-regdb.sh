@@ -8,9 +8,7 @@ echo "======================================="
 echo "Generating Unlocked Regulatory Database"
 echo "======================================="
 
-# We need to run this outside the openwrt folder, like in the old check.yml
-cd ..
-
+# We are currently in the repository root (Horus-OpenWrt-Final)
 if [ ! -d "wireless-regdb" ]; then
     git clone https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git || true
 fi
@@ -61,5 +59,7 @@ print(f'Generated db.txt with {len(countries)} countries')
 openssl ecparam -name prime256v1 -genkey -noout -out key.priv.pem
 make || echo "WARNING: regulatory.db build failed"
 
+# We are in wireless-regdb, so openwrt is in the parent directory
+mkdir -p ../openwrt/files/lib/firmware
 cp regulatory.db ../openwrt/files/lib/firmware/regulatory.db
 echo "Injected custom regulatory.db into firmware files!"
