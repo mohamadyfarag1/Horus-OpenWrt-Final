@@ -1,5 +1,7 @@
 #!/bin/sh
 . /lib/functions.sh
+. /lib/functions/system.sh
+
 ENV_PART="$(find_mtd_part APPSBLENV)"
 RAW_MAC=$([ -n "$ENV_PART" ] && strings "$ENV_PART" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
 
