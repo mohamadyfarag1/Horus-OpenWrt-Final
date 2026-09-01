@@ -35,9 +35,15 @@ make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
 make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
 
 echo "======================================="
-echo "Step 2: Applying Superchannel C-code Unlock..."
+echo "Step 2: Skipping Superchannel unlock (disabled for stability)"
 echo "======================================="
-bash ../scripts/07-unlock-superchannel.sh
+# 07-unlock-superchannel.sh used to rewrite the kernel's regulatory-rule
+# source (regd.c/reg.c) with fabricated frequency ranges and force
+# is_valid_rd() to always return true. That patch, combined with the
+# hand-edited board-2.bin, was the main source of instability and of
+# channels/power not showing correctly. Left disabled until it's
+# reworked to only enable frequencies actually permitted by the
+# selected country's real regulatory rules.
 
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
@@ -47,8 +53,8 @@ make -j$(nproc) 2>&1 | tee build.log
 
 # If the build failed, exit with error
 if [ ${PIPESTATUS[0]} -ne 0 ]; then
-    echo "? Build failed! Check build.log for details."
+    echo "❌ Build failed! Check build.log for details."
     exit 1
 fi
 
-echo "? Firmware compilation complete!"
+echo "✅ Firmware compilation complete!"
