@@ -3,9 +3,10 @@
 . /lib/functions/system.sh
 
 ENV_PART="$(find_mtd_part APPSBLENV)"
-RAW_MAC=$([ -n "$ENV_PART" ] && strings "$ENV_PART" | grep -o 'base_mac=[^ ]*' | head -n 1 | cut -d= -f2)
+# Extract MAC without using 'strings'
+RAW_MAC=$([ -n "$ENV_PART" ] && cat "$ENV_PART" | tr '\0' '\n' | grep '^base_mac=' | head -n 1 | cut -d= -f2)
 
-# Sanitize: Extract only the valid 12-hex-digit MAC pattern and force lowercase to avoid math errors
+# Sanitize: Extract only the valid 12-hex-digit MAC pattern and force lowercase
 BASE_MAC=$(echo "$RAW_MAC" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
 
 if [ -n "$BASE_MAC" ]; then
