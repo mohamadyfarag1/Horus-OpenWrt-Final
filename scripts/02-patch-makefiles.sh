@@ -22,3 +22,7 @@ cd openwrt
 } >> target/linux/ipq40xx/image/generic.mk
 
 echo "✅ Device definition added to generic.mk"
+
+# Apply PSGMII patch immediately to OpenWrt target patches
+bash ../scripts/08-patch-psgmii.sh
+
