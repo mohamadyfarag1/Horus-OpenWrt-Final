@@ -68,25 +68,19 @@ mkdir -p files/etc/uci-defaults
 cat << 'MACEOF' > files/etc/uci-defaults/99-fix-macs
 #!/bin/sh
 # =============================================
-# Horus 9200 - First Boot MAC Assignment Only
+# Horus 9200 - First Boot Misc Fixups
 # =============================================
+# NOTE: MAC address assignment (LAN/WAN/Wi-Fi) is handled solely by
+# files_ap/etc/uci-defaults/99-fix-mac-address, which reads the real
+# base MAC from the ART calibration partition. This script used to also
+# set wireless.radio0/1.macaddr from /sys/class/net/eth0/address, which
+# at first-boot time can still be the kernel's random placeholder MAC
+# (set_mac's boot() hook may not have run yet). Because uci-defaults
+# scripts run in alphabetical order, this script (99-fix-macs) ran
+# AFTER 99-fix-mac-address and silently overwrote its correct Wi-Fi
+# MACs with ones derived from that placeholder - producing wrong,
+# sometimes duplicate, Wi-Fi MAC addresses. Do not re-add MAC logic here.
 . /lib/functions.sh
-
-# === MAC Address Assignment ===
-BASE_MAC=$(cat /sys/class/net/eth0/address 2>/dev/null)
-if [ -n "$BASE_MAC" ]; then
-    WAN_MAC=$(macaddr_add "$BASE_MAC" 1)
-    WIFI2_MAC=$(macaddr_add "$BASE_MAC" 2)
-    WIFI5_MAC=$(macaddr_add "$BASE_MAC" 3)
-    # uci set network.lan.macaddr="$BASE_MAC"
-    # uci set network.wan.macaddr="$WAN_MAC"
-    # uci commit network
-    uci set wireless.radio0.macaddr="$WIFI2_MAC"
-    uci set wireless.default_radio0.macaddr="$WIFI2_MAC"
-    uci set wireless.radio1.macaddr="$WIFI5_MAC"
-    uci set wireless.default_radio1.macaddr="$WIFI5_MAC"
-    uci commit wireless
-fi
 
 # === No Password (open access) ===
 passwd -d root >/dev/null 2>&1
