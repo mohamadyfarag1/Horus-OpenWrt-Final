@@ -23,68 +23,33 @@ bash ../scripts/08-patch-psgmii.sh
 make target/linux/prepare V=s -j$(nproc)
 bash ../scripts/08-patch-psgmii.sh
 
-# ---------------------------------------------------------------------
-# CRITICAL ORDERING - this is what broke the last build.
-#
-# The Wi-Fi driver this device loads is kmod-ath10k-ct, a SEPARATE package
-# from mac80211, with its own source tree in build_dir. It is a kernel
-# module, so its `.prepared` stamp must be NEWER than the kernel's. The
-# previous build prepared ath10k-ct BEFORE the second `make target/linux/
-# prepare` above, so the kernel stamp ended up newer; the final `make` then
-# judged ath10k-ct stale, re-extracted a clean copy, and wiped PATCH 5. The
-# driver shipped with its stock 27-channel table while the LuCI dropdown
-# still advertised 68 - so selecting any of the extra channels left hostapd
-# with a frequency the driver did not have ("Could not determine operating
-# frequency"), the interface failed to start, and the radio went silent -
-# exactly the "power drops to zero" the user reported.
-#
-# Fix: extract ath10k-ct LAST, after every kernel prepare, then patch it,
-# then compile it immediately so its result is locked in before the full
-# build. Nothing after this point re-prepares the kernel.
-# ---------------------------------------------------------------------
 echo "======================================="
-echo "Step 1.7: Extracting ath10k-ct AFTER the kernel (so the patch sticks)..."
-echo "======================================="
-make package/kernel/ath10k-ct/prepare V=s -j$(nproc) 2>&1 || true
-
-# The ath10k-ct tarball unpacks to ath10k-ct-<date>/ with one mac.c per
-# kernel version (ath10k-6.4/mac.c, ath10k-6.7/mac.c, ...). Find the one(s)
-# that actually carry the 5 GHz channel array under an ath10k-ct path -
-# that is what PATCH 5 rewrites and what gets compiled.
-find_ct_mac() {
-    grep -rl 'ath10k_5ghz_channels\[\]' build_dir --include=mac.c 2>/dev/null         | grep 'ath10k-ct' | head -n1
-}
-CTMAC=$(find_ct_mac)
-if [ -z "$CTMAC" ]; then
-    echo "!!!! ath10k-ct source (mac.c with the 5 GHz array) was not extracted."
-    echo "     PATCH 5 would silently patch the wrong ath10k copy."
-    exit 1
-fi
-echo "ath10k-ct mac.c: $CTMAC"
-
-echo "======================================="
-echo "Step 2: Applying Superchannel Patches..."
+echo "Step 2: Applying mac80211/backports patches (PATCH 1-3)..."
 echo "======================================="
 cd build_dir
 bash ../../scripts/07-unlock-superchannel.sh
 cd ..
 
-# Confirm PATCH 5 actually landed in the tree that will be compiled.
-CT5G=$(grep -c 'CHAN5G(' "$CTMAC" 2>/dev/null || true); CT5G=${CT5G:-0}
-echo "ath10k-ct mac.c CHAN5G lines after patch: $CT5G (stock ~28, patched ~69)"
-if [ "$CT5G" -lt 60 ]; then
-    echo "!!!! PATCH 5 did not land in $CTMAC - aborting."
-    exit 1
-fi
-
-# Lock the patch in: build ath10k-ct (and hostapd) NOW, from the patched
-# source, so their stamps say 'built' and the full make below cannot
-# re-extract them behind our back.
+# ---------------------------------------------------------------------
+# ath10k-ct and hostapd cannot be patched the way mac80211 is.
+#
+# Both declare build VARIANTs, and include/package.mk gives each variant
+# its own PKG_BUILD_DIR. An in-place edit after `make .../prepare` lands in
+# one variant's directory; the full build then unpacks the variant we ship
+# (kmod-ath10k-ct-smallbuffers, wpad-openssl) into a separate pristine
+# directory and compiles that. The last image shipped exactly that way: the
+# driver kept its stock 27-channel 5 GHz table while LuCI offered 68, so
+# selecting one of the extra channels left hostapd with a frequency the
+# driver never registered ("Could not determine operating frequency"), the
+# interface failed to start, and the radio went silent.
+#
+# Generate them as real OpenWrt patches instead and let OpenWrt apply them
+# during Build/Prepare, for every variant, every unpack.
+# ---------------------------------------------------------------------
 echo "======================================="
-echo "Step 2.5: Compiling patched ath10k-ct + hostapd to lock changes in..."
+echo "Step 2.5: Installing ath10k-ct + hostapd package patches..."
 echo "======================================="
-make package/network/services/hostapd/compile V=s -j$(nproc) 2>&1 | tail -n 8 || true
-make package/kernel/ath10k-ct/compile V=s -j$(nproc) 2>&1 | tail -n 8 || true
+bash ../scripts/10-gen-package-patches.sh
 
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
@@ -98,19 +63,43 @@ if [ ${PIPESTATUS[0]} -ne 0 ]; then
     exit 1
 fi
 
-# The re-extraction guard: if the full make re-prepared ath10k-ct despite
-# the above, the source would be back to the stock table. Verify it is
-# still our 68-channel version - if not, fail rather than ship a driver
-# whose channel list disagrees with the UI.
-CTMAC=$(find_ct_mac); CT5G_AFTER=$(grep -c 'CHAN5G(' "$CTMAC" 2>/dev/null || true); CT5G_AFTER=${CT5G_AFTER:-0}
-echo "ath10k-ct mac.c CHAN5G lines after full build: $CT5G_AFTER"
-if [ "$CT5G_AFTER" -lt 60 ]; then
-    echo "!!!! ath10k-ct was re-extracted during the full build - PATCH 5 lost."
-    echo "     The driver would ship the stock channel table and every extra"
-    echo "     5 GHz channel in the UI would kill the radio when selected."
+# Verify the driver we actually ship carries the extended table. The
+# smallbuffers variant is the one in the image, so check ITS build dir -
+# checking "any ath10k-ct directory" is what let the previous bug through.
+# The ath10k-ct tarball ships one full driver tree per upstream kernel
+# (ath10k-6.2, -6.4, -6.10, ...) and only the CT_KVER one is compiled, so
+# read the exact path our patch targets straight out of the patch header
+# instead of grabbing whichever mac.c `find` happens to hit first. Then
+# check it inside the SMALLBUFFERS variant - that is the driver in the
+# image, and "any ath10k-ct directory will do" is precisely what let the
+# previous bug through.
+CTPATCH=package/kernel/ath10k-ct/patches/999-horus-superchannels.patch
+CTSUB=$(grep -m1 '^--- a/' "$CTPATCH" | sed 's|^--- a/||; s|/mac\.c$||')
+if [ -z "$CTSUB" ]; then
+    echo "!!!! could not read the driver subdirectory out of $CTPATCH"
     exit 1
 fi
-echo "OK: ath10k-ct kept its 68-channel table through the full build."
+echo "driver subdirectory the patch targets: $CTSUB"
+
+CTMAC=$(find build_dir -path "*ath10k-ct-smallbuffers*/$CTSUB/mac.c" 2>/dev/null | head -n1)
+if [ -z "$CTMAC" ]; then
+    echo "!!!! $CTSUB/mac.c not found in the smallbuffers variant build dir."
+    echo "     That is the driver that ships - cannot verify its channel table."
+    find build_dir -type d -name 'ath10k-ct*' 2>/dev/null | head
+    exit 1
+fi
+CT5G=$(grep -c 'CHAN5G(' "$CTMAC" 2>/dev/null || true); CT5G=${CT5G:-0}
+echo "shipped driver source : $CTMAC"
+echo "CHAN5G entries        : $CT5G  (stock 28, patched 69)"
+if [ "$CT5G" -lt 60 ]; then
+    echo "!!!! The SHIPPED ath10k-ct variant does NOT have the extended table."
+    echo "     999-horus-superchannels.patch did not reach this variant, so the"
+    echo "     driver would expose ~27 channels while LuCI offers 68 - picking"
+    echo "     one of the extras then kills the radio. Refusing to ship."
+    exit 1
+fi
+grep -E "define ATH10K_(NUM_CHANS|MAX_5G_CHAN)" "$(dirname "$CTMAC")/core.h" || true
+echo "OK: shipped ath10k-ct carries the 68-channel table."
 
 # ---------------------------------------------------------------------
 # Post-build verification.
