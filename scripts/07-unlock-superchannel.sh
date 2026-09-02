@@ -50,14 +50,108 @@ for UTIL in $(find . -path "*/net/wireless/util.c" 2>/dev/null); do
   echo "  -> net/wireless/util.c patched OK"
 done
 
-for HWF in $(find . -path "*/hostapd*/src/ap/hw_features.c" -o -path "*/wpad*/src/ap/hw_features.c" 2>/dev/null); do
-  echo "[PATCH 4] Patching: $HWF"
-  sed -i 's/wpa_printf(MSG_INFO, "Disable OFDM\/HT\/VHT on channel 14");//g' "$HWF"
-  sed -i 's/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211B;/iface->conf->hw_mode = HOSTAPD_MODE_IEEE80211G;/g' "$HWF"
-  sed -i '/iface->conf->ieee80211n = 0;/d' "$HWF"
-  sed -i '/iface->conf->ieee80211ac = 0;/d' "$HWF"
-  echo "  -> hostapd/hw_features.c patched OK"
-done
+#############################################
+# PATCH 4: hostapd - let channel 14 keep OFDM/HT
+#
+# hostapd_select_hw_mode() in src/ap/hw_features.c force-downgrades channel
+# 14 to bare 802.11b, because Japan forbids OFDM there:
+#
+#   if ((hw_mode == IEEE80211G || ieee80211n || ieee80211ac ||
+#        ieee80211ax) && channel == 14) {
+#           wpa_printf(MSG_INFO, "Disable OFDM/HT/VHT/HE on channel 14");
+#           hw_mode = IEEE80211B; ieee80211n = 0; ieee80211ac = 0;
+#           ieee80211ax = 0;
+#   }
+#
+# This used to be four blind `sed` commands. They did only hit this block,
+# but one of them keyed on the log text - which upstream has since changed
+# to ".../HE on channel 14" - so that one had already silently stopped
+# matching. Locate the block structurally by brace matching, delete it
+# whole, and fail the build if it is not found. Channel 14 then keeps
+# whatever hw_mode/htmode the UCI config asked for.
+#
+# NOTE: this only decides the MODE on channel 14. Whether the channel is
+# usable at all is a regulatory question: a 20 MHz channel centred on 2484
+# needs a rule covering 2474-2494, which is why 09-generate-regdb.sh emits
+# 2182-2494 instead of stopping at 2484.
+#############################################
+cat << 'CH14EOF' > /tmp/patch_hostapd_ch14.py
+import os, re, sys
+
+MARK = re.compile(r'wpa_printf\(MSG_INFO,\s*"Disable OFDM[^"]*on channel 14"\);')
+
+patched = 0
+seen = 0
+
+for root, _dirs, files in os.walk('.'):
+    if 'hostapd' not in root and 'wpad' not in root:
+        continue
+    if not root.endswith(os.path.join('src', 'ap')):
+        continue
+    for name in files:
+        if name != 'hw_features.c':
+            continue
+        path = os.path.join(root, name)
+        try:
+            src = open(path, 'r', encoding='utf-8', errors='ignore').read()
+        except OSError:
+            continue
+        m = MARK.search(src)
+        if not m:
+            continue
+        seen += 1
+
+        if_at = src.rfind('if (', 0, m.start())
+        if if_at == -1:
+            print("!!!! ch14 marker found but no enclosing if() in %s" % path)
+            sys.exit(1)
+
+        body_at = src.find('{', if_at)
+        if body_at == -1 or body_at > m.start():
+            print("!!!! could not locate ch14 block body in %s" % path)
+            sys.exit(1)
+
+        depth = 0
+        close_at = None
+        for i in range(body_at, len(src)):
+            if src[i] == '{':
+                depth += 1
+            elif src[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    close_at = i
+                    break
+        if close_at is None:
+            print("!!!! unbalanced braces around ch14 block in %s" % path)
+            sys.exit(1)
+
+        block = src[if_at:close_at + 1]
+        if 'channel == 14' not in block:
+            print("!!!! matched block is not the channel 14 block in %s" % path)
+            print(block[:400])
+            sys.exit(1)
+
+        replacement = ('/* Horus: channel 14 keeps the configured hw_mode/HT.\n'
+                       '\t * Upstream forced 802.11b here for JP regulatory. */')
+        src = src[:if_at] + replacement + src[close_at + 1:]
+        open(path, 'w', encoding='utf-8').write(src)
+        patched += 1
+        print("  [ch14/hostapd] removed the 802.11b downgrade in %s" % path)
+
+print("PATCH 4 summary: files_with_block=%d patched=%d" % (seen, patched))
+if seen == 0:
+    print("!!!! PATCH 4 FAILED: hostapd hw_features.c with the channel 14")
+    print("     block was not found. Channel 14 would fall back to 802.11b.")
+    sys.exit(1)
+if patched != seen:
+    print("!!!! PATCH 4 FAILED: some copies were left unpatched.")
+    sys.exit(1)
+CH14EOF
+
+echo "[PATCH 4] Removing the hostapd 802.11b downgrade on channel 14..."
+python3 /tmp/patch_hostapd_ch14.py
+rm -f /tmp/patch_hostapd_ch14.py
+echo "  -> hostapd channel 14 patched OK"
 
 #############################################
 # PATCH 5: ath10k(-ct) 5 GHz channel table  (THE one that gives power)
