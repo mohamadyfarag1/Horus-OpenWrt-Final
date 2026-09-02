@@ -111,6 +111,17 @@ if os.path.exists(path):
                 }
             }
 
+            /* === HORUS CHANNEL 14 INJECTION === */
+            if (this.channels && this.channels['2g']) {
+                var found14 = false;
+                for (var j = 0; j < this.channels['2g'].length; j += 3) {
+                    if (this.channels['2g'][j] == 14) { found14 = true; break; }
+                }
+                if (!found14) {
+                    this.channels['2g'].push(14, '14 (2484 MHz)', {available: true});
+                }
+            }
+
             /* === HORUS SUPERCHANNEL INJECTION END === */
 """
 

@@ -164,3 +164,62 @@ echo "[PATCH 5] Rewriting ath10k 5 GHz channel table + core.h constants..."
 python3 /tmp/patch_ath10k_chans.py
 rm -f /tmp/patch_ath10k_chans.py
 echo "  -> ath10k 5 GHz channel table patched OK"
+
+#############################################
+# PATCH 5B: Ensure channel 14 (2484 MHz) in ath10k_2ghz_channels[]
+#
+# Channel 14 is present in the standard upstream ath10k driver table
+# (CHAN2G(14, 2484, 0)) but some vendor forks strip it. We verify it
+# is there and add it after channel 13 if missing.
+#
+# The rest of the unlock is already in place:
+#   PATCH 1/2 - regd.c/reg.c already covers 2484 MHz at 33 dBm
+#   PATCH 4   - hostapd hw_features.c no longer forces ch14 to 802.11b
+#   regdb     - custom regulatory.db covers 2182-2484 @ 33 dBm
+#############################################
+cat << 'PYEOF' > /tmp/patch_ath10k_ch14.py
+import os, re, sys
+
+chan14_entry = "\tCHAN2G(14, 2484, 0),\n"
+chan13_re = re.compile(r'(\tCHAN2G\(13,\s*2472,\s*0\),\n)')
+
+patched = 0
+already_had = 0
+mac_seen = 0
+
+for root, _dirs, files in os.walk('.'):
+    if 'ath10k' not in root:
+        continue
+    for name in files:
+        if name != 'mac.c':
+            continue
+        path = os.path.join(root, name)
+        try:
+            data = open(path, 'r', encoding='utf-8', errors='ignore').read()
+        except OSError:
+            continue
+        if 'ath10k_2ghz_channels' not in data:
+            continue
+        mac_seen += 1
+        if 'CHAN2G(14,' in data:
+            print("  [ch14] channel 14 already in %s" % path)
+            already_had += 1
+            continue
+        data2 = chan13_re.sub(r'\g<1>' + chan14_entry, data)
+        if data2 != data:
+            open(path, 'w', encoding='utf-8').write(data2)
+            patched += 1
+            print("  [ch14] added CHAN2G(14, 2484, 0) to %s" % path)
+        else:
+            print("!!!! [ch14] WARN: chan 13 pattern not found in %s, ch14 not added" % path)
+
+print("PATCH 5B: ch14 added=%d already_present=%d mac.c_seen=%d" % (patched, already_had, mac_seen))
+if mac_seen == 0:
+    print("!!!! PATCH 5B: no ath10k mac.c found")
+    sys.exit(1)
+PYEOF
+
+echo "[PATCH 5B] Verifying / adding channel 14 (2484 MHz) to ath10k 2.4 GHz table..."
+python3 /tmp/patch_ath10k_ch14.py
+rm -f /tmp/patch_ath10k_ch14.py
+echo "  -> ath10k channel 14 check OK"
