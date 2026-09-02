@@ -57,11 +57,23 @@ jobs:
       - name: Compile Firmware
         run: bash scripts/06-compile.sh
 
-      - name: Upload Artifacts
-        if: always()
+      - name: Upload Firmware (only when every build check passed)
         uses: actions/upload-artifact@v4
         with:
           name: H1Radio_TI04-708HP_SuperFirmware
           path: |
             openwrt/bin/targets/ipq40xx/generic/*
             openwrt/build.log
+
+      # A failed build still leaves images on disk: 06-compile.sh runs `make`
+      # first and only then verifies the driver channel table and the ath10k
+      # firmware blobs. When one of those checks fails the .bin files exist
+      # but are known-bad, so they must NOT be offered for download - that is
+      # how a rejected image ends up flashed. Ship the log alone.
+      - name: Upload build log only (build or verification failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAILED-BUILD-LOG-DO-NOT-FLASH
+          path: openwrt/build.log
+          if-no-files-found: warn

@@ -35,15 +35,34 @@ say "===== Horus Wi-Fi self-check ====="
 FW=$(ls "$FWDIR"/firmware-*.bin 2>/dev/null | head -n 1)
 if [ -n "$FW" ]; then
     say "firmware      : $(basename "$FW") ($(wc -c < "$FW") bytes)"
+    HF=$(md5sum "$FW" | cut -d' ' -f1)
+    if [ "$HF" = "5dfb3152796b275349f92684240d9ab4" ]; then
+        say "                md5 $HF (matches reference AP)"
+    else
+        say "                md5 $HF"
+        say "                note: reference AP runs 5dfb3152796b275349f92684240d9ab4"
+        say "                      (ath10k-firmware-qca4019-ct 2020.11.08). The"
+        say "                      68-channel plan is only proven on that blob."
+    fi
 else
     problem "no firmware-N.bin in $FWDIR - ath10k cannot probe (-12),"
     say "                both radios will stay down. The image was built"
     say "                without ath10k-firmware-qca4019-ct."
 fi
 
+# board-2.bin carries the per-band TX power calibration. This is the one
+# binary where a wrong file really does produce 0 dBm - so compare it,
+# do not just print it. Reference AP (192.168.100.2) value, verified.
 if [ -f "$FWDIR/board-2.bin" ]; then
-    say "board-2.bin   : $(md5sum "$FWDIR/board-2.bin" | cut -d' ' -f1)"
-    say "                (reference AP: 2bdce2247cda36f0c3884d09b580999d)"
+    HB=$(md5sum "$FWDIR/board-2.bin" | cut -d' ' -f1)
+    if [ "$HB" = "2bdce2247cda36f0c3884d09b580999d" ]; then
+        say "board-2.bin   : $HB (matches reference AP)"
+    else
+        problem "board-2.bin is NOT the reference calibration."
+        say "                have $HB"
+        say "                want 2bdce2247cda36f0c3884d09b580999d"
+        say "                Wrong calibration means wrong TX power."
+    fi
 else
     problem "board-2.bin missing - no calibration data, expect 0 dBm."
 fi
@@ -95,7 +114,7 @@ for PHYPATH in /sys/class/ieee80211/*; do
     fi
 
     # Driver table vs LuCI dropdown. The 5 GHz driver is meant to expose the
-    # full 68-channel plan (PATCH 5). If it only shows the stock ~28, the
+    # full 68-channel plan (999-horus-superchannels.patch). If it only
     # channel table was not extended - the UI would then offer channels the
     # driver never registered, and picking one makes hostapd fail to bring
     # the interface up ("Could not determine operating frequency"), which
@@ -105,7 +124,8 @@ for PHYPATH in /sys/class/ieee80211/*; do
         problem "$PHY exposes only $CHANS 5 GHz channels (expected 68)."
         say "                The driver channel table was not extended, so the"
         say "                LuCI list has channels the driver lacks; selecting"
-        say "                one will drop the radio. PATCH 5 did not take."
+        say "                one will drop the radio. 999-horus-superchannels.patch"
+        say "                did not reach the driver that shipped."
     fi
 done
 

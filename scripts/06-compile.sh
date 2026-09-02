@@ -51,6 +51,57 @@ echo "Step 2.5: Installing ath10k-ct + hostapd package patches..."
 echo "======================================="
 bash ../scripts/10-gen-package-patches.sh
 
+# ---------------------------------------------------------------------
+# The channel plan is written down TWICE: once as the driver table
+# (CHANS in gen_package_patches.py, which becomes 999-horus-superchannels
+# .patch) and once as the LuCI dropdown (horus_freqs in 05-configure.sh).
+# They are independent lists, and only the driver one is real.
+#
+# A frequency in the UI but not in the driver is precisely the failure the
+# user sees as "the power dropped to zero": LuCI happily offers it, hostapd
+# asks for a frequency the phy never registered, gets "Could not determine
+# operating frequency", the interface fails to start and the radio goes
+# silent. Catch the drift here rather than on the device.
+# ---------------------------------------------------------------------
+echo "======================================="
+echo "Step 2.6: LuCI dropdown vs driver channel table..."
+echo "======================================="
+WJS=feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js
+CTPATCH_EARLY=package/kernel/ath10k-ct/patches/999-horus-superchannels.patch
+
+grep -E '^\+[[:space:]]*CHAN5G\(' "$CTPATCH_EARLY" \
+  | sed 's/.*CHAN5G([0-9]*,[[:space:]]*\([0-9]*\).*/\1/' | sort -u > /tmp/horus.driver.freqs
+DRVN=$(wc -l < /tmp/horus.driver.freqs)
+echo "driver table : $DRVN frequencies"
+if [ "$DRVN" -lt 60 ]; then
+    echo "!!!! the generated driver patch only carries $DRVN 5 GHz channels."
+    exit 1
+fi
+
+if [ -f "$WJS" ] && grep -q 'horus_freqs' "$WJS"; then
+    sed -n '/horus_freqs *= *\[/,/\];/p' "$WJS" \
+      | grep -oE '\b5[0-9]{3}\b' | sort -u > /tmp/horus.ui.freqs
+    echo "LuCI dropdown: $(wc -l < /tmp/horus.ui.freqs) frequencies"
+    ONLY_UI=$(comm -13 /tmp/horus.driver.freqs /tmp/horus.ui.freqs || true)
+    if [ -n "$ONLY_UI" ]; then
+        echo "!!!! LuCI would offer frequencies the driver never registers:"
+        echo "$ONLY_UI" | tr '\n' ' '; echo
+        echo "     Selecting one of these is what makes the radio go silent."
+        echo "     Keep horus_freqs (05-configure.sh) and CHANS"
+        echo "     (gen_package_patches.py) identical."
+        exit 1
+    fi
+    ONLY_DRV=$(comm -23 /tmp/horus.driver.freqs /tmp/horus.ui.freqs || true)
+    if [ -n "$ONLY_DRV" ]; then
+        echo "note: driver has extra channels the dropdown omits (harmless):"
+        echo "$ONLY_DRV" | tr '\n' ' '; echo
+    fi
+    echo "OK: every frequency LuCI offers exists in the driver table."
+else
+    echo "note: no horus_freqs injection in wireless.js - LuCI will simply"
+    echo "      enumerate the phy, which is the driver table. Consistent."
+fi
+
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
 echo "======================================="
@@ -135,7 +186,42 @@ if [ ! -f "$FWDIR/board-2.bin" ]; then
     exit 1
 fi
 echo "OK: ath10k firmware + calibration present."
-md5sum "$FWDIR"/*.bin
+
+# The two blobs are the ONLY binaries this device's Wi-Fi depends on, and
+# both are already byte-identical to the reference AP that drives all 68
+# channels at 30 dBm. Verified on 2026-09-02 by md5 on both units:
+#
+#   board-2.bin   2bdce2247cda36f0c3884d09b580999d  (calibration / TX power)
+#   firmware-5.bin 5dfb3152796b275349f92684240d9ab4 (ath10k-firmware-qca4019-ct 2020.11.08)
+#
+# So no binary needs editing - and editing board-2.bin is what WOULD cause
+# 0 dBm, because it carries the per-band power calibration. Assert instead,
+# so a silent drift can never be mistaken for a channel-table problem.
+GOLD_BOARD=2bdce2247cda36f0c3884d09b580999d
+GOLD_FW=5dfb3152796b275349f92684240d9ab4
+
+HAVE_BOARD=$(md5sum "$FWDIR/board-2.bin" | cut -d' ' -f1)
+if [ "$HAVE_BOARD" != "$GOLD_BOARD" ]; then
+    echo "!!!! board-2.bin is NOT the reference calibration."
+    echo "     have: $HAVE_BOARD"
+    echo "     want: $GOLD_BOARD"
+    echo "     files_ap/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin should"
+    echo "     overlay whatever ath10k-board-qca4019 installed. Wrong"
+    echo "     calibration means wrong TX power - possibly 0 dBm."
+    exit 1
+fi
+echo "OK: board-2.bin matches the reference AP calibration."
+
+HAVE_FW=$(md5sum "$FWDIR"/firmware-*.bin | head -n1 | cut -d' ' -f1)
+if [ "$HAVE_FW" != "$GOLD_FW" ]; then
+    echo "WARNING: ath10k firmware differs from the reference AP."
+    echo "         have: $HAVE_FW"
+    echo "         want: $GOLD_FW (ath10k-firmware-qca4019-ct 2020.11.08)"
+    echo "         Not fatal, but the 68-channel plan is only PROVEN on the"
+    echo "         reference blob. If channels misbehave, suspect this first."
+else
+    echo "OK: ath10k firmware matches the reference AP blob."
+fi
 
 REGDB=$(find build_dir -type f -path '*/root-*/lib/firmware/regulatory.db' | head -n1)
 if [ -z "$REGDB" ]; then
