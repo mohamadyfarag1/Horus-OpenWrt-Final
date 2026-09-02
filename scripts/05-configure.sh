@@ -86,7 +86,7 @@ if os.path.exists(path):
     # 0 dBm; one in the driver but not here still works, just not shown.
     injection = """
             /* === HORUS SUPERCHANNEL INJECTION START === */
-            if (this.channels && this.channels['5g']) {
+            if (this.channels && this.channels['5g'] && this.channels['5g'].length > 0) {
                 var existing_5g = this.channels['5g'];
                 var horus_freqs = [5180,5190,5200,5210,5220,5230,5240,5250,
                                    5260,5270,5280,5290,5300,5310,5320,5330,
@@ -112,7 +112,7 @@ if os.path.exists(path):
             }
 
             /* === HORUS CHANNEL 14 INJECTION === */
-            if (this.channels && this.channels['2g']) {
+            if (this.channels && this.channels['2g'] && this.channels['2g'].length > 0) {
                 var found14 = false;
                 for (var j = 0; j < this.channels['2g'].length; j += 3) {
                     if (this.channels['2g'][j] == 14) { found14 = true; break; }
@@ -156,6 +156,22 @@ PYEOF
 # ============================================
 cp ../config/horus.config .config
 make defconfig
+
+# make defconfig silently DROPS any CONFIG_ symbol that does not exist in the
+# tree. That is how CONFIG_PACKAGE_ath10k-firmware-qca4019-ct-fullall - a
+# package name that does not exist in 24.10 - disappeared without a word,
+# leaving an image with no firmware-N.bin at all and both Wi-Fi radios dead
+# at probe (-12). Fail here, three minutes in, instead of after a full build.
+for sym in ath10k-firmware-qca4019-ct kmod-ath10k-ct; do
+    if ! grep -q "^CONFIG_PACKAGE_${sym}=y" .config; then
+        echo "!!!! CONFIG_PACKAGE_${sym}=y did not survive 'make defconfig'."
+        echo "     The package name is wrong or unavailable in this tree."
+        echo "     Building on would produce an image with no working Wi-Fi."
+        grep -i "ath10k" .config || true
+        exit 1
+    fi
+done
+echo "OK: ath10k driver + firmware packages selected."
 
 # Remove samba (force)
 sed -i '/samba/d' .config

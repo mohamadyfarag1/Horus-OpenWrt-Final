@@ -23,44 +23,6 @@
 			"protocol": "dhcp"
 		}
 	},
-	"switch": {
-		"switch0": {
-			"enable": true,
-			"reset": true,
-			"ports": [
-				{
-					"num": 1,
-					"device": "lan1",
-					"label": "LAN1",
-					"role": "lan"
-				},
-				{
-					"num": 2,
-					"device": "lan2",
-					"label": "LAN2",
-					"role": "lan"
-				},
-				{
-					"num": 3,
-					"device": "lan3",
-					"label": "LAN3",
-					"role": "lan"
-				},
-				{
-					"num": 4,
-					"device": "lan4",
-					"label": "LAN4",
-					"role": "lan"
-				},
-				{
-					"num": 5,
-					"device": "wan",
-					"label": "WAN",
-					"role": "wan"
-				}
-			]
-		}
-	},
 	"wlan": {
 		"phy0": {
 			"path": "platform/soc/a000000.wifi",
@@ -71,7 +33,7 @@
 					"2G": {
 						"ht": true,
 						"vht": true,
-						"max_width": 80,
+						"max_width": 40,
 						"modes": [
 							"NOHT",
 							"HT20",

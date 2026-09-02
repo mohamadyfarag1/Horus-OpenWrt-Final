@@ -9,13 +9,12 @@ cd openwrt
 # ============================================
 # SECTION A: Board Data and Firmware Files
 # ============================================
-# Intentionally NOT copying a custom board-2.bin/firmware-5.bin anymore.
-# The hand-patched "super channel" calibration blob was corrupting ath10k's
-# board data and causing firmware crash-loops (needing multiple reboots
-# before Wi-Fi/LAN worked). CONFIG_PACKAGE_ath10k-firmware-qca4019-ct-fullall
-# in config/horus.config already ships the real, untouched, tested
-# board-2.bin/firmware-5.bin for this chip - let that package provide them.
-# NOTE: files_ap is copied in 05-configure.sh with proper binary file protection
+# board-2.bin is the golden calibration blob, shipped via files_ap and copied
+# in 05-configure.sh. The files/ overlay is applied after packages, so it wins
+# over the package's own board-2.bin - which is what we want.
+# firmware-N.bin comes from CONFIG_PACKAGE_ath10k-firmware-qca4019-ct. Do NOT
+# hand-edit a "super channel" calibration blob in here again: that is what put
+# ath10k into a firmware crash-loop and made Wi-Fi/LAN need several reboots.
 
 # ============================================
 # SECTION B: Cloud App - LuCI Interface

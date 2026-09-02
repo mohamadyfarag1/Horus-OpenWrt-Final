@@ -1,4 +1,9 @@
 #!/bin/bash
+# Abort the build on any failure. Without this, a failing PATCH would
+# print its error, the trailing echo would return 0, and 06-compile.sh
+# would treat the whole script as successful - the exact way the 5 GHz
+# channel patch shipped as a silent no-op.
+set -e
 echo "============================================"
 echo "=== SUPERCHANNEL UNLOCK - SAFE SPECTRUM ==="
 echo "============================================"
@@ -101,6 +106,7 @@ array_re = re.compile(
     re.DOTALL)
 
 patched_arrays = 0
+patched_ct = 0
 patched_numchans = 0
 patched_max5g = 0
 mac_seen = 0
@@ -124,6 +130,8 @@ for root, _dirs, files in os.walk('.'):
             if n:
                 open(path, 'w', encoding='utf-8').write(data2)
                 patched_arrays += 1
+                if 'ath10k-ct' in path:
+                    patched_ct += 1
                 print("  [chans] rewrote %d-entry 5 GHz table in %s" % (n_5g, path))
 
         elif name == 'core.h':
@@ -158,6 +166,15 @@ if patched_numchans == 0:
     print("!!!! PATCH 5 FAILED: ATH10K_NUM_CHANS not bumped - driver would")
     print("     overrun survey[] and crash on boot. Aborting.")
     sys.exit(1)
+if patched_ct == 0:
+    print("!!!! PATCH 5 FAILED: patched an ath10k tree, but NOT ath10k-ct.")
+    print("     This device runs kmod-ath10k-ct. The copy of ath10k inside the")
+    print("     mac80211 backports tarball is never compiled, so patching only")
+    print("     that one reports success while the driver that actually loads")
+    print("     keeps the stock 28-channel table - every extra frequency then")
+    print("     reads 0 dBm. Ensure 06-compile.sh runs")
+    print("     'make package/kernel/ath10k-ct/prepare' BEFORE this script.")
+    sys.exit(1)
 PYEOF
 
 echo "[PATCH 5] Rewriting ath10k 5 GHz channel table + core.h constants..."
@@ -185,6 +202,7 @@ chan13_re = re.compile(r'(\tCHAN2G\(13,\s*2472,\s*0\),\n)')
 
 patched = 0
 already_had = 0
+ct_seen = 0
 mac_seen = 0
 
 for root, _dirs, files in os.walk('.'):
@@ -201,6 +219,8 @@ for root, _dirs, files in os.walk('.'):
         if 'ath10k_2ghz_channels' not in data:
             continue
         mac_seen += 1
+        if 'ath10k-ct' in path:
+            ct_seen += 1
         if 'CHAN2G(14,' in data:
             print("  [ch14] channel 14 already in %s" % path)
             already_had += 1
@@ -213,9 +233,13 @@ for root, _dirs, files in os.walk('.'):
         else:
             print("!!!! [ch14] WARN: chan 13 pattern not found in %s, ch14 not added" % path)
 
-print("PATCH 5B: ch14 added=%d already_present=%d mac.c_seen=%d" % (patched, already_had, mac_seen))
+print("PATCH 5B: ch14 added=%d already_present=%d ct_trees=%d mac.c_seen=%d"
+      % (patched, already_had, ct_seen, mac_seen))
 if mac_seen == 0:
     print("!!!! PATCH 5B: no ath10k mac.c found")
+    sys.exit(1)
+if ct_seen == 0:
+    print("!!!! PATCH 5B: ath10k-ct tree not seen - channel 14 unverified.")
     sys.exit(1)
 PYEOF
 
