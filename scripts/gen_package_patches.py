@@ -202,6 +202,18 @@ def patch_ath10k(build_dir, pkg_dir):
         "the driver indexes past the end of the array.\n"
         % (array_re.search(old_mac).group(0).count("CHAN5G"), len(CHANS)))
 
+    # Record the exact frequency list for the drift check in 06-compile.sh.
+    # Do NOT recover it from the unified diff: every channel that already
+    # existed in the stock 27-entry table is emitted as an unchanged CONTEXT
+    # line, not a '+' line, so grepping '^+' finds only the 41 additions and
+    # a correct patch looks half-applied.
+    os.makedirs("tmp", exist_ok=True)
+    freq_list = os.path.join("tmp", "horus-driver-freqs.txt")
+    with open(freq_list, "w", encoding="utf-8", newline="\n") as fh:
+        for c in CHANS:
+            fh.write("%d\n" % (5000 + 5 * c))
+    print("  wrote %s (%d frequencies)" % (freq_list, len(CHANS)))
+
     entries = [(os.path.join(subname, "mac.c").replace(os.sep, "/"), old_mac, new_mac),
                (os.path.join(subname, "core.h").replace(os.sep, "/"), old_core, new_core)]
     emit_patch(os.path.join(pkg_dir, "patches", "999-horus-superchannels.patch"),

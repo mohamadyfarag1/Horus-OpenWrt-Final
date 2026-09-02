@@ -67,10 +67,18 @@ echo "======================================="
 echo "Step 2.6: LuCI dropdown vs driver channel table..."
 echo "======================================="
 WJS=feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js
-CTPATCH_EARLY=package/kernel/ath10k-ct/patches/999-horus-superchannels.patch
-
-grep -E '^\+[[:space:]]*CHAN5G\(' "$CTPATCH_EARLY" \
-  | sed 's/.*CHAN5G([0-9]*,[[:space:]]*\([0-9]*\).*/\1/' | sort -u > /tmp/horus.driver.freqs
+# The authoritative list is the one gen_package_patches.py actually wrote
+# into the driver. It must NOT be recovered from the unified diff: the 27
+# channels that were already in the stock table appear there as unchanged
+# CONTEXT lines rather than '+' lines, so a '^+' grep counts only the 41
+# additions and fails a perfectly good patch. (That is exactly what broke
+# run #90.)
+DRVFREQ=tmp/horus-driver-freqs.txt
+if [ ! -s "$DRVFREQ" ]; then
+    echo "!!!! $DRVFREQ missing - gen_package_patches.py did not write it."
+    exit 1
+fi
+sort -u "$DRVFREQ" > /tmp/horus.driver.freqs
 DRVN=$(wc -l < /tmp/horus.driver.freqs)
 echo "driver table : $DRVN frequencies"
 if [ "$DRVN" -lt 60 ]; then
