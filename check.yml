@@ -100,7 +100,9 @@ jobs:
         run: |
           cd openwrt
           mkdir -p files/lib/firmware/ath10k/QCA4019/hw1.0/
-          cp ../board-2.bin files/lib/firmware/ath10k/QCA4019/hw1.0/board-2.bin
+          # (removed) this used to "cp ../board-2.bin ..." from the repo root.
+          # That root copy was a stale download (md5 345801..) NOT the reference
+          # calibration (2bdce2..). files_ap/ below is the single source of truth.
           
           cp -r ../files_ap/* files/
           # CRITICAL: Strip Windows CRLF line endings - without this, shell scripts fail silently on Linux
