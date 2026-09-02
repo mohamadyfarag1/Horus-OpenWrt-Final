@@ -21,6 +21,11 @@ config wifi-device 'radio1'
 	option type 'mac80211'
 	option path 'platform/soc/a800000.wifi'
 	option band '5g'
+	# Explicit non-DFS default. Without this the radio falls back to
+	# "auto" (ACS), which can land on a DFS channel (60s radar check
+	# before it may beacon) or on an uncalibrated frequency, which the
+	# driver reports as 0 dBm.
+	option channel '36'
 	option htmode 'VHT80'
 	option disabled '0'
 	option country 'US'

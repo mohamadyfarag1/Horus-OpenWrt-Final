@@ -70,13 +70,23 @@ if os.path.exists(path):
     with open(path, "r") as f:
         code = f.read()
 
-    # The injection block: adds all 5MHz-step channels from 5180 to 5885 for 5GHz
-    # and from 2312 to 2484 for 2.4GHz - matching exactly the Golden Router behavior
+    # Channel list injection.
+    #
+    # This used to walk 5180 -> 5885 in 5 MHz steps, which put ~140 entries
+    # in the dropdown that are NOT real 802.11 channel centres and that the
+    # QCA4019 board data has no calibration table for. Selecting any of them
+    # makes the driver report a maximum TX power of 0 dBm, so the radio is
+    # listed but cannot transmit - the "power drops to zero on some
+    # frequencies" report.
+    #
+    # Bounded to the real, calibrated 20 MHz centres (channel 36 -> 165).
+    # These already come from the driver, so the de-dupe check below skips
+    # them and nothing uncalibrated is ever offered.
     injection = """
             /* === HORUS SUPERCHANNEL INJECTION START === */
             if (this.channels && this.channels['5g']) {
                 var existing_5g = this.channels['5g'];
-                for (var f_mhz = 5180; f_mhz <= 5885; f_mhz += 5) {
+                for (var f_mhz = 5180; f_mhz <= 5825; f_mhz += 20) {
                     var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
                     var label = ch + ' (' + f_mhz + ' Mhz)';
                     var found = false;
