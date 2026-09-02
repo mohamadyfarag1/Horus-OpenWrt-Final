@@ -22,7 +22,7 @@ cd openwrt
   # image and the device agree.
   printf '\tDEVICE_COMPAT_VERSION := 1.1\n'
   printf '\tSUPPORTED_DEVICES := H1Radio,ti04-708hp h1radio,ti04-708hp qcom,ipq4019-h1radio-ti04-708hp\n'
-  printf '\tDEVICE_PACKAGES := python3-light python3-urllib python3-logging python3-json kmod-ath10k-ct ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands lldpd relayd luci-proto-relay luci-app-nlbwmon htop -odhcp6c -odhcpd-ipv6only -luci-proto-ipv6 -luci-app-samba -luci-app-samba4 -samba36-server -samba4-server -luci-i18n-samba-en -luci-i18n-samba4-en\n'
+  printf '\tDEVICE_PACKAGES := python3-light python3-urllib python3-logging python3-json kmod-ath10k-ct-smallbuffers ath10k-firmware-qca4019-ct -kmod-ath10k -ath10k-firmware-qca4019 wpad-openssl -wpad-basic-wolfssl -wpad-basic-mbedtls kmod-usb-core kmod-usb2 kmod-usb3 kmod-usb-storage kmod-usb-storage-extras block-mount kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs e2fsprogs fdisk luci-app-commands lldpd relayd luci-proto-relay luci-app-nlbwmon htop -odhcp6c -odhcpd-ipv6only -luci-proto-ipv6 -luci-app-samba -luci-app-samba4 -samba36-server -samba4-server -luci-i18n-samba-en -luci-i18n-samba4-en\n'
   printf 'endef\n'
   printf 'TARGET_DEVICES += h1radio_ti04-708hp\n'
 } >> target/linux/ipq40xx/image/generic.mk

@@ -1,0 +1,106 @@
+#!/bin/sh
+# =============================================
+# Horus 9200 - Wi-Fi self-check
+#
+# Every Wi-Fi failure this build has hit was SILENT: a missing firmware
+# blob, a channel table patched into a driver that is never compiled, a
+# regulatory rule one megahertz too short. None of them announce
+# themselves - you only notice a dead radio or a frequency stuck at 0 dBm.
+#
+# This prints, in one place, the few facts that distinguish those cases.
+# It runs at boot into the system log (tag: horus-wifi) and can be run by
+# hand over SSH at any time:
+#
+#     horus-wifi-check
+#
+# It only reads. It changes nothing.
+# =============================================
+
+FWDIR=/lib/firmware/ath10k/QCA4019/hw1.0
+PROBLEMS=0
+
+say() {
+    echo "$*"
+    [ -n "$HORUS_TO_LOG" ] && logger -t horus-wifi "$*"
+}
+
+problem() {
+    PROBLEMS=$((PROBLEMS + 1))
+    say "FAIL: $*"
+}
+
+say "===== Horus Wi-Fi self-check ====="
+
+# --- 1. firmware blobs ------------------------------------------------
+FW=$(ls "$FWDIR"/firmware-*.bin 2>/dev/null | head -n 1)
+if [ -n "$FW" ]; then
+    say "firmware      : $(basename "$FW") ($(wc -c < "$FW") bytes)"
+else
+    problem "no firmware-N.bin in $FWDIR - ath10k cannot probe (-12),"
+    say "                both radios will stay down. The image was built"
+    say "                without ath10k-firmware-qca4019-ct."
+fi
+
+if [ -f "$FWDIR/board-2.bin" ]; then
+    say "board-2.bin   : $(md5sum "$FWDIR/board-2.bin" | cut -d' ' -f1)"
+    say "                (reference AP: 2bdce2247cda36f0c3884d09b580999d)"
+else
+    problem "board-2.bin missing - no calibration data, expect 0 dBm."
+fi
+
+# --- 2. did the driver actually attach? -------------------------------
+if dmesg 2>/dev/null | grep -q "could not probe fw"; then
+    problem "ath10k failed to probe. Relevant kernel lines:"
+    dmesg | grep -i "ath10k" | tail -n 5 | while read -r l; do say "                $l"; done
+fi
+
+PHYS=$(ls /sys/class/ieee80211/ 2>/dev/null | tr '\n' ' ')
+if [ -z "$PHYS" ]; then
+    problem "no phy registered at all - the Wi-Fi driver did not load."
+else
+    say "phys          : $PHYS"
+fi
+
+# --- 3. regulatory ----------------------------------------------------
+if [ -f /lib/firmware/regulatory.db ]; then
+    say "regulatory.db : $(wc -c < /lib/firmware/regulatory.db) bytes"
+else
+    problem "regulatory.db missing - the extended channels stay blocked."
+fi
+iw reg get 2>/dev/null | grep -E "^(global|country)|@" | while read -r l; do
+    say "reg           : $l"
+done
+
+# --- 4. per-radio channel census --------------------------------------
+# This is the part that catches the 0 dBm class of bug. A channel the UI
+# offers but the driver never registered does not appear here at all; a
+# channel present but uncalibrated shows up as disabled or 0.0 dBm.
+for PHYPATH in /sys/class/ieee80211/*; do
+    [ -e "$PHYPATH" ] || continue
+    PHY=$(basename "$PHYPATH")
+    INFO=$(iw phy "$PHY" info 2>/dev/null)
+    [ -n "$INFO" ] || continue
+
+    CHANS=$(echo "$INFO" | grep -c "MHz \[")
+    DIS=$(echo "$INFO" | grep "MHz \[" | grep -c "disabled")
+    ZERO=$(echo "$INFO" | grep "MHz \[" | grep -c "(0\.0 dBm)")
+    LIVE=$((CHANS - DIS))
+
+    say "$PHY          : $CHANS channels, $LIVE usable, $DIS disabled, $ZERO at 0.0 dBm"
+
+    if [ "$ZERO" -gt 0 ]; then
+        problem "$PHY has $ZERO channel(s) at 0.0 dBm:"
+        echo "$INFO" | grep "MHz \[" | grep "(0\.0 dBm)" | head -n 8 |
+            while read -r l; do say "                $l"; done
+    fi
+done
+
+# --- 5. verdict -------------------------------------------------------
+if [ "$PROBLEMS" -eq 0 ]; then
+    say "result        : OK - no problems found"
+else
+    say "result        : $PROBLEMS problem(s) found - see FAIL lines above"
+fi
+say "=================================="
+
+exit 0

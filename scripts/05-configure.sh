@@ -162,16 +162,22 @@ make defconfig
 # package name that does not exist in 24.10 - disappeared without a word,
 # leaving an image with no firmware-N.bin at all and both Wi-Fi radios dead
 # at probe (-12). Fail here, three minutes in, instead of after a full build.
-for sym in ath10k-firmware-qca4019-ct kmod-ath10k-ct; do
-    if ! grep -q "^CONFIG_PACKAGE_${sym}=y" .config; then
-        echo "!!!! CONFIG_PACKAGE_${sym}=y did not survive 'make defconfig'."
-        echo "     The package name is wrong or unavailable in this tree."
-        echo "     Building on would produce an image with no working Wi-Fi."
-        grep -i "ath10k" .config || true
-        exit 1
-    fi
-done
-echo "OK: ath10k driver + firmware packages selected."
+if ! grep -q "^CONFIG_PACKAGE_ath10k-firmware-qca4019-ct=y" .config; then
+    echo "!!!! ath10k-firmware-qca4019-ct did not survive 'make defconfig'."
+    echo "     Without it the image has no firmware-N.bin and both radios"
+    echo "     die at probe with -12."
+    grep -i "ath10k" .config || true
+    exit 1
+fi
+# Either driver variant is fine - smallbuffers is the one the reference AP
+# runs - but exactly one of them has to be selected.
+if ! grep -qE "^CONFIG_PACKAGE_kmod-ath10k-ct(-smallbuffers)?=y" .config; then
+    echo "!!!! No ath10k-ct driver variant selected after 'make defconfig'."
+    grep -i "ath10k" .config || true
+    exit 1
+fi
+echo "OK: ath10k driver + firmware packages selected:"
+grep -E "^CONFIG_PACKAGE_(kmod-)?ath10k[a-z0-9-]*=y" .config
 
 # Remove samba (force)
 sed -i '/samba/d' .config
@@ -198,6 +204,7 @@ sed -i 's/https/http/g' /etc/opkg/distfeeds.conf 2>/dev/null
 
 # === Fix permissions ===
 chmod +x /etc/rc.local 2>/dev/null
+chmod +x /usr/bin/horus-wifi-check 2>/dev/null
 chmod +x /usr/bin/auto-extroot.sh 2>/dev/null
 chmod +x /usr/bin/safe-eject-usb.sh 2>/dev/null
 chmod +x /usr/bin/enable-extroot.sh 2>/dev/null
@@ -221,6 +228,13 @@ IRQ0=$(grep -m1 -i ath10k /proc/interrupts | awk '{print $1}' | tr -d ':')
 IRQ1=$(grep -m2 -i ath10k /proc/interrupts | tail -n1 | awk '{print $1}' | tr -d ':')
 [ -n "$IRQ0" ] && echo 2 > /proc/irq/$IRQ0/smp_affinity
 [ -n "$IRQ1" ] && echo 4 > /proc/irq/$IRQ1/smp_affinity
+
+# === Wi-Fi self-check into the system log (tag: horus-wifi) ===
+# Detached so it never delays boot. 40s gives ath10k time to load its
+# firmware and register both phys before the census is taken.
+# Read it with:  logread | grep horus-wifi
+# Or run it by hand any time with:  horus-wifi-check
+(sleep 40; HORUS_TO_LOG=1 /usr/bin/horus-wifi-check >/dev/null 2>&1) &
 
 exit 0
 RCEOF
