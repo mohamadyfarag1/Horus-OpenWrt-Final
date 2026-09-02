@@ -70,34 +70,33 @@ if os.path.exists(path):
     with open(path, "r") as f:
         code = f.read()
 
-    # Channel list, filtered to what the radio can actually transmit on.
+    # LuCI dropdown list - MIRRORS the driver channel table.
     #
-    # This used to walk 5180 -> 5885 in 5 MHz steps = 142 dropdown entries.
-    # Measured against the shipped calibration blob (board-2.bin, board
-    # id 21, unpacked and its frequency piers decoded):
+    # As of the PATCH 5 rewrite in 07-unlock-superchannel.sh, these 68
+    # frequencies are now REAL channels in ath10k_5ghz_channels[], so LuCI
+    # already enumerates them from the phy. This block is belt-and-braces:
+    # it de-dupes against what the phy reports and only adds anything if a
+    # LuCI version filters the list. The array below is byte-for-byte the
+    # same channel plan the driver now registers and the same list read
+    # off the reference AP with "iw phy": 36..146 step 2, 149..165 step 2,
+    # then 169/173/177 (10 MHz spacing, 68 entries).
     #
-    #   * calibration covers 5175 - 5825 MHz, and NOTHING above 5825
-    #   * only 28 of the 142 entries are real 802.11 channel centres;
-    #     the other 114 are 5 MHz off-grid (5185, 5190, 5195, ...) and are
-    #     not channels at all
-    #   * of those 28, channels 169/173/177 (5845/5865/5885) sit above the
-    #     calibration ceiling and have no power pier
-    #
-    # A frequency with no pier has nothing for the firmware to interpolate,
-    # so it reports max TX power = 0 dBm. That is 117 of the 142 entries.
-    # The 25 kept below are every entry that actually produces power.
-    #
-    # If a calibration blob with wider coverage is ever shipped, extend
-    # this array to match its piers - do not go back to a blind 5 MHz walk.
+    # Keep this array and the driver array (PATCH 5) in lock-step. A
+    # frequency listed here but absent from the driver table would read
+    # 0 dBm; one in the driver but not here still works, just not shown.
     injection = """
             /* === HORUS SUPERCHANNEL INJECTION START === */
             if (this.channels && this.channels['5g']) {
                 var existing_5g = this.channels['5g'];
-                var horus_freqs = [5180, 5200, 5220, 5240,
-                                   5260, 5280, 5300, 5320,
-                                   5500, 5520, 5540, 5560, 5580, 5600,
-                                   5620, 5640, 5660, 5680, 5700, 5720,
-                                   5745, 5765, 5785, 5805, 5825];
+                var horus_freqs = [5180,5190,5200,5210,5220,5230,5240,5250,
+                                   5260,5270,5280,5290,5300,5310,5320,5330,
+                                   5340,5350,5360,5370,5380,5390,5400,5410,
+                                   5420,5430,5440,5450,5460,5470,5480,5490,
+                                   5500,5510,5520,5530,5540,5550,5560,5570,
+                                   5580,5590,5600,5610,5620,5630,5640,5650,
+                                   5660,5670,5680,5690,5700,5710,5720,5730,
+                                   5745,5755,5765,5775,5785,5795,5805,5815,
+                                   5825,5845,5865,5885];
                 for (var hi = 0; hi < horus_freqs.length; hi++) {
                     var f_mhz = horus_freqs[hi];
                     var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
