@@ -179,7 +179,12 @@ if [ "$CT5G" -lt 60 ]; then
     exit 1
 fi
 grep -E "define ATH10K_(NUM_CHANS|MAX_5G_CHAN)" "$(dirname "$CTMAC")/core.h" || true
-echo "OK: shipped ath10k-ct carries the 68-channel table."
+grep -E "channels\[[0-9]+\]" "$(dirname "$CTMAC")/wmi.h" || true
+if grep -q "channels\[64\]" "$(dirname "$CTMAC")/wmi.h" 2>/dev/null; then
+    echo "!!!! wmi.h still has stock channels[64] - scans with >64 channels will fail with -22"
+    exit 1
+fi
+echo "OK: shipped ath10k-ct carries the 68-channel table and extended scan buffer."
 
 # ---------------------------------------------------------------------
 # Post-build verification.

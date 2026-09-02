@@ -137,13 +137,17 @@ def patch_ath10k(build_dir, pkg_dir):
     pkg_build_dir = os.path.dirname(sub)
     subname = os.path.basename(sub)
     core = os.path.join(sub, "core.h")
+    wmi = os.path.join(sub, "wmi.h")
     if not os.path.isfile(core):
         fail("core.h not next to %s" % mac)
+    if not os.path.isfile(wmi):
+        fail("wmi.h not next to %s" % mac)
     print("  ath10k-ct build dir : %s" % pkg_build_dir)
     print("  driver subdirectory : %s" % subname)
 
     old_mac = open(mac, encoding="utf-8", errors="ignore").read()
     old_core = open(core, encoding="utf-8", errors="ignore").read()
+    old_wmi = open(wmi, encoding="utf-8", errors="ignore").read()
 
     # --- 5 GHz table -------------------------------------------------
     lines = "".join("\tCHAN5G(%d, %d, 0),\n" % (c, 5000 + 5 * c) for c in CHANS)
@@ -213,6 +217,26 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  core.h              : ATH10K_NUM_CHANS=%d ATH10K_MAX_5G_CHAN=%d"
           % (num_chans, MAX_5G))
 
+    # --- wmi.h scan channel buffer -----------------------------------
+    # In struct wmi_start_scan_arg, channels[64] was sized for stock (27 5GHz + 14 2.4GHz = 41 channels).
+    # When mac80211 requests a scan of the 5 GHz band, it passes ALL registered
+    # 5 GHz channels (68 channels) to ath10k_hw_scan().
+    # If channels[] is only 64 entries:
+    # 1. mac.c overflows arg.channels[] by 4 elements onto the stack/struct (overwriting arg.ssids).
+    # 2. ath10k_wmi_start_scan_verify() checks:
+    #      if (arg->n_channels > ARRAY_SIZE(arg->channels)) return -EINVAL;
+    #    Since 68 > 64, it immediately fails with -22 (-EINVAL):
+    #      "ath10k_ahb a800000.wifi: failed to start hw scan: -22"
+    # 3. Hardware scan fails every time, so client / station (STA) mode can never connect to any AP.
+    # Sizing channels[] to num_chans (82) fixes both the buffer overflow and the -22 error,
+    # exactly matching the Golden Reference AP (which disassembles to `cmp r3, #0x52` = 82 in
+    # ath10k_wmi_start_scan_verify).
+    new_wmi, c = re.subn(r"(u16\s+channels\[)\d+(\];)",
+                         r"\g<1>%d\g<2>" % num_chans, old_wmi)
+    if not c:
+        fail("u16 channels[64] not found in %s" % wmi)
+    print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
+
     header = (
         "Horus: register the reference AP's 10 MHz-spaced 5 GHz channel plan.\n"
         "\n"
@@ -223,7 +247,11 @@ def patch_ath10k(build_dir, pkg_dir):
         "\n"
         "ATH10K_NUM_CHANS sizes survey[], so it has to grow with the table or\n"
         "the driver indexes past the end of the array.\n"
-        % (array_re.search(old_mac).group(0).count("CHAN5G"), len(CHANS)))
+        "\n"
+        "wmi.h channels[] in struct wmi_start_scan_arg must also grow to\n"
+        "ATH10K_NUM_CHANS (%d), otherwise full-band scans (>64 channels) fail with\n"
+        "-EINVAL (-22): 'failed to start hw scan: -22'.\n"
+        % (array_re.search(old_mac).group(0).count("CHAN5G"), len(CHANS), num_chans))
 
     # Record the exact frequency list for the drift check in 06-compile.sh.
     # Do NOT recover it from the unified diff: every channel that already
@@ -238,7 +266,8 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  wrote %s (%d frequencies)" % (freq_list, len(CHANS)))
 
     entries = [(os.path.join(subname, "mac.c").replace(os.sep, "/"), old_mac, new_mac),
-               (os.path.join(subname, "core.h").replace(os.sep, "/"), old_core, new_core)]
+               (os.path.join(subname, "core.h").replace(os.sep, "/"), old_core, new_core),
+               (os.path.join(subname, "wmi.h").replace(os.sep, "/"), old_wmi, new_wmi)]
     emit_patch(os.path.join(pkg_dir, "patches", "999-horus-superchannels.patch"),
                entries, header)
 
