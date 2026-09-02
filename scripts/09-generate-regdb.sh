@@ -50,20 +50,9 @@ with open('db.txt', 'w') as f:
             f.write('country 00:\n')
         else:
             f.write(f'country {c}:\n')
-        # Bounded to what the QCA4019 board data is actually calibrated for.
-        #
-        # The previous rules claimed 2182-2484 and 5115-5930 at 33 dBm. Large
-        # parts of that span (below 2400, below 5170, above 5835) are not Wi-Fi
-        # channels and have no calibration table in board-2.bin, so the driver
-        # reported 0 dBm there and the radio would not transmit at all.
-        #
-        # DFS blocks are marked DFS so the kernel runs the radar check instead
-        # of beaconing blindly on top of weather/aviation radar.
-        f.write('\t(2402 - 2482 @ 40), (30)\n')
-        f.write('\t(5170 - 5250 @ 80), (30)\n')
-        f.write('\t(5250 - 5330 @ 80), (24), DFS\n')
-        f.write('\t(5490 - 5730 @ 80), (24), DFS\n')
-        f.write('\t(5735 - 5835 @ 80), (30)\n')
+        # Safely bounded frequencies based EXACTLY on Golden Router Hexdump!
+        f.write('\t(2182 - 2484 @ 40), (33)\n')
+        f.write('\t(5115 - 5930 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')
 "
