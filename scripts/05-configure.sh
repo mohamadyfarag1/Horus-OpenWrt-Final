@@ -70,13 +70,36 @@ if os.path.exists(path):
     with open(path, "r") as f:
         code = f.read()
 
-    # The injection block: adds all 5MHz-step channels from 5180 to 5885 for 5GHz
-    # and from 2312 to 2484 for 2.4GHz - matching exactly the Golden Router behavior
+    # Channel list, filtered to what the radio can actually transmit on.
+    #
+    # This used to walk 5180 -> 5885 in 5 MHz steps = 142 dropdown entries.
+    # Measured against the shipped calibration blob (board-2.bin, board
+    # id 21, unpacked and its frequency piers decoded):
+    #
+    #   * calibration covers 5175 - 5825 MHz, and NOTHING above 5825
+    #   * only 28 of the 142 entries are real 802.11 channel centres;
+    #     the other 114 are 5 MHz off-grid (5185, 5190, 5195, ...) and are
+    #     not channels at all
+    #   * of those 28, channels 169/173/177 (5845/5865/5885) sit above the
+    #     calibration ceiling and have no power pier
+    #
+    # A frequency with no pier has nothing for the firmware to interpolate,
+    # so it reports max TX power = 0 dBm. That is 117 of the 142 entries.
+    # The 25 kept below are every entry that actually produces power.
+    #
+    # If a calibration blob with wider coverage is ever shipped, extend
+    # this array to match its piers - do not go back to a blind 5 MHz walk.
     injection = """
             /* === HORUS SUPERCHANNEL INJECTION START === */
             if (this.channels && this.channels['5g']) {
                 var existing_5g = this.channels['5g'];
-                for (var f_mhz = 5180; f_mhz <= 5885; f_mhz += 5) {
+                var horus_freqs = [5180, 5200, 5220, 5240,
+                                   5260, 5280, 5300, 5320,
+                                   5500, 5520, 5540, 5560, 5580, 5600,
+                                   5620, 5640, 5660, 5680, 5700, 5720,
+                                   5745, 5765, 5785, 5805, 5825];
+                for (var hi = 0; hi < horus_freqs.length; hi++) {
+                    var f_mhz = horus_freqs[hi];
                     var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
                     var label = ch + ' (' + f_mhz + ' Mhz)';
                     var found = false;
