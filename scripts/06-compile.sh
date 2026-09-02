@@ -116,9 +116,30 @@ echo "======================================="
 # Always save the full compile log to build.log for debugging
 make -j$(nproc) 2>&1 | tee build.log
 
-# If the build failed, exit with error
+# If the build failed, print the REAL error before exiting.
+#
+# A parallel `make` only prints "ERROR: <pkg> failed to build" and writes
+# the compiler output to logs/<pkg>/*.txt. Without this, diagnosing a
+# failure costs a whole CI round-trip - which is exactly what the
+# ath10k-ct BUILD_BUG_ON failure cost.
 if [ ${PIPESTATUS[0]} -ne 0 ]; then
-    echo "? Build failed! Check build.log for details."
+    echo "======================================="
+    echo "BUILD FAILED - real compiler output follows"
+    echo "======================================="
+    FAILED=$(sed -n 's/^ *ERROR: \([^ ]*\) failed to build.*/\1/p' build.log | sort -u)
+    if [ -n "$FAILED" ]; then
+        for pkg in $FAILED; do
+            echo "##### $pkg #####"
+            find "logs/$pkg" -name '*.txt' 2>/dev/null | while read -r L; do
+                echo "----- $L (last 80 lines) -----"
+                tail -n 80 "$L"
+            done
+        done
+    else
+        echo "(no 'ERROR: <pkg> failed to build' line; tail of build.log:)"
+        tail -n 60 build.log
+    fi
+    echo "======================================="
     exit 1
 fi
 

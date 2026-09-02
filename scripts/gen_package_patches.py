@@ -43,8 +43,9 @@ import re
 import sys
 
 CHANS = list(range(36, 147, 2)) + list(range(149, 166, 2)) + [169, 173, 177]
-N_2G = 14                       # ath10k registers 2.4 GHz channels 1..14
-NUM_CHANS = N_2G + len(CHANS) + 4   # survey[] size, with a small margin
+# ATH10K_NUM_CHANS is NOT a free parameter and NOT a buffer size to pad.
+# mac.c enforces it at compile time with an equality test, so it is derived
+# from the arrays at generation time - see patch_ath10k().
 MAX_5G = max(CHANS)             # 177
 
 
@@ -175,10 +176,32 @@ def patch_ath10k(build_dir, pkg_dir):
         print("  channel 14          : already present upstream")
 
     # --- core.h bounds -----------------------------------------------
-    # The array's own comment warns that adding entries REQUIRES growing
-    # ATH10K_NUM_CHANS; otherwise the driver walks off the end of survey[].
+    # ATH10K_NUM_CHANS must equal the COMBINED length of the two channel
+    # arrays, exactly. mac.c checks it at compile time:
+    #
+    #   BUILD_BUG_ON((ARRAY_SIZE(ath10k_2ghz_channels) +
+    #                 ARRAY_SIZE(ath10k_5ghz_channels)) != ATH10K_NUM_CHANS);
+    #
+    # The test is '!=', not '>', so this is not a buffer to pad "for
+    # safety" - any margin is a hard build failure. (Setting it to 86 for
+    # 82 real channels is what broke the ath10k-ct smallbuffers build.)
+    # Count what we actually emitted rather than predicting it.
+    def count_entries(text, array, macro):
+        m = re.search(r"static const struct ieee80211_channel %s\[\]\s*=\s*\{.*?\};"
+                      % re.escape(array), text, re.DOTALL)
+        if not m:
+            fail("%s[] not found while sizing ATH10K_NUM_CHANS" % array)
+        return len(re.findall(r"^\s*%s\(" % macro, m.group(0), re.M))
+
+    n_2g = count_entries(new_mac, "ath10k_2ghz_channels", "CHAN2G")
+    n_5g = count_entries(new_mac, "ath10k_5ghz_channels", "CHAN5G")
+    num_chans = n_2g + n_5g
+    if n_5g != len(CHANS):
+        fail("emitted %d 5 GHz channels but the plan has %d" % (n_5g, len(CHANS)))
+    print("  array sizes         : %d (2.4G) + %d (5G) = %d" % (n_2g, n_5g, num_chans))
+
     new_core, a = re.subn(r"(#define\s+ATH10K_NUM_CHANS\s+)\d+",
-                          r"\g<1>%d" % NUM_CHANS, old_core)
+                          r"\g<1>%d" % num_chans, old_core)
     new_core, b = re.subn(r"(#define\s+ATH10K_MAX_5G_CHAN\s+)\d+",
                           r"\g<1>%d" % MAX_5G, new_core)
     if not a:
@@ -188,7 +211,7 @@ def patch_ath10k(build_dir, pkg_dir):
     if not b:
         fail("ATH10K_MAX_5G_CHAN not found in %s" % core)
     print("  core.h              : ATH10K_NUM_CHANS=%d ATH10K_MAX_5G_CHAN=%d"
-          % (NUM_CHANS, MAX_5G))
+          % (num_chans, MAX_5G))
 
     header = (
         "Horus: register the reference AP's 10 MHz-spaced 5 GHz channel plan.\n"

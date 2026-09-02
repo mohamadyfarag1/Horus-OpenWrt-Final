@@ -75,5 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FAILED-BUILD-LOG-DO-NOT-FLASH
-          path: openwrt/build.log
+          path: |
+            openwrt/build.log
+            openwrt/logs/
           if-no-files-found: warn
