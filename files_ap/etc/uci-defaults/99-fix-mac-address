@@ -17,7 +17,13 @@ if [ -z "$BASE_MAC" ]; then
     BASE_MAC=$(echo "$RAW_MAC2" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
 fi
 
-[ -z "$BASE_MAC" ] && exit 0
+if [ -z "$BASE_MAC" ]; then
+    # Silent failure here is what produced the bogus 00:55:55:55:55:55
+    # BSSID: with no macaddr set in UCI the radios fall back to the MAC
+    # baked into the ath10k board calibration blob. Make it visible.
+    logger -t horus-mac "could not read base_mac from $ENV_PART - radios will fall back to the MAC inside board-2.bin"
+    exit 0
+fi
 
 # Fix corrupted/multicast factory MAC (bit0 must be 0 for Unicast)
 first_byte=$(echo "$BASE_MAC" | cut -d: -f1)

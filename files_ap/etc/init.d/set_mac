@@ -16,7 +16,10 @@ boot() {
         BASE_MAC=$(echo "$RAW_MAC2" | grep -o -E '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}' | tr 'A-Z' 'a-z' | head -n 1)
     fi
 
-    [ -z "$BASE_MAC" ] && return 0
+    if [ -z "$BASE_MAC" ]; then
+        logger -t horus-mac "could not read base_mac from $env_part - eth0 keeps its random MAC"
+        return 0
+    fi
 
     # Fix multicast bit (bit0 of byte0 must be 0 for Unicast)
     first_byte=$(echo "$BASE_MAC" | cut -d: -f1)

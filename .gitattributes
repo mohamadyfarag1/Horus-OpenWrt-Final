@@ -1,2 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Never line-ending-normalise calibration / firmware blobs. "text=auto"
+# only avoids mangling these because git's heuristic spots the NUL bytes;
+# make it explicit so a single corrupted byte in board-2.bin can never be
+# introduced by a checkout on Windows.
+*.bin -text
+*.db -text
+*.dtb -text
