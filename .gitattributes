@@ -1,10 +1,22 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 
+# Everything under files_ap/ is copied verbatim into the rootfs, and
+# scripts/ runs on the Linux builder. Both must keep LF no matter what
+# core.autocrlf says on the machine that checks the repo out. A CRLF here
+# turns the shebang into "#!/bin/sh\r", and the device then fails with a
+# "not found" that names the INTERPRETER, not the script - which reads like
+# a missing busybox rather than a line ending, and costs an afternoon.
+files_ap/** text eol=lf
+scripts/**  text eol=lf
+
 # Never line-ending-normalise calibration / firmware blobs. "text=auto"
 # only avoids mangling these because git's heuristic spots the NUL bytes;
 # make it explicit so a single corrupted byte in board-2.bin can never be
 # introduced by a checkout on Windows.
-*.bin -text
-*.db -text
-*.dtb -text
+# These come LAST so they override the eol=lf rules above: a later matching
+# line wins in gitattributes. "!eol" unspecifies the end-of-line attribute
+# outright rather than relying on -text alone to suppress it.
+*.bin -text !eol
+*.db  -text !eol
+*.dtb -text !eol

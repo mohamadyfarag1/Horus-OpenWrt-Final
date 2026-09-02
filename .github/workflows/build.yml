@@ -9,6 +9,13 @@ on:
         required: false
         default: 'luci'
 
+# Two pushes in quick succession would otherwise run two full ~40 minute
+# builds against the same cache and upload two artifacts with the same name,
+# and the one that finishes second wins regardless of which commit it built.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build OpenWrt
@@ -56,6 +63,33 @@ jobs:
 
       - name: Compile Firmware
         run: bash scripts/06-compile.sh
+
+      # What actually shipped, on the run page instead of buried in a 40k-line
+      # log. The checksums are the ones to compare against the file after
+      # downloading it - a truncated artifact flashes just as willingly as a
+      # good one, and only fails once it is already on the device.
+      - name: Release summary
+        if: success()
+        run: |
+          OUT=openwrt/bin/targets/ipq40xx/generic
+          {
+            echo "## Firmware built"
+            echo
+            echo "commit \`${GITHUB_SHA:0:12}\` on \`${GITHUB_REF_NAME}\`"
+            echo
+            echo "| image | size | sha256 |"
+            echo "|---|---|---|"
+            for f in "$OUT"/*.bin "$OUT"/*.ubi; do
+              [ -f "$f" ] || continue
+              printf '| %s | %s | `%s` |\n' \
+                "$(basename "$f")" \
+                "$(du -h "$f" | cut -f1)" \
+                "$(sha256sum "$f" | cut -c1-16)..."
+            done
+            echo
+            echo "Flash \`*-squashfs-sysupgrade.bin\` **without** \"Keep settings\","
+            echo "then run \`horus-wifi-check\` over SSH to confirm the radios came up."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Firmware (only when every build check passed)
         uses: actions/upload-artifact@v4
