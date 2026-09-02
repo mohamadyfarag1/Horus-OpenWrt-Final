@@ -1,0 +1,10 @@
+# Ignore large 48MB full flash dump from git push
+KM15-103H_Backup/mtd3_firmware_slot1.bin
+KM15-103H_Backup/mtd3_firmware_slot1.bin.gz
+
+# Python and temp files
+__pycache__/
+*.pyc
+.system_generated/
+openwrt/
+wireless-regdb/
