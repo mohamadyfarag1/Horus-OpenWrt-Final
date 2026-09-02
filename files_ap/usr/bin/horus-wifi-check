@@ -93,6 +93,20 @@ for PHYPATH in /sys/class/ieee80211/*; do
         echo "$INFO" | grep "MHz \[" | grep "(0\.0 dBm)" | head -n 8 |
             while read -r l; do say "                $l"; done
     fi
+
+    # Driver table vs LuCI dropdown. The 5 GHz driver is meant to expose the
+    # full 68-channel plan (PATCH 5). If it only shows the stock ~28, the
+    # channel table was not extended - the UI would then offer channels the
+    # driver never registered, and picking one makes hostapd fail to bring
+    # the interface up ("Could not determine operating frequency"), which
+    # looks exactly like the radio losing all power.
+    IS5G=$(echo "$INFO" | grep -c "51[0-9][0-9]\.0 MHz\|52[0-9][0-9]\.0 MHz\|58[0-9][0-9]\.0 MHz")
+    if [ "$IS5G" -gt 0 ] && [ "$CHANS" -lt 60 ]; then
+        problem "$PHY exposes only $CHANS 5 GHz channels (expected 68)."
+        say "                The driver channel table was not extended, so the"
+        say "                LuCI list has channels the driver lacks; selecting"
+        say "                one will drop the radio. PATCH 5 did not take."
+    fi
 done
 
 # --- 5. verdict -------------------------------------------------------
