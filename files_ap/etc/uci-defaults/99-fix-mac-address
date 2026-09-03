@@ -25,13 +25,21 @@ if [ -z "$BASE_MAC" ]; then
     exit 0
 fi
 
-# Fix corrupted/multicast factory MAC (bit0 must be 0 for Unicast)
-first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
-first_dec=$(printf "%d" "0x${first_byte}" 2>/dev/null || echo "0")
-if [ $(( first_dec & 1 )) -eq 1 ]; then
-    new_first=$(printf "%02x" $(( (first_dec & 0xFE) | 0x02 )))
-    BASE_MAC="${new_first}${BASE_MAC#${first_byte}}"
-fi
+# Manufacturer OUI is 00:07:89 (Allradio/Dongwon/Horus)
+case "$BASE_MAC" in
+    0[0-9a-f]:07:89:*|[0-9a-f][0-9a-f]:07:89:*)
+        BASE_MAC="00:${BASE_MAC#*:}"
+        ;;
+    *)
+        # Fix corrupted/multicast factory MAC (bit0 must be 0 for Unicast)
+        first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
+        first_dec=$(printf "%d" "0x${first_byte}" 2>/dev/null || echo "0")
+        if [ $(( first_dec & 1 )) -eq 1 ]; then
+            new_first=$(printf "%02x" $(( first_dec & 0xFE )))
+            BASE_MAC="${new_first}${BASE_MAC#${first_byte}}"
+        fi
+        ;;
+esac
 
 # Derive unique MACs
 MAC_LAN=$BASE_MAC
@@ -42,6 +50,15 @@ MAC_WIFI5G=$(macaddr_add "$BASE_MAC" 3)
 # Apply Network MACs
 uci set network.lan.macaddr="$MAC_LAN"
 uci set network.wan.macaddr="$MAC_WAN"
+
+# DSA Bridge (br-lan) device MAC configuration
+for i in $(seq 0 10); do
+    name=$(uci -q get network.@device[$i].name)
+    if [ "$name" = "br-lan" ]; then
+        uci set network.@device[$i].macaddr="$MAC_LAN"
+        break
+    fi
+done
 uci commit network
 
 # Apply Wireless Defaults (Enabled by default, 30 dBm, Country YE like Golden Router, Default Channels)

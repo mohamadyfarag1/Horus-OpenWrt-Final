@@ -3,6 +3,7 @@ START=10
 
 boot() {
     . /lib/functions.sh
+    . /lib/functions/system.sh
     local env_part
     env_part="$(find_mtd_part APPSBLENV)"
     [ -n "$env_part" ] || return 0
@@ -21,13 +22,28 @@ boot() {
         return 0
     fi
 
-    # Fix multicast bit (bit0 of byte0 must be 0 for Unicast)
-    first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
-    first_dec=$(printf "%d" "0x${first_byte}" 2>/dev/null || echo "0")
-    if [ $(( first_dec & 1 )) -eq 1 ]; then
-        new_first=$(printf "%02x" $(( (first_dec & 0xFE) | 0x02 )))
-        BASE_MAC="${new_first}${BASE_MAC#${first_byte}}"
-    fi
+    # Manufacturer OUI is 00:07:89 (Allradio/Dongwon/Horus)
+    case "$BASE_MAC" in
+        0[0-9a-f]:07:89:*|[0-9a-f][0-9a-f]:07:89:*)
+            BASE_MAC="00:${BASE_MAC#*:}"
+            ;;
+        *)
+            first_byte=$(echo "$BASE_MAC" | cut -d: -f1)
+            first_dec=$(printf "%d" "0x${first_byte}" 2>/dev/null || echo "0")
+            if [ $(( first_dec & 1 )) -eq 1 ]; then
+                new_first=$(printf "%02x" $(( first_dec & 0xFE )))
+                BASE_MAC="${new_first}${BASE_MAC#${first_byte}}"
+            fi
+            ;;
+    esac
 
-    ip link set dev eth0 address "$BASE_MAC" 2>/dev/null
+    MAC_WAN=$(macaddr_add "$BASE_MAC" 1)
+
+    # Set master eth0, all DSA switch slave ports, and br-lan
+    for dev in eth0 lan1 lan2 lan3 lan4 br-lan; do
+        [ -e "/sys/class/net/$dev" ] && ip link set dev "$dev" address "$BASE_MAC" 2>/dev/null
+    done
+
+    # Set WAN port
+    [ -e "/sys/class/net/wan" ] && ip link set dev wan address "$MAC_WAN" 2>/dev/null
 }
