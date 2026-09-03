@@ -1,0 +1,8 @@
+config settings 'main'
+    option enabled '0'
+    option mode 'token'
+    option cf_tunnel_token ''
+    option cf_domain 'opsegypt.com'
+    option cf_account ''
+    option cf_zone ''
+    option cf_token ''

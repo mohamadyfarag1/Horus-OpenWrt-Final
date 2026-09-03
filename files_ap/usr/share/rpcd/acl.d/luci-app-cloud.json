@@ -1,0 +1,20 @@
+{
+	"luci-app-cloud": {
+		"description": "Grant access for Cloudflare Tunnel app",
+		"read": {
+			"uci": [ "cloud" ],
+			"file": {
+				"/tmp/cloud.status": [ "read" ],
+				"/tmp/cloud.url": [ "read" ],
+				"/tmp/cloud.log": [ "read" ]
+			}
+		},
+		"write": {
+			"uci": [ "cloud" ],
+			"file": {
+				"/tmp/cloud.status": [ "write" ],
+				"/tmp/cloud.url": [ "write" ]
+			}
+		}
+	}
+}
