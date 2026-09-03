@@ -9,8 +9,12 @@ config hamax 'settings'
 	# wifi-iface itself instead of restructuring it.
 	option mode 'auto'
 
-	# ptmp = tower serving several CPEs (RTS on, airtime fairness on)
-	# ptp  = single backhaul peer (RTS off, airtime fairness off)
+	# A tuning preset, NOT an association limit. Picking ptp does not
+	# stop a second station from associating; it only tells HAMax to
+	# tune the radio on the assumption that there is one peer. Use
+	# maxassoc and a maclist in /etc/config/wireless to cap the count.
+	#   ptmp = tower serving several CPEs (RTS on, airtime fairness on)
+	#   ptp  = single backhaul peer (RTS off, airtime fairness off)
 	option profile 'ptmp'
 
 	# Leave empty to auto-detect the 5 GHz radio. A value here is
