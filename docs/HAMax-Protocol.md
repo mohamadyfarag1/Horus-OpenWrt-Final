@@ -195,7 +195,117 @@ needs switched off — which is why the UI says so at the point of choice.
 
 ---
 
-## 7. Command reference
+## 7. Exclusion without a password or a MAC list
+
+A common requirement is "keep other gear off my link, but I do not want a
+passphrase and I do not want to maintain a MAC list". The off-grid channel is
+exactly that mechanism, and it is the only one here that works without either.
+
+**How it excludes.** A device can only associate with a network it can hear.
+Hearing it requires tuning the receiver to the right centre frequency. A stock
+client only ever tunes to the 25 standard centres while scanning. Park the link
+on one of the other 43 and it is not "hidden from" those devices — it is outside
+the set of frequencies they will ever look at. No key exchange is involved, so
+there is nothing to configure on either side beyond the channel.
+
+**Who can still see it.** Anything that scans the extended plan: another Horus
+unit with the same superchannel patches (intended — this is how your own CPEs
+associate), Ubiquiti gear in site-survey mode, a spectrum analyser, or any radio
+deliberately told to tune there. Off-grid defeats *stock* equipment, not a
+determined operator with the right hardware.
+
+**What it does not do.** It does not encrypt. Traffic on an open off-grid link is
+in the clear to anyone who does tune there. If the requirement is confidentiality
+rather than exclusion, only encryption provides it.
+
+| Goal | Off-grid channel | Hidden SSID | WPA2 | MAC list |
+|---|:---:|:---:|:---:|:---:|
+| Stock clients cannot find the network | ✅ | ⚠️ partial | ❌ | ❌ |
+| No passphrase to distribute | ✅ | ✅ | ❌ | ✅ |
+| No per-device list to maintain | ✅ | ✅ | ✅ | ❌ |
+| Traffic is confidential | ❌ | ❌ | ✅ | ❌ |
+
+---
+
+## 8. Knowing it actually works
+
+Two commands, and they answer different questions.
+
+`hamax check` — **can this build do it?** Reads the hostapd binary and the phy:
+which directives exist, how many of the 68 channels the driver registers.
+
+`hamax verify` — **is it doing it right now?** Reads back from the live system
+only: the running phy, the netdev, the radio survey, and the hostapd config file
+netifd generated. Nothing comes from `/etc/config`. A setting can be present in
+UCI and absent on the radio — hostapd refused it, the driver ignored it, the
+radio never reloaded — and that gap is precisely what this exposes.
+
+```
+--- hostapd config in use (/var/run/hostapd-phy1.conf) ---
+  ✓ vendor_elements=dd06000789010101
+  ✓ airtime_mode=2
+  ✓ ignore_broadcast_ssid=1
+  · wds_sta: not present
+```
+
+A `✓` means hostapd parsed that line and is running with it. An airtime weight
+appearing in `iw station dump` is proof the scheduler is live, because mac80211
+only reports it when the policy is actually running.
+
+### The live panel
+
+The dashboard shows what the hardware measures on the channel in use:
+
+| Field | Source | Meaning |
+|---|---|---|
+| Noise floor | `iw survey dump` | Receiver noise. Lower is better. |
+| Channel utilisation | survey busy ÷ active | How much of the air is occupied — **including other people's traffic and interference**, not just yours. This is the honest version of an "airtime" readout. |
+| TX / RX time | survey | How much of that is you. |
+| SNR | station signal − noise floor | The number that actually predicts link health. |
+| Retry % | tx retries ÷ (retries + packets) | Rising retries mean the rate controller is fighting the channel. |
+| Link quality | derived from SNR and retry % | A presentation of the two above. |
+
+**On "CCQ".** Ubiquiti's CCQ is a proprietary figure computed inside airOS. It is
+not reproducible and is not reproduced. The quality percentage here is derived
+from SNR and retry rate — both measured by mac80211 — and is labelled as such. It
+is a useful comparative indicator between stations on the same radio; it is not
+Ubiquiti's number and should not be compared against one.
+
+---
+
+## 9. What improves, and what does not
+
+### Improves
+
+- **Range and stability** — `distance` sizes ACK timeout to the path. Without it, a
+  long link silently drops frames the radio thinks were never acknowledged.
+- **PtMP fairness** — airtime policy stops one distant, slow CPE from consuming the
+  airtime of every other client.
+- **Hidden-node collisions** — RTS/CTS on a PtMP cell.
+- **Airtime waste** — multicast lifted off 6 Mbit/s, OFDM-only rates, no 20/40
+  coexistence downgrade.
+- **Transparent bridging** — WDS 4-address.
+- **Discoverability** — off-grid centres remove the link from stock scans.
+- **Observability** — SNR, utilisation, retries, and live verification.
+
+### Does not improve
+
+- **Raw throughput on a clean, short link.** If SNR is high and the channel is
+  quiet, the radio is already at its ceiling; nothing here raises it.
+- **Contention itself.** The link stays CSMA/CA. Airtime policy divides the airtime
+  more fairly; it does not create more of it or eliminate collisions. That needs
+  TDMA.
+- **Latency floor.** Beacon and DTIM tuning do not reduce per-packet latency on an
+  established link in any meaningful way.
+- **Interference.** Nothing here removes a competing signal. High channel
+  utilisation from someone else's traffic is solved by changing channel — which is
+  what the 68-channel plan is for.
+- **Security.** See §7.
+- **2.4 GHz.** Out of scope by design.
+
+---
+
+## 10. Command reference
 
 ```bash
 hamax enable      # apply the profile to the 5 GHz radio
@@ -223,7 +333,7 @@ anything on my box".
 
 ---
 
-## 8. Build requirements
+## 11. Build requirements
 
 | Requirement | Why | Where |
 |---|---|---|
@@ -237,7 +347,7 @@ simply refuses off-grid channels and says so in `hamax check`.
 
 ---
 
-## 9. Sources
+## 12. Sources
 
 - [What exactly is airMAX? — Ubiquiti Community](https://community.ui.com/questions/What-exactly-is-airMAX/30b23a00-2fd3-44c3-9842-9e36afcf28b8)
 - [airMAX TDMA Technology Datasheet](https://dl.ubnt.com/datasheets/airmax/UBNT_DS_airMAX_TDMA.pdf)

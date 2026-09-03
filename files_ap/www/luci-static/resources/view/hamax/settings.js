@@ -31,6 +31,44 @@ function badge(label, ok, okText, noText) {
 	}, [ label + ': ' + (ok ? okText : noText) ]);
 }
 
+/*
+ * Link quality, computed from what mac80211 actually measures.
+ *
+ * Ubiquiti's CCQ is a proprietary number we cannot reproduce and do not
+ * claim to. What we can do is show the two things that actually decide a
+ * long link's health, both measured by the hardware:
+ *   SNR       = station signal - radio noise floor
+ *   retry %   = tx retries / (retries + packets)
+ * The score below is a presentation of those two, not a vendor metric.
+ */
+function linkQuality(sta, survey) {
+    var q = { snr: null, retry: null, score: null };
+
+    var sig   = parseInt(sta.signal, 10);
+    var noise = survey ? parseInt(survey.noise, 10) : NaN;
+    if (!isNaN(sig) && !isNaN(noise)) q.snr = sig - noise;
+
+    var r = parseInt(sta.tx_retries, 10);
+    var p = parseInt(sta.tx_packets, 10);
+    if (!isNaN(r) && !isNaN(p) && (r + p) > 0) q.retry = (100 * r) / (r + p);
+
+    /* SNR drives it: below ~10 dB a link is unusable, above ~35 dB more
+       margin buys nothing. Retries then subtract from that headroom. */
+    if (q.snr !== null) {
+        var s = Math.max(0, Math.min(100, ((q.snr - 10) / 25) * 100));
+        if (q.retry !== null) s = s * (1 - Math.min(0.5, q.retry / 40));
+        q.score = Math.round(s);
+    }
+    return q;
+}
+
+function qualityColor(score) {
+    if (score === null)  return '#9ca3af';
+    if (score >= 75)     return '#059669';
+    if (score >= 50)     return '#d97706';
+    return '#dc2626';
+}
+
 function readState() {
 	return L.resolveDefault(fs.read('/tmp/hamax.json'), '').then(function(raw) {
 		try { return JSON.parse(raw); } catch (e) { return {}; }
@@ -118,6 +156,11 @@ return view.extend({
 
 					E('button', {
 						'class': 'btn',
+						'click': ui.createHandlerFn(this, 'handleVerify')
+					}, [ '✅ إثبات التشغيل' ]),
+
+					E('button', {
+						'class': 'btn',
 						'click': ui.createHandlerFn(this, 'handleCheck')
 					}, [ '🔍 فحص الدعم' ])
 				])
@@ -132,6 +175,47 @@ return view.extend({
 				E('div', {}, [ '⚠ هذا ليس بروتوكول Ubiquiti AirMax ولا يتفاهم معه. AirMax جدولة TDMA داخل فيرموير مغلق؛ شريحة ath10k لا تملك مجدول شرائح زمنية، فالوصلة تبقى CSMA/CA. الإعدادات هنا تقلّل التزاحم ولا تلغيه.' ]),
 				E('div', {}, [ '🔓 بصمة HAMax في البيكون تعريف فقط وليست وسيلة حماية. معيار 802.11 يلزم كل جهاز بتجاهل العناصر التي لا يفهمها، فأي جهاز عادي سيرى هذه الشبكة ويرتبط بها إن لم يمنعه تشفير أو قائمة MAC. لتقييد الوصول استخدم encryption و macfilter و maxassoc في إعدادات الشبكة اللاسلكية.' ])
 			])
+		]);
+	},
+
+	/* The airMAX-style radio panel: what the air on this channel
+	   actually looks like right now, measured by the hardware. */
+	buildAirPanel: function(st) {
+		var sv = st.survey;
+
+		if (!sv) {
+			return E('div', {
+				'id': 'hamax-air',
+				'style': 'padding:12px; background:#f9fafb; border-radius:8px; color:#9ca3af; font-size:13px; text-align:center;'
+			}, [ _('لا توجد بيانات مسح للراديو (المسح متاح فقط بعد تشغيل الراديو)') ]);
+		}
+
+		var util  = parseInt(sv.util, 10);
+		var noise = parseInt(sv.noise, 10);
+
+		function cell(label, value, color, hint) {
+			return E('div', { 'style': 'flex:1; min-width:120px; padding:8px 10px;' }, [
+				E('div', { 'style': 'font-size:11px; color:#6b7280;' }, [ label ]),
+				E('div', { 'style': 'font-size:19px; font-weight:800; color:' + (color || '#111827') }, [ value ]),
+				hint ? E('div', { 'style': 'font-size:10px; color:#9ca3af;' }, [ hint ]) : E('span', {})
+			]);
+		}
+
+		var utilColor = isNaN(util) ? '#111827'
+		              : (util >= 70 ? '#dc2626' : (util >= 40 ? '#d97706' : '#059669'));
+
+		return E('div', {
+			'id': 'hamax-air',
+			'style': 'display:flex; flex-wrap:wrap; gap:4px; background:#fff; border:1px solid #e5e7eb;' +
+			         'border-radius:10px; padding:6px;'
+		}, [
+			cell(_('التردد المستخدم'), (sv.freq || '—') + ' MHz',  null,
+			     st.offgrid ? _('خارج الشبكة القياسية 👻') : _('تردد قياسي 👁')),
+			cell(_('أرضية الضوضاء'),  (isNaN(noise) ? '—' : noise + ' dBm'), null, _('كلما قلّت كان أفضل')),
+			cell(_('انشغال الهواء'),   (isNaN(util) ? '—' : util + '%'), utilColor,
+			     _('يشمل تداخل الآخرين')),
+			cell(_('زمن الإرسال'),     (sv.tx_ms || '—') + ' ms', null, _('من إجمالي ') + (sv.active_ms || '—') + ' ms'),
+			cell(_('زمن الاستقبال'),   (sv.rx_ms || '—') + ' ms', null, '')
 		]);
 	},
 
@@ -175,33 +259,56 @@ return view.extend({
 
 		return E('table', { 'class': 'table', 'style': 'width:100%; font-size:13px;' }, [
 			E('thead', {}, [ E('tr', {}, [
-				th('MAC'), th('الواجهة'), th('الإشارة'), th('TX'), th('RX'),
-				th('إنتاجية متوقعة'), th('محاولات فاشلة'), th('حصة الهواء')
+				th('MAC'), th('جودة الوصلة'), th('SNR'), th('الإشارة'), th('TX'), th('RX'),
+				th('إنتاجية متوقعة'), th('إعادة الإرسال'), th('حصة الهواء')
 			]) ]),
 			E('tbody', {}, links.map(function(s) {
 				/* mac80211 airtime weights are relative, 256 is the default
 				   weight, so show the raw value and a bar scaled to it. */
 				var w   = parseInt(s.weight, 10);
 				var pct = isNaN(w) ? 0 : Math.max(0, Math.min(100, Math.round(w / 5.12)));
+				var q   = linkQuality(s, st.survey);
+				var qc  = qualityColor(q.score);
 
 				return E('tr', {}, [
-					E('td', { 'style': S.mono + ' font-weight:700;' }, [ s.mac ]),
-					E('td', {}, [ s.iface ]),
-					E('td', { 'style': 'color:#059669; font-weight:700;' }, [
+					E('td', { 'style': S.mono + ' font-weight:700;' }, [
+						s.mac,
+						E('div', { 'style': S.muted }, [ s.iface ])
+					]),
+
+					E('td', { 'style': 'min-width:110px;' }, [
+						q.score === null
+							? E('span', { 'style': S.muted }, [ _('يحتاج مسح الراديو') ])
+							: E('div', {}, [
+								E('div', { 'style': 'font-weight:800; color:' + qc }, [ q.score + '%' ]),
+								E('div', { 'style': 'background:#e5e7eb; border-radius:4px; height:6px; overflow:hidden;' }, [
+									E('div', { 'style': 'background:' + qc + '; height:100%; width:' + q.score + '%;' }, [])
+								])
+							])
+					]),
+
+					E('td', { 'style': 'font-weight:700; color:' + qc }, [
+						q.snr === null ? '—' : (q.snr + ' dB')
+					]),
+
+					E('td', {}, [
 						(s.signal || '—') + ' dBm',
-						s.signal_avg ? E('span', { 'style': S.muted }, [ ' (متوسط ' + s.signal_avg + ')' ]) : E('span', {})
+						s.signal_avg ? E('div', { 'style': S.muted }, [ 'متوسط ' + s.signal_avg ]) : E('span', {})
 					]),
 					E('td', {}, [ (s.tx_rate || '—') + ' Mb/s' ]),
 					E('td', {}, [ (s.rx_rate || '—') + ' Mb/s' ]),
 					E('td', {}, [ s.expected || '—' ]),
-					E('td', { 'style': (parseInt(s.tx_failed, 10) > 0 ? 'color:#b91c1c; font-weight:700;' : 'color:#6b7280;') }, [
-						(s.tx_failed || '0') + ' / ' + (s.tx_retries || '0')
+
+					E('td', { 'style': (q.retry !== null && q.retry > 15 ? 'color:#b91c1c; font-weight:700;' : 'color:#6b7280;') }, [
+						q.retry === null ? '—' : (q.retry.toFixed(1) + '%'),
+						E('div', { 'style': S.muted }, [ _('فشل: ') + (s.tx_failed || '0') ])
 					]),
-					E('td', { 'style': 'min-width:120px;' }, [
+
+					E('td', { 'style': 'min-width:110px;' }, [
 						isNaN(w)
-							? E('span', { 'style': S.muted }, [ 'غير مفعَّل' ])
+							? E('span', { 'style': S.muted }, [ _('غير مفعَّل') ])
 							: E('div', {}, [
-								E('div', { 'style': 'background:#e5e7eb; border-radius:4px; height:7px; overflow:hidden;' }, [
+								E('div', { 'style': 'background:#e5e7eb; border-radius:4px; height:6px; overflow:hidden;' }, [
 									E('div', { 'style': 'background:#2563eb; height:100%; width:' + pct + '%;' }, [])
 								]),
 								E('span', { 'style': S.muted }, [ String(w) ])
@@ -255,6 +362,26 @@ return view.extend({
 		]);
 	},
 
+	/* Reads back from the live radio and the running hostapd, so it
+	   answers "is HAMax actually in effect" rather than "was it asked
+	   for". */
+	handleVerify: function() {
+		return fs.exec('/usr/bin/hamax', [ 'verify' ]).then(function(res) {
+			ui.showModal(_('إثبات تشغيل HAMax (قراءة من الراديو الحي)'), [
+				E('p', { 'style': 'font-size:13px; color:#6b7280;' }, [
+					_('كل سطر هنا مقروء من الراديو نفسه ومن ملف إعدادات hostapd العامل — لا شيء منه مأخوذ من ملف الإعدادات.')
+				]),
+				E('pre', {
+					'style': 'max-height:60vh; overflow:auto; background:#111827; color:#f3f4f6;' +
+					         'padding:12px; border-radius:8px; font-size:12px; direction:ltr; text-align:left;'
+				}, [ res.stdout || res.stderr || _('لا توجد مخرجات') ]),
+				E('div', { 'class': 'right' }, [
+					E('button', { 'class': 'btn', 'click': ui.hideModal }, [ _('إغلاق') ])
+				])
+			]);
+		});
+	},
+
 	handleCheck: function() {
 		return fs.exec('/usr/bin/hamax', [ 'check' ]).then(function(res) {
 			ui.showModal(_('تقرير دعم HAMax'), [
@@ -301,6 +428,9 @@ return view.extend({
 		o.cfgvalue = function() {
 			return E('div', { 'id': 'hamax-dash' }, [
 				self.buildStatusCard(st),
+				E('div', { 'id': 'hamax-air-wrap', 'style': 'margin-bottom:12px;' }, [
+					self.buildAirPanel(st)
+				]),
 				E('div', { 'style': 'background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;' }, [
 					E('div', {
 						'style': 'padding:10px 16px; background:#f9fafb; border-bottom:1px solid #e5e7eb;' +
@@ -514,6 +644,9 @@ return view.extend({
 
 				var card = document.getElementById('hamax-status-card');
 				if (card) card.parentNode.replaceChild(self.buildStatusCard(cur), card);
+
+				var air = document.getElementById('hamax-air');
+				if (air) air.parentNode.replaceChild(self.buildAirPanel(cur), air);
 
 				var count = document.getElementById('hamax-count');
 				if (count) count.textContent = String((cur.links || []).length);
