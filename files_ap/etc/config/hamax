@@ -21,6 +21,23 @@ config hamax 'settings'
 	# rejected unless that radio really is 5 GHz.
 	option radio ''
 
+	# 5 GHz channel from the unlocked 10 MHz-spaced plan (5180-5885 MHz).
+	# Empty leaves whatever /etc/config/wireless already pins. A channel
+	# outside the plan, or one the running driver does not offer, is
+	# refused and logged rather than applied blindly.
+	#
+	# Channels outside the 25 standard 802.11 centres are "off-grid": a
+	# stock client never tunes its receiver there while scanning, so the
+	# network does not appear in its list at all. That is the only
+	# airMAX-style invisibility mechanism this hardware can reproduce -
+	# ath10k has no 5/10 MHz channel width support.
+	option channel ''
+	option htmode ''
+
+	# Stop broadcasting the SSID. Weak on its own; meaningful only in
+	# combination with an off-grid channel.
+	option stealth '0'
+
 	# Link length in metres. Drives ACK timeout and slot time.
 	option distance '5000'
 

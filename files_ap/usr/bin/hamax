@@ -56,6 +56,74 @@ HAMAX_IE_AP="dd06000789010101"
 HAMAX_IE_STA="dd06000789010102"
 
 # ---------------------------------------------------------------------
+# 5 GHz channel plan
+#
+# The superchannel patches register a 10 MHz-spaced table in
+# ath10k_5ghz_channels[]; this list must stay in step with CHANS in
+# scripts/gen_package_patches.py. freq = 5000 + 5 * channel, so the plan
+# spans 5180 - 5885 MHz.
+# ---------------------------------------------------------------------
+HAMAX_CHANS="36 38 40 42 44 46 48 50 52 54 56 58 60 62 64 66 68 70 72 74 76 78 80 82 84 86 88 90 92 94 96 98 100 102 104 106 108 110 112 114 116 118 120 122 124 126 128 130 132 134 136 138 140 142 144 146 149 151 153 155 157 159 161 163 165 169 173 177"
+
+# The 20 MHz centres a stock 802.11 client actually tunes to when it
+# scans. Anything outside this set is off-grid: a phone or laptop never
+# parks its receiver there, so it never hears the beacon and the network
+# does not appear in its list at all.
+#
+# This is the one airMAX-like invisibility mechanism that is genuinely
+# reproducible here. airMAX also uses non-standard channel WIDTHS
+# (10/30/50/60 MHz) for the same effect, but ath10k has no 5/10 MHz
+# support, so width is not a lever on this hardware - only the centre is.
+HAMAX_STD_CHANS="36 40 44 48 52 56 60 64 100 104 108 112 116 120 124 128 132 136 140 144 149 153 157 161 165"
+
+hamax_chan_freq() {
+    echo $((5000 + 5 * $1))
+}
+
+# 0 = off-grid (invisible to stock clients), 1 = standard centre
+hamax_chan_is_standard() {
+    case " $HAMAX_STD_CHANS " in
+        *" $1 "*) return 0 ;;
+    esac
+    return 1
+}
+
+# What the running driver says about a channel. Three states, because
+# "we could not ask" is not the same answer as "the driver does not have
+# it" - collapsing the two would report a stock 25-channel image as a
+# full 68-channel one.
+#
+#   usable      the phy lists it and it is not disabled
+#   unavailable the phy was read and the channel is absent or disabled
+#   unknown     the phy could not be resolved or iw is unavailable
+hamax_chan_state() {
+    local chan="$1" info line
+
+    info=$(hamax_phy_info)
+    [ -n "$info" ] || { echo "unknown"; return; }
+
+    line=$(printf '%s\n' "$info" | grep -E "\[$chan\]" | head -1)
+    [ -n "$line" ] || { echo "unavailable"; return; }
+    case "$line" in
+        *disabled*) echo "unavailable"; return ;;
+    esac
+    echo "usable"
+}
+
+# Cached `iw phy <phy> info` for the 5 GHz radio; empty when unresolvable.
+HAMAX_PHY_INFO=""
+HAMAX_PHY_INFO_READ=0
+hamax_phy_info() {
+    local phy
+    if [ "$HAMAX_PHY_INFO_READ" = "0" ]; then
+        HAMAX_PHY_INFO_READ=1
+        phy=$(hamax_phy_for_radio "$RADIO" 2>/dev/null)
+        [ -n "$phy" ] && HAMAX_PHY_INFO=$(iw phy "$phy" info 2>/dev/null)
+    fi
+    printf '%s' "$HAMAX_PHY_INFO"
+}
+
+# ---------------------------------------------------------------------
 # logging
 # ---------------------------------------------------------------------
 hamax_log() {
@@ -90,6 +158,9 @@ hamax_read_config() {
     ATF_MODE=$(uci -q get hamax.settings.airtime_mode);             ATF_MODE="${ATF_MODE:-2}"
     ATF_UPDATE=$(uci -q get hamax.settings.airtime_update_interval); ATF_UPDATE="${ATF_UPDATE:-200}"
     VENDOR_IE=$(uci -q get hamax.settings.vendor_ie);               VENDOR_IE="${VENDOR_IE:-1}"
+    CHANNEL=$(uci -q get hamax.settings.channel)
+    HTMODE=$(uci -q get hamax.settings.htmode)
+    STEALTH=$(uci -q get hamax.settings.stealth);                   STEALTH="${STEALTH:-0}"
 
     # A point-to-point backhaul has exactly one peer, so there is no
     # hidden node to protect against and nothing to share airtime with.
@@ -185,15 +256,26 @@ hamax_live_ifnames() {
 }
 
 hamax_phy_for_radio() {
-    local radio="$1" path p
+    local radio="$1" path p n ifn
+
     path=$(uci -q get "wireless.${radio}.path")
-    [ -n "$path" ] || return 1
-    for p in /sys/class/ieee80211/phy*; do
-        [ -e "$p" ] || continue
-        case "$(readlink -f "$p" 2>/dev/null)" in
-            *"$path"*) basename "$p"; return 0 ;;
-        esac
+    if [ -n "$path" ]; then
+        for p in /sys/class/ieee80211/phy*; do
+            [ -e "$p" ] || continue
+            case "$(readlink -f "$p" 2>/dev/null)" in
+                *"$path"*) basename "$p"; return 0 ;;
+            esac
+        done
+    fi
+
+    # Fallback: ask a live interface of this radio which wiphy it is on.
+    # Needed when the UCI path does not match the sysfs layout, or when
+    # the radio is identified some other way.
+    for ifn in $(hamax_live_ifnames "$radio"); do
+        n=$(iw dev "$ifn" info 2>/dev/null | awk '$1 == "wiphy" { print $2; exit }')
+        [ -n "$n" ] && { echo "phy${n}"; return 0; }
     done
+
     return 1
 }
 
@@ -370,9 +452,52 @@ hamax_apply_radio() {
 
     [ -n "$TXPOWER" ] && hamax_set "wireless.${radio}.txpower" "$TXPOWER"
 
-    # channel, htmode, country and country_ie are deliberately untouched:
-    # they are the operator's regulatory and RF decisions, and the
-    # existing wireless config documents why channel 36 is pinned.
+    hamax_apply_channel "$radio"
+
+    # country and country_ie stay untouched: they are the operator's
+    # regulatory decision, and country_ie=0 is already set in the shipped
+    # wireless config so clients cannot push their home channel mask
+    # onto this link.
+}
+
+# Channel selection across the unlocked 10 MHz-spaced plan. Left alone
+# entirely when hamax.settings.channel is empty, so an operator who has
+# already pinned a channel in /etc/config/wireless keeps it.
+hamax_apply_channel() {
+    local radio="$1" freq
+
+    [ -n "$CHANNEL" ] || return 0
+
+    case " $HAMAX_CHANS " in
+        *" $CHANNEL "*) ;;
+        *)
+            hamax_log "WARNING: channel $CHANNEL is not in the HAMax plan; leaving the radio's channel alone"
+            return 0
+            ;;
+    esac
+
+    case "$(hamax_chan_state "$CHANNEL")" in
+        unavailable)
+            hamax_log "WARNING: the driver does not offer channel $CHANNEL (superchannel patches missing, or the regulatory database is blocking it); leaving the radio's channel alone"
+            return 0
+            ;;
+        unknown)
+            hamax_log "NOTE: could not read the phy to confirm channel $CHANNEL exists; applying it anyway"
+            ;;
+    esac
+
+    freq=$(hamax_chan_freq "$CHANNEL")
+
+    if hamax_chan_is_standard "$CHANNEL"; then
+        hamax_log "channel $CHANNEL (${freq} MHz) is a standard 802.11 centre - stock clients CAN see this network"
+        [ "$STEALTH" = "1" ] &&
+            hamax_log "WARNING: stealth is on but channel $CHANNEL is on-grid; pick an off-grid channel or stealth only hides the SSID name"
+    else
+        hamax_log "channel $CHANNEL (${freq} MHz) is off-grid - stock clients do not scan this centre frequency"
+    fi
+
+    hamax_set "wireless.${radio}.channel" "$CHANNEL"
+    [ -n "$HTMODE" ] && hamax_set "wireless.${radio}.htmode" "$HTMODE"
 }
 
 hamax_apply_iface() {
@@ -400,6 +525,15 @@ hamax_apply_iface() {
     # A fixed CPE on a tower should not be dropped for a few missed
     # ACKs, and it has no battery to save.
     hamax_set "wireless.${iface}.disassoc_low_ack" "0"
+
+    # Stealth: stop broadcasting the SSID in beacons. On its own this is
+    # weak - the name still appears in any association or probe exchange,
+    # and a scanner sees the BSSID regardless. It matters only in
+    # combination with an off-grid centre frequency, which is what
+    # actually keeps the network out of a stock client's scan.
+    if [ "$STEALTH" = "1" ]; then
+        hamax_set "wireless.${iface}.hidden" "1"
+    fi
 
     set --
 
@@ -515,19 +649,39 @@ hamax_sta_links_json() {
     done | hamax_join_json_lines
 }
 
+# The channel plan as JSON, annotated with what the running driver
+# actually offers and whether a stock client would ever scan there.
+hamax_channels_json() {
+    local c freq std
+    {
+        for c in $HAMAX_CHANS; do
+            freq=$(hamax_chan_freq "$c")
+            hamax_chan_is_standard "$c" && std=true || std=false
+            printf '{"channel":%d,"freq":%d,"state":"%s","standard":%s}\n' \
+                   "$c" "$freq" "$(hamax_chan_state "$c")" "$std"
+        done
+    } | hamax_join_json_lines
+}
+
 hamax_write_json() {
-    local state role since links radio_band chan htmode
+    local state role since links radio_band chan htmode cur_freq offgrid
 
     state="disabled"
     [ "$(uci -q get hamax.settings.enabled)" = "1" ] && state="enabled"
 
     since=$(cat "$HAMAX_SINCE" 2>/dev/null)
+    offgrid=false
 
     if [ -n "$RADIO" ]; then
         role=$(hamax_role "$RADIO")
         radio_band=$(uci -q get "wireless.${RADIO}.band")
         chan=$(uci -q get "wireless.${RADIO}.channel")
         htmode=$(uci -q get "wireless.${RADIO}.htmode")
+
+        if [ -n "$chan" ] && [ "$chan" != "auto" ]; then
+            cur_freq=$(hamax_chan_freq "$chan" 2>/dev/null)
+            hamax_chan_is_standard "$chan" || offgrid=true
+        fi
 
         if [ "$role" = "client" ]; then
             links=$(hamax_sta_links_json)
@@ -548,6 +702,9 @@ hamax_write_json() {
   "band": "$(hamax_json_escape "${radio_band:-}")",
   "channel": "$(hamax_json_escape "${chan:-}")",
   "htmode": "$(hamax_json_escape "${htmode:-}")",
+  "freq": "$(hamax_json_escape "${cur_freq:-}")",
+  "offgrid": $offgrid,
+  "stealth": $([ "$STEALTH" = "1" ] && echo true || echo false),
   "since": "$(hamax_json_escape "${since:-}")",
   "updated": "$(date '+%Y-%m-%d %H:%M:%S')",
   "caps": {
@@ -638,6 +795,32 @@ hamax_check() {
     echo "hostapd vendor_elements: $([ "$CAP_VENDOR_IE" = "1" ] && echo "supported" || echo "NOT SUPPORTED")"
     echo
     echo "backup file            : $([ -f "$HAMAX_BACKUP" ] && echo "$HAMAX_BACKUP ($(wc -l < "$HAMAX_BACKUP") entries)" || echo "none (HAMax not applied)")"
+
+    local c st total=0 ok=0 no=0 unk=0 off=0 offok=0
+    for c in $HAMAX_CHANS; do
+        total=$((total + 1))
+        st=$(hamax_chan_state "$c")
+        hamax_chan_is_standard "$c" || off=$((off + 1))
+        case "$st" in
+            usable)      ok=$((ok + 1))
+                         hamax_chan_is_standard "$c" || offok=$((offok + 1)) ;;
+            unavailable) no=$((no + 1)) ;;
+            *)           unk=$((unk + 1)) ;;
+        esac
+    done
+
+    echo
+    echo "channel plan           : $total channels (5180 - 5885 MHz, 10 MHz spacing)"
+    if [ "$unk" = "$total" ]; then
+        echo "  driver check         : COULD NOT READ THE PHY - none of the counts below are verified"
+    else
+        echo "  offered by driver    : $ok"
+        [ "$no" -gt 0 ] && echo "  NOT offered          : $no  <- superchannel patches are probably missing from this image"
+        [ "$unk" -gt 0 ] && echo "  unknown              : $unk"
+    fi
+    echo "  off-grid (stealth)   : $off in plan, $offok confirmed usable"
+    echo "  a stock client scans only the $(echo $HAMAX_STD_CHANS | wc -w) standard centres;"
+    echo "  the other $off are invisible to it because it never tunes there."
 }
 
 hamax_status() {
@@ -657,6 +840,7 @@ case "$1" in
     disable)    hamax_disable ;;
     status)     hamax_status ;;
     telemetry)  hamax_write_json; cat "$HAMAX_JSON" ;;
+    channels)   printf '{"channels":[%s]}\n' "$(hamax_channels_json)" ;;
     check)      hamax_check ;;
     log-clear)  : > "$HAMAX_LOG"; hamax_log "log cleared" ;;
     apply)
@@ -676,7 +860,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: hamax {enable|disable|apply|toggle|status|telemetry|check|log-clear}"
+        echo "Usage: hamax {enable|disable|apply|toggle|status|telemetry|channels|check|log-clear}"
         exit 1
         ;;
 esac

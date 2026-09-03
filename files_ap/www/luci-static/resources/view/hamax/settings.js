@@ -44,7 +44,14 @@ return view.extend({
 			readState(),
 			L.resolveDefault(fs.read('/tmp/hamax.log'), ''),
 			uci.load('hamax'),
-			uci.load('wireless')
+			uci.load('wireless'),
+			/* The channel plan is reported by the engine, not hardcoded
+			   here, so the picker only ever offers what the running
+			   driver actually registered. */
+			L.resolveDefault(fs.exec('/usr/bin/hamax', [ 'channels' ]), {}).then(function(r) {
+				try { return JSON.parse(r.stdout || '{}').channels || []; }
+				catch (e) { return []; }
+			})
 		]);
 	},
 
@@ -57,8 +64,21 @@ return view.extend({
 		var profile = (st.profile === 'ptp') ? 'وصلة نقطة لنقطة (PtP)' : 'برج متعدد العملاء (PtMP)';
 
 		var radioLine = st.radio
-			? (st.radio + ' · قناة ' + (st.channel || '?') + ' · ' + (st.htmode || '?'))
+			? (st.radio + ' · قناة ' + (st.channel || '?') +
+			   (st.freq ? ' (' + st.freq + ' MHz)' : '') + ' · ' + (st.htmode || '?'))
 			: '⚠ لم يتم العثور على راديو 5 جيجا في الإعدادات';
+
+		/* Visibility to a stock client is decided by the centre
+		   frequency, not by the vendor IE or the hidden-SSID flag. */
+		var visBadge = st.radio
+			? E('span', {
+				'style': 'display:inline-block; font-size:11px; font-weight:700; padding:3px 9px;' +
+				         'border-radius:10px; margin-inline-start:8px;' +
+				         'background:' + (st.offgrid ? '#ede9fe' : '#fef3c7') + ';' +
+				         'color:' + (st.offgrid ? '#5b21b6' : '#92400e') + ';'
+			  }, [ st.offgrid ? '👻 تردد خارج الشبكة القياسية — الأجهزة العادية لا تفحصه'
+			                  : '👁 تردد قياسي — الأجهزة العادية تراه' ])
+			: E('span', {});
 
 		return E('div', {
 			'id': 'hamax-status-card',
@@ -73,7 +93,7 @@ return view.extend({
 					}, [ enabled ? '⚡ ملف HAMax مطبَّق على راديو 5 جيجا' : '⏸ HAMax متوقف — راديو 5 جيجا بإعداداته الأصلية' ]),
 
 					E('div', { 'style': 'font-size:13px; color:#374151; margin-top:6px;' }, [
-						'الراديو: ', E('strong', {}, [ radioLine ])
+						'الراديو: ', E('strong', {}, [ radioLine ]), visBadge
 					]),
 					E('div', { 'style': 'font-size:13px; color:#374151; margin-top:2px;' }, [
 						'الدور: ', E('strong', {}, [ role ]), ' · النمط: ', E('strong', {}, [ profile ])
@@ -261,9 +281,10 @@ return view.extend({
 	/* ---------------------------------------------------------------- */
 
 	render: function(data) {
-		var st   = data[0] || {};
-		var log0 = (data[1] || '').trim();
-		var self = this;
+		var st    = data[0] || {};
+		var log0  = (data[1] || '').trim();
+		var chans = data[4] || [];
+		var self  = this;
 		var m, s, o;
 
 		m = new form.Map('hamax',
@@ -304,6 +325,7 @@ return view.extend({
 		s.addremove = false;
 
 		s.tab('general',  _('أساسي'));
+		s.tab('spectrum', _('الطيف والتخفي (Spectrum)'));
 		s.tab('link',     _('ضبط الوصلة (RF / Link)'));
 		s.tab('airtime',  _('توزيع الهواء والبصمة'));
 		s.tab('log',      _('السجل'));
@@ -330,6 +352,65 @@ return view.extend({
 			_('تمرير إطارات الإيثرنت بشفافية على المستوى الثاني عبر الوصلة اللاسلكية — المكافئ المفتوح لما تفعله أجهزة Ubiquiti و MikroTik.'));
 		o.default = '1';
 		o.rmempty = false;
+
+		/* spectrum ----------------------------------------------------
+		   The one airMAX-like invisibility mechanism that this hardware
+		   can actually reproduce: park the link on a centre frequency
+		   no stock client ever tunes to. */
+		var usable   = chans.filter(function(c) { return c.state === 'usable'; });
+		var offgrid  = usable.filter(function(c) { return !c.standard; });
+		var unavail  = chans.filter(function(c) { return c.state === 'unavailable'; });
+		var unknown  = chans.filter(function(c) { return c.state === 'unknown'; });
+
+		o = s.taboption('spectrum', form.DummyValue, '_spectrum_note');
+		o.rawhtml = true;
+		o.cfgvalue = function() {
+			var msg, bg, fg;
+			if (unknown.length === chans.length || !chans.length) {
+				msg = '⚠ تعذّرت قراءة الراديو للتحقق من الترددات المتاحة. القائمة أدناه قد لا تعكس ما يدعمه الجهاز فعلاً.';
+				bg = '#fef3c7'; fg = '#92400e';
+			} else if (unavail.length) {
+				msg = '⚠ الدرايفر يوفّر ' + usable.length + ' تردد من أصل ' + chans.length +
+				      '. الترددات الناقصة (' + unavail.length + ') تعني على الأرجح أن باتشات السوبر-تشانل ' +
+				      'غير موجودة في هذه النسخة — راجع scripts/07-unlock-superchannel.sh و 10-gen-package-patches.sh.';
+				bg = '#fee2e2'; fg = '#991b1b';
+			} else {
+				msg = '✅ الدرايفر يوفّر كل ترددات الخطة (' + usable.length + ' تردد، 5180–5885 ميجاهرتز بخطوة 10). ' +
+				      'منها ' + offgrid.length + ' تردد خارج الشبكة القياسية، لا يفحصها أي جهاز عادي.';
+				bg = '#ecfdf5'; fg = '#065f46';
+			}
+			return E('div', {
+				'style': 'padding:10px 14px; border-radius:8px; font-size:13px; line-height:1.7;' +
+				         'background:' + bg + '; color:' + fg + ';'
+			}, [ msg ]);
+		};
+
+		o = s.taboption('spectrum', form.ListValue, 'channel', _('التردد (Channel / Frequency)'),
+			_('الخطة الكاملة 5180–5885 ميجاهرتز بخطوة 10 ميجاهرتز. الترددات المعلَّمة 👻 خارج مراكز القنوات القياسية — الجهاز العادي لا يضبط مستقبِله عليها أثناء البحث، فلا يسمع البيكون ولا تظهر الشبكة عنده أصلاً. هذه هي الآلية الحقيقية الوحيدة للإخفاء على هذا الهاردوير.'));
+		o.value('', _('— لا تغيّر التردد (اتركه كما هو في إعدادات الشبكة اللاسلكية) —'));
+		usable.forEach(function(c) {
+			o.value(String(c.channel),
+				(c.standard ? '👁 ' : '👻 ') + c.channel + ' — ' + c.freq + ' MHz' +
+				(c.standard ? _(' · قياسي، مرئي للجميع') : _(' · مخفي عن الأجهزة العادية')));
+		});
+		unavail.forEach(function(c) {
+			o.value(String(c.channel), '🚫 ' + c.channel + ' — ' + c.freq + _(' MHz · غير متاح في هذه النسخة'));
+		});
+		o.rmempty = true;
+
+		o = s.taboption('spectrum', form.ListValue, 'htmode', _('عرض القناة (Channel Width)'),
+			_('⚠ AirMax يدعم عروضاً غير قياسية (10/30/50/60 ميجاهرتز) وهي سبب رئيسي لعدم رؤيته من الأجهزة العادية. شريحة ath10k لا تدعم 5/10 ميجاهرتز إطلاقاً، فالعروض المتاحة هنا قياسية فقط، والإخفاء يعتمد على التردد وحده.'));
+		o.value('', _('— لا تغيّر —'));
+		o.value('HT20',  'HT20 — 20 MHz');
+		o.value('HT40',  'HT40 — 40 MHz');
+		o.value('VHT20', 'VHT20 — 20 MHz');
+		o.value('VHT40', 'VHT40 — 40 MHz');
+		o.value('VHT80', 'VHT80 — 80 MHz');
+		o.rmempty = true;
+
+		o = s.taboption('spectrum', form.Flag, 'stealth', _('وضع التخفي (Stealth)'),
+			_('يوقف بث اسم الشبكة في البيكون. لوحده ضعيف — الاسم يظهر في أي عملية ارتباط، والماسح يرى الـ BSSID. قيمته الحقيقية تأتي فقط مع تردد خارج الشبكة القياسية، وهو ما يمنع الجهاز العادي من سماع الشبكة من الأساس.'));
+		o.default = '0';
 
 		/* link */
 		o = s.taboption('link', form.Value, 'distance', _('طول الوصلة (متر)'),
