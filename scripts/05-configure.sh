@@ -152,6 +152,15 @@ else:
 PYEOF
 
 # ============================================
+# SECTION B3: Inject LAN Port Control UI into 29_ports.js
+# ============================================
+if [ -f "../files_ap/www/luci-static/resources/view/status/include/29_ports.js" ]; then
+    mkdir -p feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/
+    cp -f ../files_ap/www/luci-static/resources/view/status/include/29_ports.js feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/29_ports.js 2>/dev/null || true
+    echo "OK: Injected LAN Port Control UI into LuCI 29_ports.js"
+fi
+
+# ============================================
 # SECTION C: Write .config from standalone file
 # ============================================
 cp ../config/horus.config .config
@@ -229,6 +238,15 @@ IRQ1=$(grep -m2 -i ath10k /proc/interrupts | tail -n1 | awk '{print $1}' | tr -d
 [ -n "$IRQ0" ] && echo 2 > /proc/irq/$IRQ0/smp_affinity
 [ -n "$IRQ1" ] && echo 4 > /proc/irq/$IRQ1/smp_affinity
 
+# === Restore Disabled Ethernet Ports (Horus LAN Control) ===
+for f in /etc/horus/disabled_port_*; do
+    [ -f "$f" ] || continue
+    p="${f##*/disabled_port_}"
+    [ -n "$p" ] || continue
+    ip link set "$p" down 2>/dev/null
+    ip link set "$p" nomaster 2>/dev/null
+done
+
 # === Wi-Fi self-check into the system log (tag: horus-wifi) ===
 # Detached so it never delays boot. 40s gives ath10k time to load its
 # firmware and register both phys before the census is taken.
@@ -250,5 +268,10 @@ mkdir -p files
 # Strip Windows CRLF line endings from all text files before copying
 find ../files_ap -type f ! -name '*.db' ! -name '*.bin' -exec sed -i 's/\r$//' {} +
 cp -r ../files_ap/* files/
+
+# Ensure execution permissions for scripts
+chmod +x files/www/cgi-bin/* 2>/dev/null || true
+chmod +x files/etc/init.d/* 2>/dev/null || true
+chmod +x files/etc/uci-defaults/* 2>/dev/null || true
 
 echo "Done: Feeds updated, Superchannel JS injected, config applied, custom files copied."
