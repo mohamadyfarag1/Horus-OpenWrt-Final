@@ -1,0 +1,13 @@
+
+config hamax 'settings'
+	option enabled '0'
+	option mode 'ap'
+	option beacon_int '50'
+	option dtim_period '1'
+	option airtime_mode '2'
+	option airtime_update_interval '200'
+	option txpower_cap '27'
+	option wds '1'
+	option short_gi '1'
+	option ampdu '1'
+	option vendor_version '1'

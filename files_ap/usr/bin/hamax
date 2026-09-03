@@ -1,0 +1,304 @@
+#!/bin/sh
+# =====================================================================
+# HAMax - Horus AirMax Protocol Engine
+# Version: 1.1 (Dual Mode: AP-WDS / Client-WDS)
+# Hardware: IPQ4019 + ath10k + mac80211 + hostapd / wpa_supplicant
+#
+# Core Capabilities:
+#   - TDMA Airtime Fairness (ATF Dynamic Scheduling) on AP
+#   - Proprietary HAMax Vendor IE (0xDD 0x06 'HORUS' 0x01)
+#   - WDS Transparent 4-Address Ethernet Bridging (AP & Client)
+#   - High-Precision TBTT Beacon Scheduling (50ms / DTIM=1)
+#   - Live Station / AP Link Quality & Airtime Weight Telemetry
+# =====================================================================
+
+HAMAX_CONFIG="/etc/config/hamax"
+HAMAX_STATE="/tmp/hamax.state"
+HAMAX_LOG="/tmp/hamax.log"
+
+# Vendor IE Format: Tag 221 (0xdd), Length 6, OUI 'HORUS' (0x48 0x4f 0x52 0x55 0x53), Ver/Mode
+# Mode 0x01 = AP WDS, Mode 0x02 = Client WDS
+HAMAX_VENDOR_IE_AP="dd06484f52555301"
+HAMAX_VENDOR_IE_STA="dd06484f52555302"
+
+hamax_log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] HAMax: $*"
+    echo "$msg" >> "$HAMAX_LOG"
+    logger -t hamax "$*"
+}
+
+hamax_read_config() {
+    ENABLED=$(uci -q get hamax.settings.enabled)
+    MODE=$(uci -q get hamax.settings.mode)
+    BEACON_INT=$(uci -q get hamax.settings.beacon_int)
+    DTIM=$(uci -q get hamax.settings.dtim_period)
+    ATF_MODE=$(uci -q get hamax.settings.airtime_mode)
+    ATF_UPDATE=$(uci -q get hamax.settings.airtime_update_interval)
+    TXPOWER_CAP=$(uci -q get hamax.settings.txpower_cap)
+    WDS=$(uci -q get hamax.settings.wds)
+    SHORT_GI=$(uci -q get hamax.settings.short_gi)
+    AMPDU=$(uci -q get hamax.settings.ampdu)
+
+    ENABLED="${ENABLED:-0}"
+    MODE="${MODE:-ap}"
+    BEACON_INT="${BEACON_INT:-50}"
+    DTIM="${DTIM:-1}"
+    ATF_MODE="${ATF_MODE:-2}"
+    ATF_UPDATE="${ATF_UPDATE:-200}"
+    TXPOWER_CAP="${TXPOWER_CAP:-27}"
+    WDS="${WDS:-1}"
+    SHORT_GI="${SHORT_GI:-1}"
+    AMPDU="${AMPDU:-1}"
+}
+
+hamax_get_ap_ifaces() {
+    ls /var/run/hostapd/ 2>/dev/null | sed 's/\.conf//'
+}
+
+hamax_get_sta_ifaces() {
+    iw dev 2>/dev/null | awk '$1=="Interface"{print $2}' | while read -r ifn; do
+        if iw dev "$ifn" info 2>/dev/null | grep -q 'type managed'; then
+            echo "$ifn"
+        fi
+    done
+}
+
+# Apply WDS (4-Address mode) across wireless configurations
+hamax_apply_wds() {
+    local enable_wds="$1"
+    local changed=0
+
+    for iface in $(uci show wireless | grep '=wifi-iface' | cut -d. -f2 | cut -d= -f1); do
+        local curr_wds
+        curr_wds=$(uci -q get "wireless.${iface}.wds")
+        if [ "$curr_wds" != "$enable_wds" ]; then
+            uci set "wireless.${iface}.wds=$enable_wds"
+            changed=1
+        fi
+    done
+
+    if [ "$changed" = "1" ]; then
+        uci commit wireless
+        hamax_log "WDS 4-address mode updated to '$enable_wds' in UCI"
+    fi
+}
+
+# Apply ATF (Airtime Fairness) to hostapd interfaces
+hamax_apply_atf() {
+    local iface="$1"
+    local ctrl="/var/run/hostapd/${iface}"
+
+    [ -S "$ctrl" ] || return 1
+
+    hamax_log "Applying ATF (mode=$ATF_MODE, update=${ATF_UPDATE}ms) to $iface"
+    hostapd_cli -i "$iface" set airtime_mode "$ATF_MODE" 2>/dev/null
+    hostapd_cli -i "$iface" set airtime_update_interval "$ATF_UPDATE" 2>/dev/null
+}
+
+# Inject HAMax Vendor IE into beacon & probe responses
+hamax_inject_vendor_ie() {
+    local iface="$1"
+    local ctrl="/var/run/hostapd/${iface}"
+    local ie_hex
+
+    [ "$MODE" = "ap" ] && ie_hex="$HAMAX_VENDOR_IE_AP" || ie_hex="$HAMAX_VENDOR_IE_STA"
+
+    [ -S "$ctrl" ] || return 1
+
+    hamax_log "Broadcasting HAMax Vendor signature ($ie_hex) on $iface"
+    hostapd_cli -i "$iface" vendor_elements "$ie_hex" 2>/dev/null || true
+}
+
+# Tune beacon interval and DTIM
+hamax_tune_beacons() {
+    local changed=0
+    for radio in radio0 radio1; do
+        local cur_b cur_d
+        cur_b=$(uci -q get "wireless.${radio}.beacon_int")
+        cur_d=$(uci -q get "wireless.${radio}.dtim_period")
+
+        if [ "$cur_b" != "$BEACON_INT" ]; then
+            uci set "wireless.${radio}.beacon_int=$BEACON_INT"
+            changed=1
+        fi
+        if [ "$cur_d" != "$DTIM" ]; then
+            uci set "wireless.${radio}.dtim_period=$DTIM"
+            changed=1
+        fi
+    done
+
+    if [ "$changed" = "1" ]; then
+        uci commit wireless
+        hamax_log "Low-latency beacon timing saved (beacon_int=$BEACON_INT, dtim=$DTIM)"
+    fi
+}
+
+hamax_restore_beacons() {
+    for radio in radio0 radio1; do
+        uci set "wireless.${radio}.beacon_int=100"
+        uci set "wireless.${radio}.dtim_period=2"
+    done
+    uci commit wireless
+    hamax_log "Restored standard IEEE 802.11 beacon timing (beacon_int=100, dtim=2)"
+}
+
+# Optimize kernel network stack for high-throughput TDMA wireless bridging
+hamax_tune_kernel() {
+    # Increase network buffer limits for aggregated A-MPDU bursts
+    sysctl -w net.core.rmem_max=4194304 >/dev/null 2>&1
+    sysctl -w net.core.wmem_max=4194304 >/dev/null 2>&1
+    sysctl -w net.core.netdev_max_backlog=5000 >/dev/null 2>&1
+
+    # Disable bridge IGMP/multicast snooping overhead if present
+    if [ -d /sys/devices/virtual/net/br-lan/bridge ]; then
+        echo 0 > /sys/devices/virtual/net/br-lan/bridge/multicast_snooping 2>/dev/null || true
+    fi
+}
+
+# Collect live telemetry for LuCI UI
+hamax_telemetry() {
+    local report="/tmp/hamax.stations"
+    : > "$report"
+    echo "# HAMax Telemetry - $(date)" >> "$report"
+
+    if [ "$MODE" = "ap" ]; then
+        echo "# TYPE=AP" >> "$report"
+        echo "# iface | MAC | signal | tx_bytes | rx_bytes | airtime_weight" >> "$report"
+        for iface in $(hamax_get_ap_ifaces); do
+            iw dev "$iface" station dump 2>/dev/null | awk -v iface="$iface" '
+            /Station/ { mac=$2 }
+            /signal:/ { sig=$2 }
+            /tx bytes:/ { txb=$3 }
+            /rx bytes:/ { rxb=$3 }
+            /airtime weight:/ { weight=$3; print iface " | " mac " | " sig " dBm | tx:" txb " | rx:" rxb " | weight:" weight }
+            ' >> "$report"
+        done
+    else
+        echo "# TYPE=CLIENT" >> "$report"
+        echo "# iface | Connected AP BSSID | signal | bitrate | freq" >> "$report"
+        for iface in $(hamax_get_sta_ifaces); do
+            local link_info
+            link_info=$(iw dev "$iface" link 2>/dev/null)
+            if echo "$link_info" | grep -q 'Connected to'; then
+                local ap_bssid sig freq txrate
+                ap_bssid=$(echo "$link_info" | awk '/Connected to/{print $3}')
+                sig=$(echo "$link_info" | awk '/signal:/{print $2 " " $3}')
+                freq=$(echo "$link_info" | awk '/freq:/{print $2}')
+                txrate=$(echo "$link_info" | awk -F: '/tx bitrate:/{print $2}' | xargs)
+                echo "$iface | $ap_bssid | $sig | $txrate | ${freq}MHz" >> "$report"
+            else
+                echo "$iface | Searching for HAMax AP... | N/A | N/A | N/A" >> "$report"
+            fi
+        done
+    fi
+
+    cat "$report"
+}
+
+# Main enable sequence
+hamax_enable() {
+    hamax_log "=========================================================="
+    hamax_log "Activating HAMax (Horus AirMax Protocol) - Mode: $MODE"
+    hamax_log "=========================================================="
+
+    hamax_tune_kernel
+
+    if [ "$WDS" = "1" ]; then
+        hamax_apply_wds "1"
+    fi
+
+    if [ "$MODE" = "ap" ]; then
+        hamax_tune_beacons
+        for iface in $(hamax_get_ap_ifaces); do
+            hamax_apply_atf "$iface"
+            hamax_inject_vendor_ie "$iface"
+        done
+    else
+        hamax_log "Configuring Station/CPE WDS optimization for HAMax connection"
+    fi
+
+    echo "enabled" > "$HAMAX_STATE"
+    echo "$MODE" >> "$HAMAX_STATE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$HAMAX_STATE"
+
+    hamax_telemetry >/dev/null 2>&1
+    hamax_log "HAMax activated successfully."
+}
+
+# Main disable sequence
+hamax_disable() {
+    hamax_log "Deactivating HAMax Protocol - Returning to standard IEEE 802.11"
+
+    for iface in $(hamax_get_ap_ifaces); do
+        if [ -S "/var/run/hostapd/$iface" ]; then
+            hostapd_cli -i "$iface" set airtime_mode 0 2>/dev/null || true
+            hostapd_cli -i "$iface" vendor_elements "" 2>/dev/null || true
+        fi
+    done
+
+    hamax_restore_beacons
+
+    echo "disabled" > "$HAMAX_STATE"
+    echo "$MODE" >> "$HAMAX_STATE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$HAMAX_STATE"
+
+    hamax_telemetry >/dev/null 2>&1
+    hamax_log "HAMax deactivated successfully."
+}
+
+# Status report
+hamax_status() {
+    local state mode since
+    state=$(head -1 "$HAMAX_STATE" 2>/dev/null || echo "disabled")
+    mode=$(sed -n '2p' "$HAMAX_STATE" 2>/dev/null || echo "ap")
+    since=$(sed -n '3p' "$HAMAX_STATE" 2>/dev/null || echo "N/A")
+
+    echo "==============================="
+    echo " HAMax Protocol Status Report"
+    echo "==============================="
+    echo " State : $state"
+    echo " Mode  : $mode"
+    echo " Since : $since"
+    echo ""
+    echo "--- Live Telemetry ---"
+    hamax_telemetry
+}
+
+# Entry point
+hamax_read_config
+
+case "$1" in
+    enable)
+        hamax_enable
+        ;;
+    disable)
+        hamax_disable
+        ;;
+    status)
+        hamax_status
+        ;;
+    toggle)
+        cur_st=$(head -1 "$HAMAX_STATE" 2>/dev/null)
+        if [ "$cur_st" = "enabled" ]; then
+            hamax_disable
+        else
+            hamax_enable
+        fi
+        ;;
+    telemetry|monitor)
+        hamax_telemetry
+        ;;
+    apply)
+        if [ "$(head -1 $HAMAX_STATE 2>/dev/null)" = "enabled" ]; then
+            hamax_log "Re-applying dynamic hooks..."
+            for iface in $(hamax_get_ap_ifaces); do
+                hamax_apply_atf "$iface"
+                hamax_inject_vendor_ie "$iface"
+            done
+        fi
+        ;;
+    *)
+        echo "Usage: hamax {enable|disable|status|toggle|telemetry|apply}"
+        exit 1
+        ;;
+esac

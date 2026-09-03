@@ -1,0 +1,13 @@
+{
+	"admin/network/hamax": {
+		"title": "بروتوكول HAMax (AirMax)",
+		"order": 65,
+		"action": {
+			"type": "view",
+			"path": "hamax/settings"
+		},
+		"depends": {
+			"acl": [ "luci-app-hamax" ]
+		}
+	}
+}
