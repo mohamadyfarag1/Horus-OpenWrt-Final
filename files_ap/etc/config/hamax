@@ -1,13 +1,48 @@
 
+# HAMax - long-range profile for the 5 GHz radio.
+# The 2.4 GHz radio is never touched by this configuration.
+
 config hamax 'settings'
 	option enabled '0'
-	option mode 'ap'
-	option beacon_int '50'
+
+	# auto | ap | client - "auto" reads the role from the 5 GHz
+	# wifi-iface itself instead of restructuring it.
+	option mode 'auto'
+
+	# ptmp = tower serving several CPEs (RTS on, airtime fairness on)
+	# ptp  = single backhaul peer (RTS off, airtime fairness off)
+	option profile 'ptmp'
+
+	# Leave empty to auto-detect the 5 GHz radio. A value here is
+	# rejected unless that radio really is 5 GHz.
+	option radio ''
+
+	# Link length in metres. Drives ACK timeout and slot time.
+	option distance '5000'
+
+	option beacon_int '100'
 	option dtim_period '1'
+
+	# RTS/CTS threshold in bytes; 0 disables. Forced to 0 for ptp.
+	option rts '512'
+
+	# Multicast/broadcast rate in kbps - keeps multicast off the
+	# 6 Mbit/s floor, which dominates airtime on a PtMP cell.
+	option mcast_rate '24000'
+
+	# Empty leaves the radio's existing txpower alone.
+	option txpower ''
+
+	option short_gi '1'
+	option noscan '1'
+	option disable_legacy_rates '1'
+	option wds '1'
+
+	# Airtime fairness. Requires a full hostapd build; the engine
+	# probes for it and skips it when absent. Forced off for ptp.
+	option airtime '1'
 	option airtime_mode '2'
 	option airtime_update_interval '200'
-	option txpower_cap '27'
-	option wds '1'
-	option short_gi '1'
-	option ampdu '1'
-	option vendor_version '1'
+
+	# HAMax vendor IE (OUI 00:07:89) in beacons and probe responses.
+	option vendor_ie '1'

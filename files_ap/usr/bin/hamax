@@ -1,304 +1,682 @@
 #!/bin/sh
 # =====================================================================
-# HAMax - Horus AirMax Protocol Engine
-# Version: 1.1 (Dual Mode: AP-WDS / Client-WDS)
-# Hardware: IPQ4019 + ath10k + mac80211 + hostapd / wpa_supplicant
+# HAMax - Horus AirMax-style long-range wireless profile
+# Version: 2.0
+# Hardware: IPQ4019 + ath10k-ct + mac80211 + hostapd / wpa_supplicant
 #
-# Core Capabilities:
-#   - TDMA Airtime Fairness (ATF Dynamic Scheduling) on AP
-#   - Proprietary HAMax Vendor IE (0xDD 0x06 'HORUS' 0x01)
-#   - WDS Transparent 4-Address Ethernet Bridging (AP & Client)
-#   - High-Precision TBTT Beacon Scheduling (50ms / DTIM=1)
-#   - Live Station / AP Link Quality & Airtime Weight Telemetry
+# SCOPE: the 5 GHz radio ONLY. The 2.4 GHz radio is never read, never
+#        written and never reloaded by this script.
+#
+# WHAT THIS IS
+#   A tuning profile that puts the 5 GHz radio into a long-range
+#   point-to-point / point-to-multipoint configuration, using the knobs
+#   that mac80211 / ath10k-ct / hostapd actually expose:
+#
+#     distance        ACK timeout + slot time sized for the link length
+#     rts             hidden-node mitigation on a PtMP cell
+#     wds             transparent 4-address L2 bridging
+#     mcast_rate      multicast lifted off the 6 Mbit/s floor
+#     basic_rate      OFDM-only, high basic rate set
+#     legacy_rates    no 802.11a legacy overhead
+#     noscan          no 20/40 coexistence downgrade of the channel
+#     dtim_period     low latency for fixed CPEs
+#     short_gi_*      short guard interval
+#     airtime_*       per-station airtime fairness (full hostapd only)
+#     vendor_elements HAMax identification IE in the beacon
+#
+# WHAT THIS IS NOT
+#   This is NOT Ubiquiti AirMax and it does NOT interoperate with it.
+#   AirMax is a proprietary TDMA scheduler living inside Ubiquiti
+#   firmware: the AP hands out transmit slots and stations never
+#   contend. ath10k/mac80211 has no slot scheduler and one cannot be
+#   bolted on from userspace, so this link stays CSMA/CA. Every knob
+#   above reduces contention and its cost. None of them remove it.
+#
+# Every change is recorded in $HAMAX_BACKUP before it is made, and
+# "hamax disable" puts the radio back exactly as it was found.
 # =====================================================================
 
-HAMAX_CONFIG="/etc/config/hamax"
-HAMAX_STATE="/tmp/hamax.state"
+HAMAX_DIR="/etc/hamax"
+HAMAX_BACKUP="$HAMAX_DIR/backup.uci"
+HAMAX_SINCE="$HAMAX_DIR/since"
+HAMAX_JSON="/tmp/hamax.json"
 HAMAX_LOG="/tmp/hamax.log"
+HAMAX_LOG_MAX=400
 
-# Vendor IE Format: Tag 221 (0xdd), Length 6, OUI 'HORUS' (0x48 0x4f 0x52 0x55 0x53), Ver/Mode
-# Mode 0x01 = AP WDS, Mode 0x02 = Client WDS
-HAMAX_VENDOR_IE_AP="dd06484f52555301"
-HAMAX_VENDOR_IE_STA="dd06484f52555302"
+# Vendor-specific element, IEEE 802.11 clause 9.4.2.26:
+#   DD <len> <3-byte OUI> <OUI type> <version> <role>
+# OUI 00:07:89 is the same OUI the device carries on its MAC addresses
+# (see the factory-OUI normalisation commit), so a HAMax beacon is
+# attributable to the same vendor identity as the hardware.
+#   len   = 6  (3 OUI + type + version + role)
+#   type  = 0x01  HAMax profile
+#   ver   = 0x01
+#   role  = 0x01 AP, 0x02 station
+HAMAX_IE_AP="dd06000789010101"
+HAMAX_IE_STA="dd06000789010102"
 
+# ---------------------------------------------------------------------
+# logging
+# ---------------------------------------------------------------------
 hamax_log() {
-    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] HAMax: $*"
-    echo "$msg" >> "$HAMAX_LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$HAMAX_LOG"
     logger -t hamax "$*"
+    # keep /tmp from growing without bound on a long-lived AP
+    if [ "$(wc -l < "$HAMAX_LOG" 2>/dev/null || echo 0)" -gt "$HAMAX_LOG_MAX" ]; then
+        tail -n $((HAMAX_LOG_MAX / 2)) "$HAMAX_LOG" > "${HAMAX_LOG}.tmp" 2>/dev/null &&
+            mv "${HAMAX_LOG}.tmp" "$HAMAX_LOG"
+    fi
 }
 
+# ---------------------------------------------------------------------
+# configuration
+# ---------------------------------------------------------------------
 hamax_read_config() {
-    ENABLED=$(uci -q get hamax.settings.enabled)
-    MODE=$(uci -q get hamax.settings.mode)
-    BEACON_INT=$(uci -q get hamax.settings.beacon_int)
-    DTIM=$(uci -q get hamax.settings.dtim_period)
-    ATF_MODE=$(uci -q get hamax.settings.airtime_mode)
-    ATF_UPDATE=$(uci -q get hamax.settings.airtime_update_interval)
-    TXPOWER_CAP=$(uci -q get hamax.settings.txpower_cap)
-    WDS=$(uci -q get hamax.settings.wds)
-    SHORT_GI=$(uci -q get hamax.settings.short_gi)
-    AMPDU=$(uci -q get hamax.settings.ampdu)
+    ENABLED=$(uci -q get hamax.settings.enabled);                   ENABLED="${ENABLED:-0}"
+    MODE=$(uci -q get hamax.settings.mode);                         MODE="${MODE:-auto}"
+    PROFILE=$(uci -q get hamax.settings.profile);                   PROFILE="${PROFILE:-ptmp}"
+    RADIO_OVERRIDE=$(uci -q get hamax.settings.radio)
+    DISTANCE=$(uci -q get hamax.settings.distance);                 DISTANCE="${DISTANCE:-5000}"
+    BEACON_INT=$(uci -q get hamax.settings.beacon_int);             BEACON_INT="${BEACON_INT:-100}"
+    DTIM=$(uci -q get hamax.settings.dtim_period);                  DTIM="${DTIM:-1}"
+    RTS=$(uci -q get hamax.settings.rts);                           RTS="${RTS:-512}"
+    MCAST_RATE=$(uci -q get hamax.settings.mcast_rate);             MCAST_RATE="${MCAST_RATE:-24000}"
+    TXPOWER=$(uci -q get hamax.settings.txpower)
+    SHORT_GI=$(uci -q get hamax.settings.short_gi);                 SHORT_GI="${SHORT_GI:-1}"
+    NOSCAN=$(uci -q get hamax.settings.noscan);                     NOSCAN="${NOSCAN:-1}"
+    LEGACY_OFF=$(uci -q get hamax.settings.disable_legacy_rates);   LEGACY_OFF="${LEGACY_OFF:-1}"
+    WDS=$(uci -q get hamax.settings.wds);                           WDS="${WDS:-1}"
+    ATF=$(uci -q get hamax.settings.airtime);                       ATF="${ATF:-1}"
+    ATF_MODE=$(uci -q get hamax.settings.airtime_mode);             ATF_MODE="${ATF_MODE:-2}"
+    ATF_UPDATE=$(uci -q get hamax.settings.airtime_update_interval); ATF_UPDATE="${ATF_UPDATE:-200}"
+    VENDOR_IE=$(uci -q get hamax.settings.vendor_ie);               VENDOR_IE="${VENDOR_IE:-1}"
 
-    ENABLED="${ENABLED:-0}"
-    MODE="${MODE:-ap}"
-    BEACON_INT="${BEACON_INT:-50}"
-    DTIM="${DTIM:-1}"
-    ATF_MODE="${ATF_MODE:-2}"
-    ATF_UPDATE="${ATF_UPDATE:-200}"
-    TXPOWER_CAP="${TXPOWER_CAP:-27}"
-    WDS="${WDS:-1}"
-    SHORT_GI="${SHORT_GI:-1}"
-    AMPDU="${AMPDU:-1}"
-}
-
-hamax_get_ap_ifaces() {
-    ls /var/run/hostapd/ 2>/dev/null | sed 's/\.conf//'
-}
-
-hamax_get_sta_ifaces() {
-    iw dev 2>/dev/null | awk '$1=="Interface"{print $2}' | while read -r ifn; do
-        if iw dev "$ifn" info 2>/dev/null | grep -q 'type managed'; then
-            echo "$ifn"
-        fi
-    done
-}
-
-# Apply WDS (4-Address mode) across wireless configurations
-hamax_apply_wds() {
-    local enable_wds="$1"
-    local changed=0
-
-    for iface in $(uci show wireless | grep '=wifi-iface' | cut -d. -f2 | cut -d= -f1); do
-        local curr_wds
-        curr_wds=$(uci -q get "wireless.${iface}.wds")
-        if [ "$curr_wds" != "$enable_wds" ]; then
-            uci set "wireless.${iface}.wds=$enable_wds"
-            changed=1
-        fi
-    done
-
-    if [ "$changed" = "1" ]; then
-        uci commit wireless
-        hamax_log "WDS 4-address mode updated to '$enable_wds' in UCI"
+    # A point-to-point backhaul has exactly one peer, so there is no
+    # hidden node to protect against and nothing to share airtime with.
+    if [ "$PROFILE" = "ptp" ]; then
+        RTS="0"
+        ATF="0"
     fi
 }
 
-# Apply ATF (Airtime Fairness) to hostapd interfaces
-hamax_apply_atf() {
-    local iface="$1"
-    local ctrl="/var/run/hostapd/${iface}"
-
-    [ -S "$ctrl" ] || return 1
-
-    hamax_log "Applying ATF (mode=$ATF_MODE, update=${ATF_UPDATE}ms) to $iface"
-    hostapd_cli -i "$iface" set airtime_mode "$ATF_MODE" 2>/dev/null
-    hostapd_cli -i "$iface" set airtime_update_interval "$ATF_UPDATE" 2>/dev/null
+# ---------------------------------------------------------------------
+# radio discovery - 5 GHz only
+# ---------------------------------------------------------------------
+hamax_wifi_devices() {
+    uci -q show wireless | sed -n 's/^wireless\.\([^.=]*\)=wifi-device$/\1/p'
 }
 
-# Inject HAMax Vendor IE into beacon & probe responses
-hamax_inject_vendor_ie() {
-    local iface="$1"
-    local ctrl="/var/run/hostapd/${iface}"
-    local ie_hex
-
-    [ "$MODE" = "ap" ] && ie_hex="$HAMAX_VENDOR_IE_AP" || ie_hex="$HAMAX_VENDOR_IE_STA"
-
-    [ -S "$ctrl" ] || return 1
-
-    hamax_log "Broadcasting HAMax Vendor signature ($ie_hex) on $iface"
-    hostapd_cli -i "$iface" vendor_elements "$ie_hex" 2>/dev/null || true
+hamax_wifi_ifaces() {
+    uci -q show wireless | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p'
 }
 
-# Tune beacon interval and DTIM
-hamax_tune_beacons() {
-    local changed=0
-    for radio in radio0 radio1; do
-        local cur_b cur_d
-        cur_b=$(uci -q get "wireless.${radio}.beacon_int")
-        cur_d=$(uci -q get "wireless.${radio}.dtim_period")
+# Returns the name of the 5 GHz wifi-device, or nothing if there is none.
+# Never returns a 2.4 GHz radio: that is the whole point of the profile.
+hamax_find_radio() {
+    local dev band hwmode
 
-        if [ "$cur_b" != "$BEACON_INT" ]; then
-            uci set "wireless.${radio}.beacon_int=$BEACON_INT"
-            changed=1
+    if [ -n "$RADIO_OVERRIDE" ]; then
+        band=$(uci -q get "wireless.${RADIO_OVERRIDE}.band")
+        hwmode=$(uci -q get "wireless.${RADIO_OVERRIDE}.hwmode")
+        if [ "$band" = "5g" ] || [ "$hwmode" = "11a" ]; then
+            echo "$RADIO_OVERRIDE"
+            return 0
         fi
-        if [ "$cur_d" != "$DTIM" ]; then
-            uci set "wireless.${radio}.dtim_period=$DTIM"
-            changed=1
+        hamax_log "WARNING: radio override '$RADIO_OVERRIDE' is not a 5 GHz radio, ignoring it"
+    fi
+
+    for dev in $(hamax_wifi_devices); do
+        band=$(uci -q get "wireless.${dev}.band")
+        hwmode=$(uci -q get "wireless.${dev}.hwmode")
+        if [ "$band" = "5g" ] || [ "$hwmode" = "11a" ]; then
+            echo "$dev"
+            return 0
         fi
     done
 
-    if [ "$changed" = "1" ]; then
-        uci commit wireless
-        hamax_log "Low-latency beacon timing saved (beacon_int=$BEACON_INT, dtim=$DTIM)"
+    return 1
+}
+
+hamax_ifaces_on_radio() {
+    local radio="$1" s
+    for s in $(hamax_wifi_ifaces); do
+        [ "$(uci -q get "wireless.${s}.device")" = "$radio" ] && echo "$s"
+    done
+}
+
+# The configured role is taken from the interface itself, so HAMax tunes
+# whatever the device is already set up as instead of restructuring it.
+hamax_detect_role() {
+    local radio="$1" i m
+    for i in $(hamax_ifaces_on_radio "$radio"); do
+        m=$(uci -q get "wireless.${i}.mode")
+        [ "$m" = "sta" ] && { echo "client"; return 0; }
+    done
+    echo "ap"
+}
+
+hamax_role() {
+    local radio="$1"
+    case "$MODE" in
+        ap|client) echo "$MODE" ;;
+        *)         hamax_detect_role "$radio" ;;
+    esac
+}
+
+# Live netdev names belonging to the 5 GHz radio, via netifd, so we
+# never report or touch an interface that lives on the 2.4 GHz phy.
+hamax_live_ifnames() {
+    local radio="$1" out
+
+    out=$(ubus call network.wireless status 2>/dev/null |
+          jsonfilter -e "@['${radio}'].interfaces[*].ifname" 2>/dev/null)
+
+    if [ -z "$out" ]; then
+        # netifd unavailable: fall back to the phy that owns the radio
+        local phy
+        phy=$(hamax_phy_for_radio "$radio")
+        [ -n "$phy" ] && out=$(iw dev 2>/dev/null | awk -v want="$phy" '
+            /^phy#/    { cur = "phy" substr($1, 5) }
+            $1 == "Interface" { if (cur == want) print $2 }
+        ')
+    fi
+
+    echo "$out"
+}
+
+hamax_phy_for_radio() {
+    local radio="$1" path p
+    path=$(uci -q get "wireless.${radio}.path")
+    [ -n "$path" ] || return 1
+    for p in /sys/class/ieee80211/phy*; do
+        [ -e "$p" ] || continue
+        case "$(readlink -f "$p" 2>/dev/null)" in
+            *"$path"*) basename "$p"; return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# ---------------------------------------------------------------------
+# capability probing
+#
+# hostapd aborts on an unknown configuration directive, which would take
+# the 5 GHz radio down. So every directive HAMax injects is checked
+# against the actual binary first, and skipped (and reported) when the
+# build does not carry it.
+# ---------------------------------------------------------------------
+CAP_AIRTIME=0
+CAP_VENDOR_IE=0
+CAP_ATF_KERNEL=0
+
+hamax_probe_caps() {
+    local bin="" b
+
+    for b in /usr/sbin/hostapd /usr/sbin/wpad; do
+        [ -e "$b" ] && { bin="$b"; break; }
+    done
+
+    if [ -n "$bin" ]; then
+        grep -aq 'airtime_update_interval' "$bin" 2>/dev/null && CAP_AIRTIME=1
+        grep -aq 'vendor_elements' "$bin" 2>/dev/null && CAP_VENDOR_IE=1
+    fi
+
+    # mac80211 must also carry the airtime scheduler for the hostapd
+    # policy to have anything to drive. Check the 5 GHz phy specifically
+    # when we know it, since that is the only radio HAMax drives.
+    local phy=""
+    [ -n "$RADIO" ] && phy=$(hamax_phy_for_radio "$RADIO")
+
+    if [ -e /sys/module/mac80211/parameters/airtime_flags ]; then
+        CAP_ATF_KERNEL=1
+    elif [ -n "$phy" ] && grep -q 'airtime' "/sys/kernel/debug/ieee80211/${phy}/aqm" 2>/dev/null; then
+        CAP_ATF_KERNEL=1
     fi
 }
 
-hamax_restore_beacons() {
-    for radio in radio0 radio1; do
-        uci set "wireless.${radio}.beacon_int=100"
-        uci set "wireless.${radio}.dtim_period=2"
+# ---------------------------------------------------------------------
+# backup / restore
+#
+# Nothing is written to /etc/config/wireless before its previous value
+# is recorded. "@@UNSET@@" means the option did not exist, so disable
+# deletes it rather than inventing a default.
+# ---------------------------------------------------------------------
+hamax_backup_init() {
+    mkdir -p "$HAMAX_DIR"
+    [ -f "$HAMAX_BACKUP" ] || : > "$HAMAX_BACKUP"
+}
+
+hamax_set() {
+    local key="$1" val="$2" old
+
+    if ! grep -q "^O:${key}=" "$HAMAX_BACKUP" 2>/dev/null; then
+        old=$(uci -q get "$key")
+        if [ -n "$old" ]; then
+            echo "O:${key}=${old}" >> "$HAMAX_BACKUP"
+        else
+            echo "O:${key}=@@UNSET@@" >> "$HAMAX_BACKUP"
+        fi
+    fi
+
+    uci -q set "${key}=${val}"
+}
+
+hamax_del() {
+    local key="$1" old
+
+    if ! grep -q "^O:${key}=" "$HAMAX_BACKUP" 2>/dev/null; then
+        old=$(uci -q get "$key")
+        if [ -n "$old" ]; then
+            echo "O:${key}=${old}" >> "$HAMAX_BACKUP"
+        else
+            echo "O:${key}=@@UNSET@@" >> "$HAMAX_BACKUP"
+        fi
+    fi
+
+    uci -q delete "$key" 2>/dev/null
+}
+
+# Values in these lists (rates in kbps, "key=value" hostapd directives)
+# never contain whitespace, so a space-joined round trip is lossless.
+hamax_set_list() {
+    local key="$1" old v
+    shift
+
+    if ! grep -q "^L:${key}=" "$HAMAX_BACKUP" 2>/dev/null; then
+        old=$(uci -q get "$key")
+        if [ -n "$old" ]; then
+            echo "L:${key}=${old}" >> "$HAMAX_BACKUP"
+        else
+            echo "L:${key}=@@UNSET@@" >> "$HAMAX_BACKUP"
+        fi
+    fi
+
+    uci -q delete "$key" 2>/dev/null
+    for v in "$@"; do
+        uci -q add_list "${key}=${v}"
     done
+}
+
+hamax_restore() {
+    local line key val v
+
+    [ -f "$HAMAX_BACKUP" ] || { hamax_log "no backup file, nothing to restore"; return 0; }
+
+    while IFS= read -r line; do
+        case "$line" in
+            O:*)
+                line="${line#O:}"
+                key="${line%%=*}"
+                val="${line#*=}"
+                [ -n "$key" ] || continue
+                if [ "$val" = "@@UNSET@@" ]; then
+                    uci -q delete "$key" 2>/dev/null
+                else
+                    uci -q set "${key}=${val}"
+                fi
+                ;;
+            L:*)
+                line="${line#L:}"
+                key="${line%%=*}"
+                val="${line#*=}"
+                [ -n "$key" ] || continue
+                uci -q delete "$key" 2>/dev/null
+                if [ "$val" != "@@UNSET@@" ]; then
+                    for v in $val; do
+                        uci -q add_list "${key}=${v}"
+                    done
+                fi
+                ;;
+        esac
+    done < "$HAMAX_BACKUP"
+
     uci commit wireless
-    hamax_log "Restored standard IEEE 802.11 beacon timing (beacon_int=100, dtim=2)"
+    rm -f "$HAMAX_BACKUP"
+    hamax_log "restored the 5 GHz radio to its pre-HAMax configuration"
 }
 
-# Optimize kernel network stack for high-throughput TDMA wireless bridging
-hamax_tune_kernel() {
-    # Increase network buffer limits for aggregated A-MPDU bursts
-    sysctl -w net.core.rmem_max=4194304 >/dev/null 2>&1
-    sysctl -w net.core.wmem_max=4194304 >/dev/null 2>&1
-    sysctl -w net.core.netdev_max_backlog=5000 >/dev/null 2>&1
+# ---------------------------------------------------------------------
+# apply
+# ---------------------------------------------------------------------
+hamax_apply_radio() {
+    local radio="$1"
 
-    # Disable bridge IGMP/multicast snooping overhead if present
-    if [ -d /sys/devices/virtual/net/br-lan/bridge ]; then
-        echo 0 > /sys/devices/virtual/net/br-lan/bridge/multicast_snooping 2>/dev/null || true
+    hamax_set "wireless.${radio}.distance" "$DISTANCE"
+    hamax_set "wireless.${radio}.beacon_int" "$BEACON_INT"
+
+    if [ "$NOSCAN" = "1" ]; then
+        hamax_set "wireless.${radio}.noscan" "1"
     fi
-}
 
-# Collect live telemetry for LuCI UI
-hamax_telemetry() {
-    local report="/tmp/hamax.stations"
-    : > "$report"
-    echo "# HAMax Telemetry - $(date)" >> "$report"
-
-    if [ "$MODE" = "ap" ]; then
-        echo "# TYPE=AP" >> "$report"
-        echo "# iface | MAC | signal | tx_bytes | rx_bytes | airtime_weight" >> "$report"
-        for iface in $(hamax_get_ap_ifaces); do
-            iw dev "$iface" station dump 2>/dev/null | awk -v iface="$iface" '
-            /Station/ { mac=$2 }
-            /signal:/ { sig=$2 }
-            /tx bytes:/ { txb=$3 }
-            /rx bytes:/ { rxb=$3 }
-            /airtime weight:/ { weight=$3; print iface " | " mac " | " sig " dBm | tx:" txb " | rx:" rxb " | weight:" weight }
-            ' >> "$report"
-        done
+    # rts=0 means "leave RTS/CTS alone"; a PtP link has no hidden node.
+    if [ "${RTS:-0}" -gt 0 ] 2>/dev/null; then
+        hamax_set "wireless.${radio}.rts" "$RTS"
     else
-        echo "# TYPE=CLIENT" >> "$report"
-        echo "# iface | Connected AP BSSID | signal | bitrate | freq" >> "$report"
-        for iface in $(hamax_get_sta_ifaces); do
-            local link_info
-            link_info=$(iw dev "$iface" link 2>/dev/null)
-            if echo "$link_info" | grep -q 'Connected to'; then
-                local ap_bssid sig freq txrate
-                ap_bssid=$(echo "$link_info" | awk '/Connected to/{print $3}')
-                sig=$(echo "$link_info" | awk '/signal:/{print $2 " " $3}')
-                freq=$(echo "$link_info" | awk '/freq:/{print $2}')
-                txrate=$(echo "$link_info" | awk -F: '/tx bitrate:/{print $2}' | xargs)
-                echo "$iface | $ap_bssid | $sig | $txrate | ${freq}MHz" >> "$report"
-            else
-                echo "$iface | Searching for HAMax AP... | N/A | N/A | N/A" >> "$report"
-            fi
-        done
+        hamax_del "wireless.${radio}.rts"
     fi
 
-    cat "$report"
+    if [ "$SHORT_GI" = "1" ]; then
+        hamax_set "wireless.${radio}.short_gi_20" "1"
+        hamax_set "wireless.${radio}.short_gi_40" "1"
+        hamax_set "wireless.${radio}.short_gi_80" "1"
+    fi
+
+    # OFDM only. cell_density 0 stops OpenWrt from second-guessing the
+    # basic rate set we install below.
+    if [ "$LEGACY_OFF" = "1" ]; then
+        hamax_set "wireless.${radio}.legacy_rates" "0"
+        hamax_set "wireless.${radio}.cell_density" "0"
+    fi
+
+    [ -n "$TXPOWER" ] && hamax_set "wireless.${radio}.txpower" "$TXPOWER"
+
+    # channel, htmode, country and country_ie are deliberately untouched:
+    # they are the operator's regulatory and RF decisions, and the
+    # existing wireless config documents why channel 36 is pinned.
 }
 
-# Main enable sequence
-hamax_enable() {
-    hamax_log "=========================================================="
-    hamax_log "Activating HAMax (Horus AirMax Protocol) - Mode: $MODE"
-    hamax_log "=========================================================="
+hamax_apply_iface() {
+    local iface="$1" role="$2" imode ie
 
-    hamax_tune_kernel
+    imode=$(uci -q get "wireless.${iface}.mode")
 
-    if [ "$WDS" = "1" ]; then
-        hamax_apply_wds "1"
-    fi
+    [ "$WDS" = "1" ] && hamax_set "wireless.${iface}.wds" "1"
 
-    if [ "$MODE" = "ap" ]; then
-        hamax_tune_beacons
-        for iface in $(hamax_get_ap_ifaces); do
-            hamax_apply_atf "$iface"
-            hamax_inject_vendor_ie "$iface"
-        done
-    else
-        hamax_log "Configuring Station/CPE WDS optimization for HAMax connection"
-    fi
+    hamax_set "wireless.${iface}.mcast_rate" "$MCAST_RATE"
 
-    echo "enabled" > "$HAMAX_STATE"
-    echo "$MODE" >> "$HAMAX_STATE"
-    echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$HAMAX_STATE"
-
-    hamax_telemetry >/dev/null 2>&1
-    hamax_log "HAMax activated successfully."
-}
-
-# Main disable sequence
-hamax_disable() {
-    hamax_log "Deactivating HAMax Protocol - Returning to standard IEEE 802.11"
-
-    for iface in $(hamax_get_ap_ifaces); do
-        if [ -S "/var/run/hostapd/$iface" ]; then
-            hostapd_cli -i "$iface" set airtime_mode 0 2>/dev/null || true
-            hostapd_cli -i "$iface" vendor_elements "" 2>/dev/null || true
+    if [ "$LEGACY_OFF" = "1" ]; then
+        if [ "$PROFILE" = "ptp" ]; then
+            hamax_set_list "wireless.${iface}.basic_rate" 54000
+        else
+            hamax_set_list "wireless.${iface}.basic_rate" 24000 54000
         fi
+    fi
+
+    # Everything below is hostapd-side and only exists on an AP.
+    [ "$imode" = "ap" ] || return 0
+
+    hamax_set "wireless.${iface}.dtim_period" "$DTIM"
+
+    # A fixed CPE on a tower should not be dropped for a few missed
+    # ACKs, and it has no battery to save.
+    hamax_set "wireless.${iface}.disassoc_low_ack" "0"
+
+    set --
+
+    if [ "$VENDOR_IE" = "1" ] && [ "$CAP_VENDOR_IE" = "1" ]; then
+        [ "$role" = "client" ] && ie="$HAMAX_IE_STA" || ie="$HAMAX_IE_AP"
+        set -- "$@" "vendor_elements=${ie}"
+    fi
+
+    if [ "$ATF" = "1" ] && [ "$CAP_AIRTIME" = "1" ]; then
+        set -- "$@" "airtime_mode=${ATF_MODE}" \
+                    "airtime_update_interval=${ATF_UPDATE}" \
+                    "airtime_bss_weight=1"
+    fi
+
+    set -- "$@" "uapsd_advertisement_enabled=0"
+
+    hamax_set_list "wireless.${iface}.hostapd_options" "$@"
+}
+
+# Reloads only the 5 GHz radio. netifd brings that one wifi-device down
+# and back up; the 2.4 GHz radio keeps running.
+hamax_reload_radio() {
+    local radio="$1"
+
+    uci commit wireless
+
+    if [ -x /sbin/wifi ]; then
+        /sbin/wifi up "$radio" >/dev/null 2>&1 && {
+            hamax_log "reloaded $radio (5 GHz) to apply the new configuration"
+            return 0
+        }
+    fi
+
+    ubus call network.wireless down "{\"device\":\"$radio\"}" >/dev/null 2>&1
+    ubus call network.wireless up   "{\"device\":\"$radio\"}" >/dev/null 2>&1
+    hamax_log "reloaded $radio (5 GHz) via ubus"
+}
+
+# ---------------------------------------------------------------------
+# telemetry
+# ---------------------------------------------------------------------
+hamax_json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+# Each helper prints one JSON object per line; the trailing pipeline
+# turns those lines into a comma-separated array body. Empty input
+# yields empty output, which is a valid empty array.
+hamax_join_json_lines() {
+    sed '$!s/$/,/' | tr -d '\n'
+}
+
+hamax_ap_links_json() {
+    local ifname
+
+    for ifname in $(hamax_live_ifnames "$RADIO"); do
+        iw dev "$ifname" info 2>/dev/null | grep -q 'type AP' || continue
+
+        iw dev "$ifname" station dump 2>/dev/null | awk -v iface="$ifname" '
+            function emit() {
+                if (mac == "") return
+                printf("{\"iface\":\"%s\",\"mac\":\"%s\",\"signal\":\"%s\",\"signal_avg\":\"%s\",\"tx_bytes\":\"%s\",\"rx_bytes\":\"%s\",\"tx_rate\":\"%s\",\"rx_rate\":\"%s\",\"expected\":\"%s\",\"weight\":\"%s\",\"inactive\":\"%s\",\"connected\":\"%s\",\"tx_retries\":\"%s\",\"tx_failed\":\"%s\"}\n",
+                       iface, mac, sig, sigavg, txb, rxb, txr, rxr, ethr, wt, inact, conn, retries, failed)
+                mac = ""; sig = ""; sigavg = ""; txb = ""; rxb = ""; txr = ""; rxr = ""
+                ethr = ""; wt = ""; inact = ""; conn = ""; retries = ""; failed = ""
+            }
+            /^Station/              { emit(); mac = $2; next }
+            /inactive time:/        { inact   = $3 }
+            /rx bytes:/             { rxb     = $3 }
+            /tx bytes:/             { txb     = $3 }
+            /tx retries:/           { retries = $3 }
+            /tx failed:/            { failed  = $3 }
+            /signal:/               { sig     = $2 }
+            /signal avg:/           { sigavg  = $3 }
+            /tx bitrate:/           { txr     = $3 }
+            /rx bitrate:/           { rxr     = $3 }
+            /expected throughput:/  { ethr    = $3 }
+            /airtime weight:/       { wt      = $3 }
+            /connected time:/       { conn    = $3 }
+            END                     { emit() }
+        '
+    done | hamax_join_json_lines
+}
+
+hamax_sta_links_json() {
+    local ifname info
+
+    for ifname in $(hamax_live_ifnames "$RADIO"); do
+        iw dev "$ifname" info 2>/dev/null | grep -q 'type managed' || continue
+
+        info=$(iw dev "$ifname" link 2>/dev/null)
+
+        if echo "$info" | grep -q '^Connected to'; then
+            # "RX:"/"TX:" are the byte counters; the bitrate lines are
+            # lowercase ("rx bitrate:"), so the patterns cannot collide.
+            printf '%s\n' "$info" | awk -v iface="$ifname" '
+                /^Connected to/ { bssid = $3 }
+                /SSID:/         { ssid  = $2 }
+                /freq:/         { freq  = $2 }
+                /signal:/       { sig   = $2 }
+                /rx bitrate:/   { rxr   = $3 }
+                /tx bitrate:/   { txr   = $3 }
+                /RX:/           { rxb   = $2 }
+                /TX:/           { txb   = $2 }
+                END {
+                    printf("{\"iface\":\"%s\",\"connected\":true,\"bssid\":\"%s\",\"ssid\":\"%s\",\"freq\":\"%s\",\"signal\":\"%s\",\"tx_rate\":\"%s\",\"rx_rate\":\"%s\",\"tx_bytes\":\"%s\",\"rx_bytes\":\"%s\"}\n",
+                           iface, bssid, ssid, freq, sig, txr, rxr, txb, rxb)
+                }
+            '
+        else
+            printf '{"iface":"%s","connected":false}\n' "$(hamax_json_escape "$ifname")"
+        fi
+    done | hamax_join_json_lines
+}
+
+hamax_write_json() {
+    local state role since links radio_band chan htmode
+
+    state="disabled"
+    [ "$(uci -q get hamax.settings.enabled)" = "1" ] && state="enabled"
+
+    since=$(cat "$HAMAX_SINCE" 2>/dev/null)
+
+    if [ -n "$RADIO" ]; then
+        role=$(hamax_role "$RADIO")
+        radio_band=$(uci -q get "wireless.${RADIO}.band")
+        chan=$(uci -q get "wireless.${RADIO}.channel")
+        htmode=$(uci -q get "wireless.${RADIO}.htmode")
+
+        if [ "$role" = "client" ]; then
+            links=$(hamax_sta_links_json)
+        else
+            links=$(hamax_ap_links_json)
+        fi
+    else
+        role="ap"
+        links=""
+    fi
+
+    cat > "$HAMAX_JSON" <<EOF
+{
+  "state": "$(hamax_json_escape "$state")",
+  "role": "$(hamax_json_escape "$role")",
+  "profile": "$(hamax_json_escape "$PROFILE")",
+  "radio": "$(hamax_json_escape "${RADIO:-}")",
+  "band": "$(hamax_json_escape "${radio_band:-}")",
+  "channel": "$(hamax_json_escape "${chan:-}")",
+  "htmode": "$(hamax_json_escape "${htmode:-}")",
+  "since": "$(hamax_json_escape "${since:-}")",
+  "updated": "$(date '+%Y-%m-%d %H:%M:%S')",
+  "caps": {
+    "airtime_hostapd": $([ "$CAP_AIRTIME" = "1" ] && echo true || echo false),
+    "airtime_kernel": $([ "$CAP_ATF_KERNEL" = "1" ] && echo true || echo false),
+    "vendor_ie": $([ "$CAP_VENDOR_IE" = "1" ] && echo true || echo false)
+  },
+  "links": [${links}]
+}
+EOF
+}
+
+# ---------------------------------------------------------------------
+# commands
+# ---------------------------------------------------------------------
+hamax_require_radio() {
+    if [ -z "$RADIO" ]; then
+        hamax_log "ERROR: no 5 GHz radio found in /etc/config/wireless - HAMax does nothing"
+        return 1
+    fi
+    return 0
+}
+
+hamax_enable() {
+    local role iface
+
+    hamax_require_radio || return 1
+
+    role=$(hamax_role "$RADIO")
+
+    hamax_log "=========================================================="
+    hamax_log "enabling HAMax on $RADIO (5 GHz) - role=$role profile=$PROFILE"
+    hamax_log "2.4 GHz radio is not touched"
+
+    if [ "$CAP_AIRTIME" != "1" ]; then
+        hamax_log "NOTE: this hostapd build has no airtime policy support; airtime fairness is skipped"
+    elif [ "$CAP_ATF_KERNEL" != "1" ]; then
+        hamax_log "NOTE: mac80211 airtime scheduler not detected; airtime weights may have no effect"
+    fi
+    [ "$CAP_VENDOR_IE" = "1" ] || hamax_log "NOTE: hostapd has no vendor_elements support; the HAMax IE is skipped"
+
+    hamax_backup_init
+    hamax_apply_radio "$RADIO"
+
+    for iface in $(hamax_ifaces_on_radio "$RADIO"); do
+        hamax_apply_iface "$iface" "$role"
+        hamax_log "configured interface $iface"
     done
 
-    hamax_restore_beacons
+    hamax_reload_radio "$RADIO"
 
-    echo "disabled" > "$HAMAX_STATE"
-    echo "$MODE" >> "$HAMAX_STATE"
-    echo "$(date '+%Y-%m-%d %H:%M:%S')" >> "$HAMAX_STATE"
+    mkdir -p "$HAMAX_DIR"
+    date '+%Y-%m-%d %H:%M:%S' > "$HAMAX_SINCE"
 
-    hamax_telemetry >/dev/null 2>&1
-    hamax_log "HAMax deactivated successfully."
+    hamax_write_json
+    hamax_log "HAMax enabled"
 }
 
-# Status report
+hamax_disable() {
+    hamax_log "disabling HAMax - restoring the 5 GHz radio"
+
+    hamax_restore
+
+    if [ -n "$RADIO" ]; then
+        hamax_reload_radio "$RADIO"
+    fi
+
+    rm -f "$HAMAX_SINCE"
+    hamax_write_json
+    hamax_log "HAMax disabled"
+}
+
+hamax_check() {
+    echo "HAMax capability report"
+    echo "======================="
+    echo "5 GHz radio          : ${RADIO:-NOT FOUND}"
+    if [ -n "$RADIO" ]; then
+        echo "  band               : $(uci -q get "wireless.${RADIO}.band")"
+        echo "  channel            : $(uci -q get "wireless.${RADIO}.channel")"
+        echo "  htmode             : $(uci -q get "wireless.${RADIO}.htmode")"
+        echo "  detected role      : $(hamax_role "$RADIO")"
+        echo "  interfaces         : $(hamax_ifaces_on_radio "$RADIO" | tr '\n' ' ')"
+        echo "  live netdevs       : $(hamax_live_ifnames "$RADIO" | tr '\n' ' ')"
+    fi
+    echo
+    echo "hostapd airtime policy : $([ "$CAP_AIRTIME" = "1" ] && echo "supported" || echo "NOT SUPPORTED (needs full wpad)")"
+    echo "mac80211 airtime sched : $([ "$CAP_ATF_KERNEL" = "1" ] && echo "detected" || echo "not detected")"
+    echo "hostapd vendor_elements: $([ "$CAP_VENDOR_IE" = "1" ] && echo "supported" || echo "NOT SUPPORTED")"
+    echo
+    echo "backup file            : $([ -f "$HAMAX_BACKUP" ] && echo "$HAMAX_BACKUP ($(wc -l < "$HAMAX_BACKUP") entries)" || echo "none (HAMax not applied)")"
+}
+
 hamax_status() {
-    local state mode since
-    state=$(head -1 "$HAMAX_STATE" 2>/dev/null || echo "disabled")
-    mode=$(sed -n '2p' "$HAMAX_STATE" 2>/dev/null || echo "ap")
-    since=$(sed -n '3p' "$HAMAX_STATE" 2>/dev/null || echo "N/A")
-
-    echo "==============================="
-    echo " HAMax Protocol Status Report"
-    echo "==============================="
-    echo " State : $state"
-    echo " Mode  : $mode"
-    echo " Since : $since"
-    echo ""
-    echo "--- Live Telemetry ---"
-    hamax_telemetry
+    hamax_write_json
+    cat "$HAMAX_JSON"
 }
 
-# Entry point
+# ---------------------------------------------------------------------
+# entry point
+# ---------------------------------------------------------------------
 hamax_read_config
+RADIO=$(hamax_find_radio)
+hamax_probe_caps
 
 case "$1" in
-    enable)
-        hamax_enable
-        ;;
-    disable)
-        hamax_disable
-        ;;
-    status)
-        hamax_status
-        ;;
-    toggle)
-        cur_st=$(head -1 "$HAMAX_STATE" 2>/dev/null)
-        if [ "$cur_st" = "enabled" ]; then
-            hamax_disable
-        else
+    enable)     hamax_enable ;;
+    disable)    hamax_disable ;;
+    status)     hamax_status ;;
+    telemetry)  hamax_write_json; cat "$HAMAX_JSON" ;;
+    check)      hamax_check ;;
+    log-clear)  : > "$HAMAX_LOG"; hamax_log "log cleared" ;;
+    apply)
+        if [ "$ENABLED" = "1" ]; then
             hamax_enable
+        else
+            hamax_log "apply requested but HAMax is disabled; nothing to do"
         fi
         ;;
-    telemetry|monitor)
-        hamax_telemetry
-        ;;
-    apply)
-        if [ "$(head -1 $HAMAX_STATE 2>/dev/null)" = "enabled" ]; then
-            hamax_log "Re-applying dynamic hooks..."
-            for iface in $(hamax_get_ap_ifaces); do
-                hamax_apply_atf "$iface"
-                hamax_inject_vendor_ie "$iface"
-            done
+    toggle)
+        if [ "$ENABLED" = "1" ]; then
+            uci -q set hamax.settings.enabled=0; uci commit hamax
+            hamax_read_config; hamax_disable
+        else
+            uci -q set hamax.settings.enabled=1; uci commit hamax
+            hamax_read_config; hamax_enable
         fi
         ;;
     *)
-        echo "Usage: hamax {enable|disable|status|toggle|telemetry|apply}"
+        echo "Usage: hamax {enable|disable|apply|toggle|status|telemetry|check|log-clear}"
         exit 1
         ;;
 esac

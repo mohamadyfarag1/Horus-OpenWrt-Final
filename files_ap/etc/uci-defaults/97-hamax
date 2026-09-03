@@ -1,0 +1,13 @@
+#!/bin/sh
+# Register the HAMax service so the "enabled" flag actually survives a
+# reboot. The image ships no /etc/rc.d symlinks, so without this the
+# init script is present but never started at boot and the 5 GHz
+# profile silently fails to come back after a power cycle.
+#
+# Enabling the service is not the same as enabling the profile: the
+# init script re-checks hamax.settings.enabled and does nothing when
+# it is 0.
+
+[ -x /etc/init.d/hamax ] && /etc/init.d/hamax enable
+
+exit 0

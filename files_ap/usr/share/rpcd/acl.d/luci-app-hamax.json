@@ -1,21 +1,18 @@
 {
 	"luci-app-hamax": {
-		"description": "Grant access to HAMax protocol settings and state",
+		"description": "Grant access to the HAMax 5 GHz link profile",
 		"read": {
 			"uci": [ "hamax", "wireless" ],
 			"file": {
-				"/tmp/hamax.state": [ "read" ],
-				"/tmp/hamax.stations": [ "read" ],
-				"/tmp/hamax.log": [ "read" ]
+				"/tmp/hamax.json": [ "read" ],
+				"/tmp/hamax.log": [ "read" ],
+				"/usr/bin/hamax": [ "exec" ]
 			}
 		},
 		"write": {
 			"uci": [ "hamax", "wireless" ],
 			"file": {
-				"/tmp/hamax.state": [ "write" ],
-				"/tmp/hamax.log": [ "write" ],
-				"/usr/bin/hamax": [ "exec" ],
-				"/bin/sh": [ "exec" ]
+				"/usr/bin/hamax": [ "exec" ]
 			}
 		}
 	}
