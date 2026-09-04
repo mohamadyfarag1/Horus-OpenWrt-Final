@@ -404,39 +404,57 @@ hamax_set_list() {
 hamax_restore() {
     local line key val v
 
-    [ -f "$HAMAX_BACKUP" ] || { hamax_log "no backup file, nothing to restore"; return 0; }
-
-    while IFS= read -r line; do
-        case "$line" in
-            O:*)
-                line="${line#O:}"
-                key="${line%%=*}"
-                val="${line#*=}"
-                [ -n "$key" ] || continue
-                if [ "$val" = "@@UNSET@@" ]; then
+    if [ -f "$HAMAX_BACKUP" ]; then
+        while IFS= read -r line; do
+            case "$line" in
+                O:*)
+                    line="${line#O:}"
+                    key="${line%%=*}"
+                    val="${line#*=}"
+                    [ -n "$key" ] || continue
+                    if [ "$val" = "@@UNSET@@" ]; then
+                        uci -q delete "$key" 2>/dev/null
+                    else
+                        uci -q set "${key}=${val}"
+                    fi
+                    ;;
+                L:*)
+                    line="${line#L:}"
+                    key="${line%%=*}"
+                    val="${line#*=}"
+                    [ -n "$key" ] || continue
                     uci -q delete "$key" 2>/dev/null
-                else
-                    uci -q set "${key}=${val}"
-                fi
-                ;;
-            L:*)
-                line="${line#L:}"
-                key="${line%%=*}"
-                val="${line#*=}"
-                [ -n "$key" ] || continue
-                uci -q delete "$key" 2>/dev/null
-                if [ "$val" != "@@UNSET@@" ]; then
-                    for v in $val; do
-                        uci -q add_list "${key}=${v}"
-                    done
-                fi
-                ;;
-        esac
-    done < "$HAMAX_BACKUP"
+                    if [ "$val" != "@@UNSET@@" ]; then
+                        for v in $val; do
+                            uci -q add_list "${key}=${v}"
+                        done
+                    fi
+                    ;;
+            esac
+        done < "$HAMAX_BACKUP"
+        rm -f "$HAMAX_BACKUP"
+        hamax_log "restored the 5 GHz radio from backup configuration"
+    else
+        hamax_log "no backup file found; restoring standard 802.11 defaults on 5 GHz radio"
+        for iface in $(hamax_ifaces_on_radio "$RADIO"); do
+            uci -q delete "wireless.${iface}.hidden"
+            uci -q delete "wireless.${iface}.hostapd_options"
+            uci -q delete "wireless.${iface}.disassoc_low_ack"
+            uci -q delete "wireless.${iface}.basic_rate"
+            local cur_key
+            cur_key=$(uci -q get "wireless.${iface}.key")
+            if [ "$cur_key" = "$LOCK_KEY" ]; then
+                uci -q set "wireless.${iface}.encryption=none"
+                uci -q delete "wireless.${iface}.key"
+            fi
+        done
+        uci -q delete "wireless.${RADIO}.distance"
+        uci -q delete "wireless.${RADIO}.noscan"
+        uci -q delete "wireless.${RADIO}.rts"
+    fi
 
     uci commit wireless
-    rm -f "$HAMAX_BACKUP"
-    hamax_log "restored the 5 GHz radio to its pre-HAMax configuration"
+    hamax_log "restored the 5 GHz radio to its standard 802.11 configuration - any normal device can connect"
 }
 
 # ---------------------------------------------------------------------
