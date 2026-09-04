@@ -405,7 +405,7 @@ return baseclass.extend({
 					'class': 'ifacebox-head',
 					'style': 'background:' + headerBg + '; color:#fff; font-weight:bold; font-size:12px; height:24px; line-height:24px; text-align:center;'
 				}, [ portLabel ]),
-				E('div', { 'class': 'ifacebox-body', 'style': 'height:66px; padding:6px 4px; background:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center;' }, [
+				E('div', { 'class': 'ifacebox-body', 'style': 'height:68px; padding:6px 4px; background:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center;' }, [
 					E('img', {
 						'src': L.resource('icons/port_%s.svg').format(iconState),
 						'style': 'height:22px; width:22px; vertical-align:middle;' + (isDisabled ? 'filter:grayscale(100%) opacity(50%);' : '')
@@ -422,7 +422,7 @@ return baseclass.extend({
 					E('span', { 'class': 'cbi-tooltip left' }, [ renderNetworksTooltip(pmap) ])
 				]),
 				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9; display:flex; flex-direction:column; justify-content:space-between; flex:1;' }, [
-					E('div', { 'class': 'cbi-tooltip-container', 'style': 'text-align:left; font-size:11px; color:#475569; height:32px; overflow:hidden;' }, [
+					E('div', { 'class': 'cbi-tooltip-container', 'style': 'text-align:left; font-size:11px; line-height:1.35; color:#475569; min-height:36px;' }, [
 						E('span', { 'style': 'color:#10b981;' }, '\u25b2 '), '%1024.1mB'.format(tx_b),
 						E('br'),
 						E('span', { 'style': 'color:#3b82f6;' }, '\u25bc '), '%1024.1mB'.format(rx_b),
@@ -524,7 +524,7 @@ return baseclass.extend({
 					'class': 'ifacebox-head',
 					'style': 'background:' + (r.id === 'radio1' ? '#4f46e5' : '#2563eb') + '; color:#fff; font-weight:bold; font-size:12px; height:24px; line-height:24px; text-align:center;'
 				}, [ r.label ]),
-				E('div', { 'class': 'ifacebox-body', 'style': 'height:66px; padding:6px 4px; background:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center;' }, [
+				E('div', { 'class': 'ifacebox-body', 'style': 'height:68px; padding:6px 4px; background:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center;' }, [
 					E('div', { 'style': 'margin-bottom:2px;' }, [ statusBadge ]),
 					E('div', { 'style': 'font-size:11px; font-weight:700; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:102px;' }, [ iface_ssid ]),
 					E('div', { 'style': 'font-size:10px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:102px;' }, [
@@ -533,7 +533,7 @@ return baseclass.extend({
 				]),
 				E('div', { 'class': 'ifacebox-head', 'style': 'height:3px; background:' + (isDisabled ? '#cbd5e1' : '#10b981') + ';' }),
 				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9; display:flex; flex-direction:column; justify-content:space-between; flex:1;' }, [
-					E('div', { 'style': 'text-align:left; font-size:11px; color:#475569; height:32px; overflow:hidden;' }, [
+					E('div', { 'style': 'text-align:left; font-size:11px; line-height:1.35; color:#475569; min-height:36px;' }, [
 						E('span', { 'style': 'color:#10b981;' }, '\u25b2 '), '%1024.1mB'.format(tx_b),
 						E('br'),
 						E('span', { 'style': 'color:#3b82f6;' }, '\u25bc '), '%1024.1mB'.format(rx_b)
