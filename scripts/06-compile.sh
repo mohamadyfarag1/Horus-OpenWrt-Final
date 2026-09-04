@@ -274,4 +274,9 @@ find build_dir -type f -path '*/root-*/www/luci-static/resources/view/status/inc
     fi
 done
 
-echo "Firmware compilation complete!"
+echo "======================================="
+echo "Step 5: Post-Build Self-Proving Output Verification..."
+echo "======================================="
+bash ../scripts/11-verify-artifact.sh
+
+echo "Firmware compilation and verification complete!"
