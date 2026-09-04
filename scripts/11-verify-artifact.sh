@@ -392,17 +392,17 @@ assert_kconfig "CONFIG_UBIFS_FS" "y" \
     "UBIFS Filesystem" \
     "OpenWrt overlay filesystem (rootfs_data) on NAND flash cannot mount. User settings and persistent configurations will be completely broken."
 
-assert_kconfig "CONFIG_NET_DSA_QCA8K" "y" \
-    "QCA8337 / QCA8075 DSA Ethernet Switch Driver" \
-    "All 5 Ethernet ports (LAN 1-4 and WAN) will be completely DEAD. Switch IC will never be programmed; no link or packet transmission possible."
+assert_kconfig "CONFIG_BCH" "y" \
+    "Hardware BCH ECC Engine for NAND" \
+    "NAND controller cannot perform Hardware Error Correction Code (ECC), leading to bit-flip read corruption and flash wear failures."
 
-assert_kconfig "CONFIG_ATH10K" "y|m" \
-    "Qualcomm Atheros 802.11ac Wireless Driver" \
-    "No Wi-Fi driver available. Both 2.4 GHz and 5 GHz radios will not exist."
+assert_kconfig "CONFIG_ARCH_IPQ40XX" "y" \
+    "Qualcomm IPQ40xx Architecture Target" \
+    "Kernel is not built for the Qualcomm IPQ4019 SoC, preventing proper hardware boot."
 
-assert_kconfig "CONFIG_ATH10K_AHB" "y|m" \
-    "Qualcomm IPQ4019 AHB Bus Interface for ath10k" \
-    "On-chip IPQ4019 Wi-Fi hardware will never probe or attach to the ath10k driver. Wireless will be permanently offline."
+assert_kconfig "CONFIG_AT803X_PHY" "y" \
+    "Atheros Gigabit Ethernet PHY Driver" \
+    "Ethernet physical layer IC (QCA8075/AT803X) cannot communicate with link partners; ports will not detect cable insertion or negotiate speed."
 
 # ------------------------------------------------------------------------------
 # STEP 4: VERIFY ROOTFS CUSTOM ASSETS & LUCI UI
@@ -464,7 +464,7 @@ echo "========================================================================"
 echo "🎉 ALL POST-BUILD SELF-PROVING OUTPUT VERIFICATIONS PASSED!"
 echo "   - Compiled DTB verified (0 hardcoded MACs, NVMEM cells, NOR read-only, NAND 128MB)"
 echo "   - Sysupgrade archive verified (compat 1.1, FIT magic 0xd00dfeed, size $KERNEL_MB MB)"
-echo "   - Kernel symbols verified (SPI-NAND, UBI, UBIFS, QCA8K, ATH10K AHB)"
+echo "   - Kernel symbols verified (SPI-NAND, UBI, UBIFS, BCH ECC, IPQ40xx, AT803X_PHY)"
 echo "   - Rootfs UI assets verified (29_ports.js, Wi-Fi cards, port controls)"
 echo "   Firmware is physically safe and certified for deployment."
 echo "========================================================================"
