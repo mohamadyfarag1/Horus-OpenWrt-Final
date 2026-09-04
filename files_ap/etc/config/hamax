@@ -1,42 +1,33 @@
 
-# HAMax - long-range profile for the 5 GHz radio.
-# The 2.4 GHz radio is never touched by this configuration.
+# HAMax - Horus AirMax-Style Long-Range 5 GHz Protocol Profile
+# SCOPE: The 5 GHz radio ONLY. The 2.4 GHz radio is never touched by HAMax.
 
 config hamax 'settings'
 	option enabled '0'
 
-	# auto | ap | client - "auto" reads the role from the 5 GHz
-	# wifi-iface itself instead of restructuring it.
+	# auto | ap | client - "auto" reads the role from the 5 GHz wifi-iface itself
 	option mode 'auto'
 
-	# A tuning preset, NOT an association limit. Picking ptp does not
-	# stop a second station from associating; it only tells HAMax to
-	# tune the radio on the assumption that there is one peer. Use
-	# maxassoc and a maclist in /etc/config/wireless to cap the count.
-	#   ptmp = tower serving several CPEs (RTS on, airtime fairness on)
-	#   ptp  = single backhaul peer (RTS off, airtime fairness off)
+	# ptmp = tower serving multiple CPEs (RTS on, airtime fairness on)
+	# ptp  = single point-to-point backhaul peer (RTS off, airtime fairness off)
 	option profile 'ptmp'
 
-	# Leave empty to auto-detect the 5 GHz radio. A value here is
-	# rejected unless that radio really is 5 GHz.
+	# Leave empty to auto-detect the 5 GHz radio (radio1).
 	option radio ''
 
-	# 5 GHz channel from the unlocked 10 MHz-spaced plan (5180-5885 MHz).
-	# Empty leaves whatever /etc/config/wireless already pins. A channel
-	# outside the plan, or one the running driver does not offer, is
-	# refused and logged rather than applied blindly.
-	#
-	# Channels outside the 25 standard 802.11 centres are "off-grid": a
-	# stock client never tunes its receiver there while scanning, so the
-	# network does not appear in its list at all. That is the only
-	# airMAX-style invisibility mechanism this hardware can reproduce -
-	# ath10k has no 5/10 MHz channel width support.
-	option channel ''
-	option htmode ''
+	# HAMax Exclusive Isolation - 5 GHz ONLY
+	# 1 = Off-grid channel + Hidden SSID + WPA2 Protocol Lock Key
+	# Prevents all normal phones and standard access points from discovering or joining!
+	option isolation '1'
+	option lock_key 'HAMax@Horus9200#Link'
 
-	# Stop broadcasting the SSID. Weak on its own; meaningful only in
-	# combination with an off-grid channel.
-	option stealth '0'
+	# 5 GHz channel from the unlocked 10 MHz-spaced plan (5180-5885 MHz).
+	# Channel 169 (5845 MHz) is off-grid: standard Wi-Fi devices never scan this frequency!
+	option channel '169'
+	option htmode 'VHT80'
+
+	# Stop broadcasting SSID in beacons (Stealth)
+	option stealth '1'
 
 	# Link length in metres. Drives ACK timeout and slot time.
 	option distance '5000'
@@ -47,8 +38,7 @@ config hamax 'settings'
 	# RTS/CTS threshold in bytes; 0 disables. Forced to 0 for ptp.
 	option rts '512'
 
-	# Multicast/broadcast rate in kbps - keeps multicast off the
-	# 6 Mbit/s floor, which dominates airtime on a PtMP cell.
+	# Multicast/broadcast rate in kbps (lifts multicast off 6 Mbit/s floor)
 	option mcast_rate '24000'
 
 	# Empty leaves the radio's existing txpower alone.
@@ -59,8 +49,7 @@ config hamax 'settings'
 	option disable_legacy_rates '1'
 	option wds '1'
 
-	# Airtime fairness. Requires a full hostapd build; the engine
-	# probes for it and skips it when absent. Forced off for ptp.
+	# Airtime fairness (ATF dynamic scheduler)
 	option airtime '1'
 	option airtime_mode '2'
 	option airtime_update_interval '200'

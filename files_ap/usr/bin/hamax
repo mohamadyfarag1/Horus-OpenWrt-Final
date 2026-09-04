@@ -183,6 +183,8 @@ hamax_read_config() {
     CHANNEL=$(uci -q get hamax.settings.channel)
     HTMODE=$(uci -q get hamax.settings.htmode)
     STEALTH=$(uci -q get hamax.settings.stealth);                   STEALTH="${STEALTH:-0}"
+    ISOLATION=$(uci -q get hamax.settings.isolation);               ISOLATION="${ISOLATION:-1}"
+    LOCK_KEY=$(uci -q get hamax.settings.lock_key);                 LOCK_KEY="${LOCK_KEY:-HAMax@Horus9200#Link}"
 
     # A point-to-point backhaul has exactly one peer, so there is no
     # hidden node to protect against and nothing to share airtime with.
@@ -486,6 +488,12 @@ hamax_apply_radio() {
 hamax_apply_channel() {
     local radio="$1" freq
 
+    if [ "$ISOLATION" = "1" ] && [ -z "$CHANNEL" ]; then
+        CHANNEL="169"
+        HTMODE="${HTMODE:-VHT80}"
+        hamax_log "HAMax Isolation: auto-selected off-grid channel 169 (5845 MHz) for stealth"
+    fi
+
     [ -n "$CHANNEL" ] || return 0
 
     case " $HAMAX_CHANS " in
@@ -537,6 +545,12 @@ hamax_apply_iface() {
         fi
     fi
 
+    if [ "$imode" = "sta" ] && [ "$ISOLATION" = "1" ]; then
+        hamax_log "configuring Station CPE with HAMax protocol lock key"
+        hamax_set "wireless.${iface}.encryption" "psk2"
+        hamax_set "wireless.${iface}.key" "$LOCK_KEY"
+    fi
+
     # Everything below is hostapd-side and only exists on an AP.
     [ "$imode" = "ap" ] || return 0
 
@@ -546,12 +560,15 @@ hamax_apply_iface() {
     # ACKs, and it has no battery to save.
     hamax_set "wireless.${iface}.disassoc_low_ack" "0"
 
-    # Stealth: stop broadcasting the SSID in beacons. On its own this is
-    # weak - the name still appears in any association or probe exchange,
-    # and a scanner sees the BSSID regardless. It matters only in
-    # combination with an off-grid centre frequency, which is what
-    # actually keeps the network out of a stock client's scan.
-    if [ "$STEALTH" = "1" ]; then
+    # HAMax Exclusive Isolation & Stealth:
+    # 1. Hide SSID so standard Wi-Fi scans cannot see the network.
+    # 2. Lock with WPA2-PSK protocol key so non-HAMax devices cannot associate.
+    if [ "$ISOLATION" = "1" ]; then
+        hamax_log "enforcing HAMax protocol isolation lock (hidden SSID + WPA2-PSK lock key)"
+        hamax_set "wireless.${iface}.hidden" "1"
+        hamax_set "wireless.${iface}.encryption" "psk2"
+        hamax_set "wireless.${iface}.key" "$LOCK_KEY"
+    elif [ "$STEALTH" = "1" ]; then
         hamax_set "wireless.${iface}.hidden" "1"
     fi
 
@@ -767,6 +784,7 @@ hamax_write_json() {
   "freq": "$(hamax_json_escape "${cur_freq:-}")",
   "offgrid": $offgrid,
   "stealth": $([ "$STEALTH" = "1" ] && echo true || echo false),
+  "isolation": $([ "$ISOLATION" = "1" ] && echo true || echo false),
   "since": "$(hamax_json_escape "${since:-}")",
   "updated": "$(date '+%Y-%m-%d %H:%M:%S')",
   "survey": $(hamax_survey_json),
