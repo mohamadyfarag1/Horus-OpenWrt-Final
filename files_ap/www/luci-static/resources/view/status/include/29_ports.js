@@ -23,10 +23,10 @@ function resolveVLANChain(ifname, bridges, mapping) {
 		if (!m) break;
 
 		if (bridges[m[1]]) {
-			if (bridges[m[1]].vlan_filtering)
-				mapping[ifname] = bridges[m[1]].vlans[m[2]];
-			else
-				mapping[ifname] = bridges[m[1]].ports;
+		if (bridges[m[1]].vlan_filtering)
+			mapping[ifname] = bridges[m[1]].vlans[m[2]];
+		else
+			mapping[ifname] = bridges[m[1]].ports;
 		}
 		else if (/^[0-9]{1,4}$/.test(m[2]) && m[2] <= 4095) {
 			mapping[ifname] = [ m[1] ];
@@ -172,7 +172,7 @@ function buildInterfaceMapping(zones, networks) {
 
 function formatSpeed(carrier, speed, duplex, isDisabled) {
 	if (isDisabled) {
-		return E('span', { 'style': 'color:#ef4444; font-weight:700;' }, [ _('معطل (Disabled)') ]);
+		return E('span', { 'style': 'color:#ef4444; font-weight:700;' }, [ _('Disabled / \u0645\u0639\u0637\u0644') ]);
 	}
 
 	if (speed && duplex) {
@@ -191,7 +191,7 @@ function formatSpeed(carrier, speed, duplex, isDisabled) {
 		return e;
 	}
 
-	return carrier ? _('Connected') : _('no link');
+	return carrier ? _('Connected / \u0645\u062a\u0635\u0644') : _('No link / \u0644\u0627 \u064a\u0648\u062c\u062f \u0631\u0627\u0628\u0637');
 }
 
 function formatStats(portdev) {
@@ -240,7 +240,6 @@ function renderNetworksTooltip(pmap) {
 }
 
 function executePortAction(port, action) {
-	// First try fast CGI endpoint, then fallback to fs.exec
 	var url = '/cgi-bin/port_action?port=' + encodeURIComponent(port) + '&action=' + encodeURIComponent(action);
 	return fetch(url).then(function(res) {
 		return res.json();
@@ -259,7 +258,7 @@ function executeWifiAction(radio) {
 }
 
 return baseclass.extend({
-	title: _('حالة المنافذ والوايرلس (Port & Wireless Status)'),
+	title: _('Port & Wireless Status / \u062d\u0627\u0644\u0629 \u0627\u0644\u0645\u0646\u0627\u0641\u0630 \u0648\u0627\u0644\u0648\u0627\u064a\u0631\u0644\u0633'),
 
 	load: function() {
 		return Promise.all([
@@ -271,7 +270,8 @@ return baseclass.extend({
 			L.resolveDefault(uci.load('wireless'), null),
 			L.resolveDefault(fs.list('/etc/horus/disabled_ports'), []),
 			L.resolveDefault(network.getWifiDevices(), []),
-			L.resolveDefault(fs.exec('/usr/bin/port_control', [ 'status' ]), null)
+			L.resolveDefault(fs.exec('/usr/bin/port_control', [ 'status' ]), null),
+			L.resolveDefault(network.getWifiNetworks(), [])
 		]);
 	},
 
@@ -282,6 +282,7 @@ return baseclass.extend({
 		    disabled_ports_files = data[6] || [],
 		    wifi_devices = data[7] || [],
 		    port_ctl_raw = data[8] ? (data[8].stdout || '') : '',
+		    wifi_networks = data[9] || [],
 		    port_ctl = null;
 
 		try {
@@ -293,14 +294,12 @@ return baseclass.extend({
 			if (f && f.name) disabledMap[f.name] = true;
 		});
 
-		// Sync disabled state from port_control status if available
 		if (port_ctl && port_ctl.ports) {
 			for (var p in port_ctl.ports) {
-				if (port_ctl.ports[p].disabled) disabledMap[p] = true;
+			if (port_ctl.ports[p].disabled) disabledMap[p] = true;
 			}
 		}
 
-		// Build known Ethernet ports
 		if (Array.isArray(data[0]) && data[0].length > 0) {
 			known_ports = data[0].map(function(port) {
 				return {
@@ -334,7 +333,6 @@ return baseclass.extend({
 			}
 		}
 
-		// Fallback for IPQ4019 DSA layout if board.json is sparse
 		if (known_ports.length === 0) {
 			[ 'lan1', 'lan2', 'lan3', 'lan4', 'wan' ].forEach(function(devname) {
 				known_ports.push({
@@ -351,17 +349,15 @@ return baseclass.extend({
 
 		var cards = [];
 
-		// 1. Render Ethernet Ports Cards
 		known_ports.forEach(function(port) {
-			var devname = port.netdev.getName(),
-			    speed = port.netdev.getSpeed(),
-			    duplex = port.netdev.getDuplex(),
-			    carrier = port.netdev.getCarrier(),
+			var devname = port.netdev ? port.netdev.getName() : port.device,
+			    speed = port.netdev ? port.netdev.getSpeed() : null,
+			    duplex = port.netdev ? port.netdev.getDuplex() : null,
+			    carrier = port.netdev ? port.netdev.getCarrier() : false,
 			    isDisabled = !!disabledMap[devname],
 			    pmap = port_map[devname],
 			    pzones = (pmap && pmap.zones.length) ? pmap.zones.sort(function(a, b) { return L.naturalCompare(a.getName(), b.getName()); }) : [ null ];
 
-			// If port_control has more direct info
 			if (port_ctl && port_ctl.ports && port_ctl.ports[devname]) {
 				var cp = port_ctl.ports[devname];
 				if (cp.carrier !== undefined) carrier = !!cp.carrier;
@@ -372,46 +368,50 @@ return baseclass.extend({
 
 			var iconState = isDisabled ? 'down' : (carrier ? 'up' : 'down');
 			var headerBg = (devname === 'wan') ? '#0284c7' : '#0ea5e9';
+			var isWan = (devname === 'wan');
+			var portLabel = isWan ? 'WAN' : devname.toUpperCase();
 
-			// Action button
 			var actionBtn = E('button', {
 				'class': 'btn btn-sm ' + (isDisabled ? 'btn-primary' : 'btn-danger'),
 				'style': 'width:100%; font-size:11px; padding:4px; margin-top:6px; font-weight:700; border-radius:4px; cursor:pointer;',
 				'click': function(ev) {
 					ev.preventDefault();
 					var nextAction = isDisabled ? 'enable' : 'disable';
-					var confirmMsg = isDisabled 
-						? _('هل أنت متأكد من تفعيل المنفذ %s؟').format(devname)
-						: _('تحذير: هل أنت متأكد من إيقاف المنفذ %s؟ قد ينقطع الاتصال إذا كنت متصلاً عبره!').format(devname);
+					var confirmMsg = isDisabled
+						? _('Are you sure you want to enable port %s? / \u0647\u0644 \u062a\u0631\u064a\u062f \u062a\u0641\u0639\u064a\u0644 \u0627\u0644\u0645\u0646\u0641\u0630 %s\u061f').format(devname, devname)
+						: _('WARNING: Disabling port %s may disconnect you if you are connected through it! Continue? / \u062a\u062d\u0630\u064a\u0631: \u0625\u064a\u0642\u0627\u0641 \u0627\u0644\u0645\u0646\u0641\u0630 %s \u0642\u062f \u064a\u0641\u0635\u0644 \u0627\u062a\u0635\u0627\u0644\u0643 \u0628\u0627\u0644\u062c\u0647\u0627\u0632! \u0647\u0644 \u062a\u0631\u064a\u062f \u0627\u0644\u0645\u062a\u0627\u0628\u0639\u0629\u061f').format(devname, devname);
 
 					if (confirm(confirmMsg)) {
 						ev.target.disabled = true;
-						ev.target.innerText = '⏳...';
+						ev.target.innerText = '...';
 						executePortAction(devname, nextAction).then(function() {
 							setTimeout(function() { location.reload(); }, 600);
 						}).catch(function(e) {
-							ui.addNotification(null, E('p', 'خطأ: ' + e));
+							ui.addNotification(null, E('p', 'Error: ' + e));
 							ev.target.disabled = false;
 						});
 					}
 				}
-			}, [ isDisabled ? '▶ تفعيل' : '⏹ إيقاف' ]);
+			}, [ isDisabled ? _('Enable / \u062a\u0641\u0639\u064a\u0644') : _('Disable / \u0625\u064a\u0642\u0627\u0641') ]);
+
+			var tx_b = port.netdev ? (port.netdev.getTXBytes() || 0) : 0;
+			var rx_b = port.netdev ? (port.netdev.getRXBytes() || 0) : 0;
 
 			cards.push(E('div', {
 				'class': 'ifacebox',
-				'style': 'margin:.35em; min-width:85px; max-width:115px; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); border:1px solid ' + (isDisabled ? '#f87171' : '#e2e8f0') + ';'
+				'style': 'margin:.35em; min-width:90px; max-width:120px; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); border:1px solid ' + (isDisabled ? '#f87171' : '#cbd5e1') + ';'
 			}, [
 				E('div', {
 					'class': 'ifacebox-head',
 					'style': 'background:' + headerBg + '; color:#fff; font-weight:bold; font-size:13px; padding:4px 0;'
-				}, [ devname ]),
+				}, [ portLabel ]),
 				E('div', { 'class': 'ifacebox-body', 'style': 'padding:8px 4px; background:#fff;' }, [
 					E('img', {
 						'src': L.resource('icons/port_%s.png').format(iconState),
 						'style': isDisabled ? 'filter:grayscale(100%) opacity(50%);' : ''
 					}),
 					E('br'),
-					E('div', { 'style': 'font-size:12px; margin-top:4px;' }, [ formatSpeed(carrier, speed, duplex, isDisabled) ])
+					E('div', { 'style': 'font-size:11px; margin-top:4px;' }, [ formatSpeed(carrier, speed, duplex, isDisabled) ])
 				]),
 				E('div', { 'class': 'ifacebox-head cbi-tooltip-container', 'style': 'display:flex; height:3px;' }, [
 					E([], pzones.map(function(zone) {
@@ -424,17 +424,16 @@ return baseclass.extend({
 				]),
 				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9;' }, [
 					E('div', { 'class': 'cbi-tooltip-container', 'style': 'text-align:left; font-size:11px; color:#475569;' }, [
-						E('span', { 'style': 'color:#10b981;' }, '▲ '), '%1024.1mB'.format(port.netdev.getTXBytes() || 0),
+						E('span', { 'style': 'color:#10b981;' }, '\u25b2 '), '%1024.1mB'.format(tx_b),
 						E('br'),
-						E('span', { 'style': 'color:#3b82f6;' }, '▼ '), '%1024.1mB'.format(port.netdev.getRXBytes() || 0),
-						E('span', { 'class': 'cbi-tooltip' }, formatStats(port.netdev))
+						E('span', { 'style': 'color:#3b82f6;' }, '\u25bc '), '%1024.1mB'.format(rx_b),
+						port.netdev ? E('span', { 'class': 'cbi-tooltip' }, formatStats(port.netdev)) : ''
 					]),
 					actionBtn
 				])
 			]));
 		});
 
-		// 2. Render Wireless Radios Cards (Wi-Fi 2.4G & Wi-Fi 5G)
 		var radios = [
 			{ id: 'radio0', label: 'Wi-Fi 2.4G', freq: '2.4 GHz', default_ssid: 'Horus-2.4' },
 			{ id: 'radio1', label: 'Wi-Fi 5G',  freq: '5 GHz',    default_ssid: 'Horus-5G' }
@@ -448,25 +447,38 @@ return baseclass.extend({
 			var iface_mode = 'AP';
 			var iface_netdev = null;
 
-			// Check uci wireless if available
+			for (var wi = 0; wi < wifi_networks.length; wi++) {
+				var wn = wifi_networks[wi];
+				if (wn && wn.getDeviceName && wn.getDeviceName() === r.id) {
+					if (wn.getSSID && wn.getSSID()) iface_ssid = wn.getSSID();
+					if (wn.getMode && wn.getMode()) iface_mode = wn.getMode().toUpperCase();
+					if (wn.getChannel && wn.getChannel()) channel = wn.getChannel();
+					if (wn.isDisabled && wn.isDisabled()) isDisabled = true;
+					if (wn.getDevice) {
+						var nd = wn.getDevice();
+						if (nd) iface_netdev = nd;
+					}
+					break;
+				}
+			}
+
 			try {
-				isDisabled = (uci.get('wireless', r.id, 'disabled') === '1');
-				channel = uci.get('wireless', r.id, 'channel') || 'Auto';
+				if (uci.get('wireless', r.id, 'disabled') === '1') isDisabled = true;
+				channel = uci.get('wireless', r.id, 'channel') || channel;
 				htmode = uci.get('wireless', r.id, 'htmode') || '';
 
 				var ifaces = uci.sections('wireless', 'wifi-iface') || [];
 				for (var j = 0; j < ifaces.length; j++) {
 					if (ifaces[j].device === r.id) {
 						iface_ssid = ifaces[j].ssid || iface_ssid;
-						iface_mode = (ifaces[j].mode || 'ap').toUpperCase();
-						if (ifaces[j].ifname)
+						iface_mode = (ifaces[j].mode || iface_mode).toUpperCase();
+						if (ifaces[j].ifname && !iface_netdev)
 							iface_netdev = network.instantiateDevice(ifaces[j].ifname);
 						break;
 					}
 				}
 			} catch (e) {}
 
-			// Check port_control status override if available
 			if (port_ctl && port_ctl.wireless && port_ctl.wireless[r.id]) {
 				var rw = port_ctl.wireless[r.id];
 				if (rw.disabled !== undefined) isDisabled = (rw.disabled === 1 || rw.disabled === '1');
@@ -477,7 +489,6 @@ return baseclass.extend({
 				if (rw.ifname && !iface_netdev) iface_netdev = network.instantiateDevice(rw.ifname);
 			}
 
-			// Fallback netdev search
 			if (!iface_netdev) {
 				var fallbackName = (r.id === 'radio0') ? 'phy0-ap0' : 'phy1-ap0';
 				iface_netdev = network.instantiateDevice(fallbackName);
@@ -492,15 +503,19 @@ return baseclass.extend({
 				'click': function(ev) {
 					ev.preventDefault();
 					ev.target.disabled = true;
-					ev.target.innerText = '⏳...';
+					ev.target.innerText = '...';
 					executeWifiAction(r.id).then(function() {
 						setTimeout(function() { location.reload(); }, 1000);
 					}).catch(function(e) {
-						ui.addNotification(null, E('p', 'خطأ: ' + e));
+						ui.addNotification(null, E('p', 'Error: ' + e));
 						ev.target.disabled = false;
 					});
 				}
-			}, [ isDisabled ? '▶ تشغيل' : '⏹ إيقاف' ]);
+			}, [ isDisabled ? _('Turn On / \u062a\u0634\u063a\u064a\u0644') : _('Turn Off / \u0625\u064a\u0642\u0627\u0641') ]);
+
+			var statusBadge = E('span', {
+				'style': 'display:inline-block; font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; color:#fff; background:' + (isDisabled ? '#94a3b8' : '#10b981') + ';'
+			}, [ isDisabled ? 'OFF' : 'ON' ]);
 
 			cards.push(E('div', {
 				'class': 'ifacebox',
@@ -511,20 +526,18 @@ return baseclass.extend({
 					'style': 'background:' + (r.id === 'radio1' ? '#4f46e5' : '#2563eb') + '; color:#fff; font-weight:bold; font-size:12px; padding:4px 0;'
 				}, [ r.label ]),
 				E('div', { 'class': 'ifacebox-body', 'style': 'padding:8px 4px; background:#fff;' }, [
-					E('div', { 'style': 'font-size:26px; line-height:1; color:' + (isDisabled ? '#94a3b8' : '#10b981') + ';' }, [
-						isDisabled ? '🚫' : '📶'
-					]),
-					E('div', { 'style': 'font-size:11px; font-weight:700; color:#1e293b; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' }, [ iface_ssid ]),
+					E('div', { 'style': 'margin-bottom:4px;' }, [ statusBadge ]),
+					E('div', { 'style': 'font-size:11px; font-weight:700; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' }, [ iface_ssid ]),
 					E('div', { 'style': 'font-size:10px; color:#64748b;' }, [
-						isDisabled ? _('معطل (Off)') : (channel + (htmode ? ' (' + htmode + ')' : ''))
+						isDisabled ? _('Disabled / \u0645\u0639\u0637\u0644') : (channel + (htmode ? ' (' + htmode + ')' : ''))
 					])
 				]),
 				E('div', { 'class': 'ifacebox-head', 'style': 'height:3px; background:' + (isDisabled ? '#cbd5e1' : '#10b981') + ';' }),
 				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9;' }, [
 					E('div', { 'style': 'text-align:left; font-size:11px; color:#475569;' }, [
-						E('span', { 'style': 'color:#10b981;' }, '▲ '), '%1024.1mB'.format(tx_b),
+						E('span', { 'style': 'color:#10b981;' }, '\u25b2 '), '%1024.1mB'.format(tx_b),
 						E('br'),
-						E('span', { 'style': 'color:#3b82f6;' }, '▼ '), '%1024.1mB'.format(rx_b)
+						E('span', { 'style': 'color:#3b82f6;' }, '\u25bc '), '%1024.1mB'.format(rx_b)
 					]),
 					wifiActionBtn
 				])
@@ -532,7 +545,7 @@ return baseclass.extend({
 		});
 
 		return E('div', {
-			'style': 'display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr)); gap:6px; margin-bottom:1.5em;'
+			'style': 'display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-bottom:1.5em;'
 		}, cards);
 	}
 });
