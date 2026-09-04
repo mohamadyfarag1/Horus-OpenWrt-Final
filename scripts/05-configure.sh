@@ -274,5 +274,6 @@ chmod +x files/www/cgi-bin/* 2>/dev/null || true
 chmod +x files/etc/init.d/* 2>/dev/null || true
 chmod +x files/etc/uci-defaults/* 2>/dev/null || true
 chmod +x files/usr/bin/* 2>/dev/null || true
+chmod +x files/usr/lib/hamax/* 2>/dev/null || true
 
 echo "Done: Feeds updated, Superchannel JS injected, config applied, custom files copied."
