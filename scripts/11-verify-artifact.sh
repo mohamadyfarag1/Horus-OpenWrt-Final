@@ -418,6 +418,17 @@ if [ -z "$ROOTFS_PJS" ]; then
         "Ensure files_ap/www/luci-static/resources/view/status/include/29_ports.js is copied into rootfs."
 fi
 
+# Assert file is not truncated or 0-bytes
+PJS_SIZE=$(stat -c%s "$ROOTFS_PJS")
+if [ "$PJS_SIZE" -lt 5000 ]; then
+    fail_assertion "29_ports.js in rootfs is truncated or empty" \
+        "29_ports.js size > 5000 bytes (full custom implementation)" \
+        "$PJS_SIZE bytes" \
+        "LuCI Status Overview page will crash with 'TypeError: 29_ports factory yields invalid constructor' because of an empty file." \
+        "Ensure files_ap/www/luci-static/resources/view/status/include/29_ports.js is properly populated and not truncated by jsmin."
+fi
+echo "OK: rootfs 29_ports.js size is $PJS_SIZE bytes."
+
 # Assert custom features inside 29_ports.js
 if ! grep -q 'port_control' "$ROOTFS_PJS"; then
     fail_assertion "29_ports.js does not have port_control RPC" \
