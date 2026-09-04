@@ -21,10 +21,9 @@ config hamax 'settings'
 	option isolation '1'
 	option lock_key 'HAMax@Horus9200#Link'
 
-	# 5 GHz channel from the unlocked 10 MHz-spaced plan (5180-5885 MHz).
-	# Channel 169 (5845 MHz) is off-grid: standard Wi-Fi devices never scan this frequency!
-	option channel '169'
-	option htmode 'VHT80'
+	# 5 GHz channel: leave empty to use existing configured channel, or choose any channel (5180-5885 MHz).
+	option channel ''
+	option htmode ''
 
 	# Stop broadcasting SSID in beacons (Stealth)
 	option stealth '1'

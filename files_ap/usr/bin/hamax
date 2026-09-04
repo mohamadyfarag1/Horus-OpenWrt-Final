@@ -488,12 +488,6 @@ hamax_apply_radio() {
 hamax_apply_channel() {
     local radio="$1" freq
 
-    if [ "$ISOLATION" = "1" ] && [ -z "$CHANNEL" ]; then
-        CHANNEL="169"
-        HTMODE="${HTMODE:-VHT80}"
-        hamax_log "HAMax Isolation: auto-selected off-grid channel 169 (5845 MHz) for stealth"
-    fi
-
     [ -n "$CHANNEL" ] || return 0
 
     case " $HAMAX_CHANS " in
