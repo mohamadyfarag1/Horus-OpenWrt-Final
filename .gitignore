@@ -8,3 +8,4 @@ __pycache__/
 .system_generated/
 openwrt/
 wireless-regdb/
+scratch/

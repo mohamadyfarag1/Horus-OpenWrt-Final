@@ -1,6 +1,6 @@
 {
 	"admin/network/hamax": {
-		"title": "بروتوكول HAMax (AirMax)",
+		"title": "Horus AirMax",
 		"order": 65,
 		"action": {
 			"type": "view",

@@ -108,7 +108,7 @@ return view.extend({
 				E('div', {}, [
 					E('div', {
 						'style': 'font-size:16px; font-weight:800; color:' + (enabled ? '#047857' : '#4b5563')
-					}, [ enabled ? '⚡ بروتوكول HAMax مفعّل على راديو 5 جيجا' : '⏸ بروتوكول HAMax متوقف — راديو 5 جيجا بالوضع القياسي' ]),
+					}, [ enabled ? '⚡ Horus AirMax مفعّل على راديو 5 جيجا' : '⏸ Horus AirMax متوقف — راديو 5 جيجا بالوضع القياسي' ]),
 
 					E('div', { 'style': 'font-size:13px; color:#374151; margin-top:6px;' }, [
 						'الراديو: ', E('strong', {}, [ radioLine ]), visBadge
@@ -121,7 +121,7 @@ return view.extend({
 						: E('span', {}),
 
 					E('div', { 'style': 'margin-top:10px;' }, [
-						badge('العزل البروتوكولي', !!st.isolation, 'مفعّل 🛡', 'معطل'),
+						badge('العزل والحماية', !!st.isolation, 'مفعّل 🛡', 'معطل'),
 						badge('عدالة توزيع الهواء', !!caps.airtime_hostapd, 'نشط ⚡', 'معطّل'),
 						badge('جدولة الحزم', !!caps.airtime_kernel, 'نشط', 'معطّل'),
 						badge('تحويل البث المتعدد', !!caps.mcast_to_ucast, 'مفعّل', 'معطّل'),
@@ -135,7 +135,7 @@ return view.extend({
 						'class': 'btn ' + (enabled ? 'btn-danger' : 'cbi-button-positive'),
 						'style': 'padding:8px 18px; font-weight:700;',
 						'click': ui.createHandlerFn(this, 'handleToggle', enabled)
-					}, [ enabled ? '⏹ إيقاف HAMax' : '▶ تشغيل HAMax' ]),
+					}, [ enabled ? '⏹ إيقاف Horus AirMax' : '▶ تشغيل Horus AirMax' ]),
 
 					E('button', {
 						'class': 'btn',
@@ -162,8 +162,8 @@ return view.extend({
 				E('div', { 'style': 'background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; display:flex; align-items:center; gap:8px;' }, [
 					E('span', { 'style': 'font-size:18px;' }, [ '🛡' ]),
 					E('div', {}, [
-						E('strong', { 'style': 'color:#1e293b; display:block;' }, [ 'عزل وحماية بروتوكولية' ]),
-						E('span', { 'style': 'color:#64748b;' }, [ 'بث مشفر يمنع الأجهزة العادية من كشف أو اعتراض الإشارة' ])
+						E('strong', { 'style': 'color:#1e293b; display:block;' }, [ 'عزل وحماية متقدمة' ]),
+						E('span', { 'style': 'color:#64748b;' }, [ 'حظر الأجهزة غير المصرح بها وإخفاء الشبكة' ])
 					])
 				]),
 				E('div', { 'style': 'background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; display:flex; align-items:center; gap:8px;' }, [
@@ -177,7 +177,7 @@ return view.extend({
 					E('span', { 'style': 'font-size:18px;' }, [ '↩' ]),
 					E('div', {}, [
 						E('strong', { 'style': 'color:#1e293b; display:block;' }, [ 'استرجاع تلقائي' ]),
-						E('span', { 'style': 'color:#64748b;' }, [ 'عند إيقاف HAMax تُستعاد الإعدادات الأصلية للراديو فوراً' ])
+						E('span', { 'style': 'color:#64748b;' }, [ 'عند إيقاف Horus AirMax تُستعاد الإعدادات الأصلية للراديو فوراً' ])
 					])
 				])
 			])
@@ -325,11 +325,11 @@ return view.extend({
 	handleToggle: function(enabled) {
 		var self = this;
 
-		return ui.showModal(enabled ? _('إيقاف HAMax') : _('تشغيل HAMax'), [
+		return ui.showModal(enabled ? _('إيقاف Horus AirMax') : _('تشغيل Horus AirMax'), [
 			E('p', {}, [
 				enabled
-					? _('سيتم إيقاف بروتوكول HAMax واستعادة الإعدادات الأصلية لراديو 5 جيجا.')
-					: _('سيتم تفعيل بروتوكول HAMax وتحسين أداء راديو 5 جيجا للربط الخارجي.')
+					? _('سيتم إيقاف Horus AirMax واستعادة الإعدادات الأصلية لراديو 5 جيجا.')
+					: _('سيتم تفعيل Horus AirMax وتحسين أداء راديو 5 جيجا للربط الخارجي.')
 			]),
 			E('p', { 'style': 'color:#b45309; font-size:12px;' }, [
 				_('ملاحظة: سيُعاد تشغيل راديو 5 جيجا فقط، ولن يتأثر راديو 2.4 جيجا المنزلي.')
@@ -347,8 +347,8 @@ return view.extend({
 							.then(function(res) {
 								ui.hideModal();
 								ui.addNotification(null, E('p', [
-									enabled ? _('تم إيقاف HAMax واستعادة إعدادات راديو 5 جيجا.')
-									        : _('تم تطبيق ملف HAMax على راديو 5 جيجا بنجاح.')
+									enabled ? _('تم إيقاف Horus AirMax واستعادة إعدادات راديو 5 جيجا.')
+									        : _('تم تطبيق ملف Horus AirMax على راديو 5 جيجا بنجاح.')
 								]));
 								if (res && res.code !== 0)
 									ui.addNotification(null, E('pre', [ res.stderr || res.stdout || '' ]), 'warning');
@@ -365,7 +365,7 @@ return view.extend({
 
 	handleVerify: function() {
 		return fs.exec('/usr/bin/hamax', [ 'verify' ]).then(function(res) {
-			ui.showModal(_('فحص الحالة الحية لبروتوكول HAMax'), [
+			ui.showModal(_('فحص الحالة الحية لـ Horus AirMax'), [
 				E('p', { 'style': 'font-size:13px; color:#6b7280;' }, [
 					_('بيانات القياس الفعلية المباشرة من الراديو ونظام التشغيل.')
 				]),
@@ -382,7 +382,7 @@ return view.extend({
 
 	handleCheck: function() {
 		return fs.exec('/usr/bin/hamax', [ 'check' ]).then(function(res) {
-			ui.showModal(_('تقرير توافق عتاد HAMax'), [
+			ui.showModal(_('تقرير توافق عتاد Horus AirMax'), [
 				E('pre', {
 					'style': 'max-height:60vh; overflow:auto; background:#111827; color:#f3f4f6;' +
 					         'padding:12px; border-radius:8px; font-size:12px; direction:ltr; text-align:left;'
@@ -413,8 +413,8 @@ return view.extend({
 		var m, s, o;
 
 		m = new form.Map('hamax',
-			_('بروتوكول HAMax للربط اللاسلكي الخارجي (5 GHz Outdoor Bridge)'),
-			_('منظومة الربط اللاسلكي للمسافات البعيدة (Point-to-Point و Multipoint) بأداء فائق وتأخير منخفض وحماية بروتوكولية كاملة.')
+			_('Horus AirMax للربط اللاسلكي الخارجي (5 GHz Outdoor Bridge)'),
+			_('منظومة الربط اللاسلكي للمسافات البعيدة (Point-to-Point و Multipoint) بأداء فائق وتأخير منخفض وحماية متقدمة.')
 		);
 
 		/* --- live dashboard ------------------------------------------ */
@@ -448,7 +448,7 @@ return view.extend({
 		};
 
 		/* --- settings ------------------------------------------------- */
-		s = m.section(form.NamedSection, 'settings', 'hamax', _('إعدادات بروتوكول HAMax'));
+		s = m.section(form.NamedSection, 'settings', 'hamax', _('إعدادات Horus AirMax'));
 		s.anonymous = true;
 		s.addremove = false;
 
@@ -459,8 +459,8 @@ return view.extend({
 		s.tab('log',      _('سجل العمليات (System Log)'));
 
 		/* general */
-		o = s.taboption('general', form.Flag, 'enabled', _('تفعيل HAMax عند الإقلاع'),
-			_('تشغيل بروتوكول HAMax وتطبيق إعداداته تلقائياً على راديو 5 جيجاهرتز بعد بدء التشغيل.'));
+		o = s.taboption('general', form.Flag, 'enabled', _('تفعيل Horus AirMax عند الإقلاع'),
+			_('تشغيل Horus AirMax وتطبيق إعداداته تلقائياً على راديو 5 جيجاهرتز بعد بدء التشغيل.'));
 		o.rmempty = false;
 
 		o = s.taboption('general', form.ListValue, 'profile', _('نمط الربط (Topology)'),
@@ -526,12 +526,12 @@ return view.extend({
 		o.value('VHT80', 'VHT80 — 80 MHz AC (أقصى سرعة إنتاجية)');
 		o.rmempty = true;
 
-		o = s.taboption('spectrum', form.Flag, 'isolation', _('قفل العزل والحماية البروتوكولية (HAMax Protocol Lock)'),
-			_('تشفير الرابط وعزله بقفل بروتوكولي خاص وإخفاء معرّف البث، مما يمنع الأجهزة العادية من كشف الشبكة أو الاتصال بها.'));
+		o = s.taboption('spectrum', form.Flag, 'isolation', _('قفل العزل والحماية (Horus AirMax Lock)'),
+			_('تشفير الرابط وعزله بقفل خاص وإخفاء معرّف البث، مما يمنع الأجهزة العادية من كشف الشبكة أو الاتصال بها.'));
 		o.default = '1';
 
-		o = s.taboption('spectrum', form.Value, 'lock_key', _('مفتاح قفل البروتوكول المشترك (Security Key)'),
-			_('مفتاح التوثيق والمصافحة المشفر بين أجهزة HAMax. يجب تطابقه في أجهزة الإرسال والاستقبال.'));
+		o = s.taboption('spectrum', form.Value, 'lock_key', _('مفتاح قفل الأمان المشترك (Security Key)'),
+			_('مفتاح التوثيق والمصافحة المشفر بين أجهزة Horus AirMax. يجب تطابقه في أجهزة الإرسال والاستقبال.'));
 		o.default = 'HAMax@Horus9200#Link';
 		o.password = true;
 		o.depends('isolation', '1');
@@ -621,8 +621,8 @@ return view.extend({
 		o.default = '200';
 		o.depends({ profile: 'ptmp', airtime: '1' });
 
-		o = s.taboption('airtime', form.Flag, 'vendor_ie', _('بث معرّف بروتوكول HAMax'),
-			_('بث شارة بروتوكول HAMax في إطارات البيكون للتعرف التلقائي والمتبادل بين أجهزة الشبكة.'));
+		o = s.taboption('airtime', form.Flag, 'vendor_ie', _('بث معرّف Horus AirMax'),
+			_('بث شارة Horus AirMax في إطارات البيكون للتعرف التلقائي والمتبادل بين أجهزة الشبكة.'));
 		o.default = '1';
 
 		/* log */
@@ -631,7 +631,7 @@ return view.extend({
 		o.cfgvalue = function() {
 			return E('div', {}, [
 				E('div', { 'style': 'display:flex; justify-content:space-between; margin-bottom:8px;' }, [
-					E('strong', {}, [ _('سجل أحداث HAMax') ]),
+					E('strong', {}, [ _('سجل أحداث Horus AirMax') ]),
 					E('button', {
 						'class': 'btn btn-sm',
 						'click': ui.createHandlerFn(self, function() {

@@ -225,7 +225,7 @@ function renderNetworksTooltip(pmap) {
 		]);
 		if (l3dev) {
 			span.appendChild(E('img', {
-				'src': L.resource('icons/%s%s.png'.format(l3dev.getType(), l3dev.isUp() ? '' : '_disabled'))
+				'src': L.resource('icons/%s%s.svg'.format(l3dev.getType(), l3dev.isUp() ? '' : '_disabled'))
 			}));
 		}
 		res.push(E('br'), span);
@@ -258,7 +258,7 @@ function executeWifiAction(radio) {
 }
 
 return baseclass.extend({
-	title: _('Port & Wireless Status / \u062d\u0627\u0644\u0629 \u0627\u0644\u0645\u0646\u0627\u0641\u0630 \u0648\u0627\u0644\u0648\u0627\u064a\u0631\u0644\u0633'),
+	title: '',
 
 	load: function() {
 		return Promise.all([
@@ -373,7 +373,7 @@ return baseclass.extend({
 
 			var actionBtn = E('button', {
 				'class': 'btn btn-sm ' + (isDisabled ? 'btn-primary' : 'btn-danger'),
-				'style': 'width:100%; font-size:11px; padding:4px; margin-top:6px; font-weight:700; border-radius:4px; cursor:pointer;',
+				'style': 'width:100%; font-size:11px; height:26px; padding:2px 4px; margin-top:6px; font-weight:700; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center;',
 				'click': function(ev) {
 					ev.preventDefault();
 					var nextAction = isDisabled ? 'enable' : 'disable';
@@ -399,19 +399,18 @@ return baseclass.extend({
 
 			cards.push(E('div', {
 				'class': 'ifacebox',
-				'style': 'margin:.35em; min-width:90px; max-width:120px; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); border:1px solid ' + (isDisabled ? '#f87171' : '#cbd5e1') + ';'
+				'style': 'margin:.35em; width:112px; min-width:112px; max-width:112px; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); border:1px solid ' + (isDisabled ? '#f87171' : '#cbd5e1') + '; display:flex; flex-direction:column; justify-content:space-between;'
 			}, [
 				E('div', {
 					'class': 'ifacebox-head',
-					'style': 'background:' + headerBg + '; color:#fff; font-weight:bold; font-size:13px; padding:4px 0;'
+					'style': 'background:' + headerBg + '; color:#fff; font-weight:bold; font-size:12px; height:24px; line-height:24px; text-align:center;'
 				}, [ portLabel ]),
-				E('div', { 'class': 'ifacebox-body', 'style': 'padding:8px 4px; background:#fff;' }, [
+				E('div', { 'class': 'ifacebox-body', 'style': 'height:66px; padding:6px 4px; background:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center;' }, [
 					E('img', {
-						'src': L.resource('icons/port_%s.png').format(iconState),
-						'style': isDisabled ? 'filter:grayscale(100%) opacity(50%);' : ''
+						'src': L.resource('icons/port_%s.svg').format(iconState),
+						'style': 'height:22px; width:22px; vertical-align:middle;' + (isDisabled ? 'filter:grayscale(100%) opacity(50%);' : '')
 					}),
-					E('br'),
-					E('div', { 'style': 'font-size:11px; margin-top:4px;' }, [ formatSpeed(carrier, speed, duplex, isDisabled) ])
+					E('div', { 'style': 'font-size:11px; margin-top:4px; font-weight:600;' }, [ formatSpeed(carrier, speed, duplex, isDisabled) ])
 				]),
 				E('div', { 'class': 'ifacebox-head cbi-tooltip-container', 'style': 'display:flex; height:3px;' }, [
 					E([], pzones.map(function(zone) {
@@ -422,8 +421,8 @@ return baseclass.extend({
 					})),
 					E('span', { 'class': 'cbi-tooltip left' }, [ renderNetworksTooltip(pmap) ])
 				]),
-				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9;' }, [
-					E('div', { 'class': 'cbi-tooltip-container', 'style': 'text-align:left; font-size:11px; color:#475569;' }, [
+				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9; display:flex; flex-direction:column; justify-content:space-between; flex:1;' }, [
+					E('div', { 'class': 'cbi-tooltip-container', 'style': 'text-align:left; font-size:11px; color:#475569; height:32px; overflow:hidden;' }, [
 						E('span', { 'style': 'color:#10b981;' }, '\u25b2 '), '%1024.1mB'.format(tx_b),
 						E('br'),
 						E('span', { 'style': 'color:#3b82f6;' }, '\u25bc '), '%1024.1mB'.format(rx_b),
@@ -499,7 +498,7 @@ return baseclass.extend({
 
 			var wifiActionBtn = E('button', {
 				'class': 'btn btn-sm ' + (isDisabled ? 'btn-primary' : 'btn-danger'),
-				'style': 'width:100%; font-size:11px; padding:4px; margin-top:6px; font-weight:700; border-radius:4px; cursor:pointer;',
+				'style': 'width:100%; font-size:11px; height:26px; padding:2px 4px; margin-top:6px; font-weight:700; border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center;',
 				'click': function(ev) {
 					ev.preventDefault();
 					ev.target.disabled = true;
@@ -519,22 +518,22 @@ return baseclass.extend({
 
 			cards.push(E('div', {
 				'class': 'ifacebox',
-				'style': 'margin:.35em; min-width:95px; max-width:125px; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); border:1px solid ' + (isDisabled ? '#cbd5e1' : '#60a5fa') + ';'
+				'style': 'margin:.35em; width:112px; min-width:112px; max-width:112px; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); border:1px solid ' + (isDisabled ? '#cbd5e1' : '#60a5fa') + '; display:flex; flex-direction:column; justify-content:space-between;'
 			}, [
 				E('div', {
 					'class': 'ifacebox-head',
-					'style': 'background:' + (r.id === 'radio1' ? '#4f46e5' : '#2563eb') + '; color:#fff; font-weight:bold; font-size:12px; padding:4px 0;'
+					'style': 'background:' + (r.id === 'radio1' ? '#4f46e5' : '#2563eb') + '; color:#fff; font-weight:bold; font-size:12px; height:24px; line-height:24px; text-align:center;'
 				}, [ r.label ]),
-				E('div', { 'class': 'ifacebox-body', 'style': 'padding:8px 4px; background:#fff;' }, [
-					E('div', { 'style': 'margin-bottom:4px;' }, [ statusBadge ]),
-					E('div', { 'style': 'font-size:11px; font-weight:700; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' }, [ iface_ssid ]),
-					E('div', { 'style': 'font-size:10px; color:#64748b;' }, [
+				E('div', { 'class': 'ifacebox-body', 'style': 'height:66px; padding:6px 4px; background:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center;' }, [
+					E('div', { 'style': 'margin-bottom:2px;' }, [ statusBadge ]),
+					E('div', { 'style': 'font-size:11px; font-weight:700; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:102px;' }, [ iface_ssid ]),
+					E('div', { 'style': 'font-size:10px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:102px;' }, [
 						isDisabled ? _('Disabled / \u0645\u0639\u0637\u0644') : (channel + (htmode ? ' (' + htmode + ')' : ''))
 					])
 				]),
 				E('div', { 'class': 'ifacebox-head', 'style': 'height:3px; background:' + (isDisabled ? '#cbd5e1' : '#10b981') + ';' }),
-				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9;' }, [
-					E('div', { 'style': 'text-align:left; font-size:11px; color:#475569;' }, [
+				E('div', { 'class': 'ifacebox-body', 'style': 'padding:6px 4px; background:#f8fafc; border-top:1px solid #f1f5f9; display:flex; flex-direction:column; justify-content:space-between; flex:1;' }, [
+					E('div', { 'style': 'text-align:left; font-size:11px; color:#475569; height:32px; overflow:hidden;' }, [
 						E('span', { 'style': 'color:#10b981;' }, '\u25b2 '), '%1024.1mB'.format(tx_b),
 						E('br'),
 						E('span', { 'style': 'color:#3b82f6;' }, '\u25bc '), '%1024.1mB'.format(rx_b)
@@ -545,7 +544,7 @@ return baseclass.extend({
 		});
 
 		return E('div', {
-			'style': 'display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-bottom:1.5em;'
+			'style': 'display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-bottom:1.5em; align-items:stretch;'
 		}, cards);
 	}
 });
