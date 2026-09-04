@@ -13,18 +13,14 @@ var callGetBuiltinEthernetPorts = rpc.declare({
 	expect: { result: [] }
 });
 
-function isString(v)
-{
+function isString(v) {
 	return typeof(v) === 'string' && v !== '';
 }
 
-function resolveVLANChain(ifname, bridges, mapping)
-{
+function resolveVLANChain(ifname, bridges, mapping) {
 	while (!mapping[ifname]) {
 		var m = ifname.match(/^(.+)\.([^.]+)$/);
-
-		if (!m)
-			break;
+		if (!m) break;
 
 		if (bridges[m[1]]) {
 			if (bridges[m[1]].vlan_filtering)
@@ -43,8 +39,7 @@ function resolveVLANChain(ifname, bridges, mapping)
 	}
 }
 
-function buildVLANMappings(mapping)
-{
+function buildVLANMappings(mapping) {
 	var bridge_vlans = uci.sections('network', 'bridge-vlan'),
 	    vlan_devices = uci.sections('network', 'device'),
 	    bridges = {};
@@ -61,10 +56,8 @@ function buildVLANMappings(mapping)
 
 		for (var j = 0; j < ports.length; j++) {
 			var port = ports[j].replace(/:[ut*]+$/, '');
-
 			if (br.ports.indexOf(port) === -1)
 				br.ports.push(port);
-
 			br.vlans[s.vlan].push(port);
 		}
 
@@ -120,8 +113,7 @@ function buildVLANMappings(mapping)
 	}
 }
 
-function resolveVLANPorts(ifname, mapping, seen)
-{
+function resolveVLANPorts(ifname, mapping, seen) {
 	var ports = [];
 	if (!seen) seen = {};
 
@@ -147,7 +139,7 @@ function buildInterfaceMapping(zones, networks) {
 
 	buildVLANMappings(vlanmap);
 
-	for (var i = 0; i < networks.length; i++) {
+	for (var i = 0; i < (networks || []).length; i++) {
 		var l3dev = networks[i].getDevice();
 		if (!l3dev) continue;
 
@@ -159,7 +151,7 @@ function buildInterfaceMapping(zones, networks) {
 		netmap[networks[i].getName()] = networks[i];
 	}
 
-	for (var i = 0; i < zones.length; i++) {
+	for (var i = 0; i < (zones || []).length; i++) {
 		var networknames = zones[i].getNetworks();
 		for (var j = 0; j < networknames.length; j++) {
 			if (!netmap[networknames[j]]) continue;
@@ -247,6 +239,25 @@ function renderNetworksTooltip(pmap) {
 	return E([], res);
 }
 
+function executePortAction(port, action) {
+	// First try fast CGI endpoint, then fallback to fs.exec
+	var url = '/cgi-bin/port_action?port=' + encodeURIComponent(port) + '&action=' + encodeURIComponent(action);
+	return fetch(url).then(function(res) {
+		return res.json();
+	}).catch(function() {
+		return fs.exec('/usr/bin/port_control', [ 'set', port, action ]);
+	});
+}
+
+function executeWifiAction(radio) {
+	var url = '/cgi-bin/port_action?action=toggle_wifi&radio=' + encodeURIComponent(radio);
+	return fetch(url).then(function(res) {
+		return res.json();
+	}).catch(function() {
+		return fs.exec('/usr/bin/port_control', [ 'toggle_wifi', radio ]);
+	});
+}
+
 return baseclass.extend({
 	title: _('حالة المنافذ والوايرلس (Port & Wireless Status)'),
 
@@ -254,12 +265,13 @@ return baseclass.extend({
 		return Promise.all([
 			L.resolveDefault(callGetBuiltinEthernetPorts(), []),
 			L.resolveDefault(fs.read('/etc/board.json'), '{}'),
-			firewall.getZones(),
-			network.getNetworks(),
-			uci.load('network'),
-			uci.load('wireless'),
+			L.resolveDefault(firewall.getZones(), []),
+			L.resolveDefault(network.getNetworks(), []),
+			L.resolveDefault(uci.load('network'), null),
+			L.resolveDefault(uci.load('wireless'), null),
 			L.resolveDefault(fs.list('/etc/horus/disabled_ports'), []),
-			network.getWifiDevices()
+			L.resolveDefault(network.getWifiDevices(), []),
+			L.resolveDefault(fs.exec('/usr/bin/port_control', [ 'status' ]), null)
 		]);
 	},
 
@@ -268,12 +280,25 @@ return baseclass.extend({
 		    known_ports = [],
 		    port_map = buildInterfaceMapping(data[2], data[3]),
 		    disabled_ports_files = data[6] || [],
-		    wifi_devices = data[7] || [];
+		    wifi_devices = data[7] || [],
+		    port_ctl_raw = data[8] ? (data[8].stdout || '') : '',
+		    port_ctl = null;
+
+		try {
+			if (port_ctl_raw) port_ctl = JSON.parse(port_ctl_raw);
+		} catch (e) {}
 
 		var disabledMap = {};
 		disabled_ports_files.forEach(function(f) {
-			disabledMap[f.name] = true;
+			if (f && f.name) disabledMap[f.name] = true;
 		});
+
+		// Sync disabled state from port_control status if available
+		if (port_ctl && port_ctl.ports) {
+			for (var p in port_ctl.ports) {
+				if (port_ctl.ports[p].disabled) disabledMap[p] = true;
+			}
+		}
 
 		// Build known Ethernet ports
 		if (Array.isArray(data[0]) && data[0].length > 0) {
@@ -336,13 +361,22 @@ return baseclass.extend({
 			    pmap = port_map[devname],
 			    pzones = (pmap && pmap.zones.length) ? pmap.zones.sort(function(a, b) { return L.naturalCompare(a.getName(), b.getName()); }) : [ null ];
 
+			// If port_control has more direct info
+			if (port_ctl && port_ctl.ports && port_ctl.ports[devname]) {
+				var cp = port_ctl.ports[devname];
+				if (cp.carrier !== undefined) carrier = !!cp.carrier;
+				if (cp.speed) speed = parseInt(cp.speed, 10);
+				if (cp.duplex) duplex = cp.duplex;
+				if (cp.disabled) isDisabled = true;
+			}
+
 			var iconState = isDisabled ? 'down' : (carrier ? 'up' : 'down');
 			var headerBg = (devname === 'wan') ? '#0284c7' : '#0ea5e9';
 
 			// Action button
 			var actionBtn = E('button', {
 				'class': 'btn btn-sm ' + (isDisabled ? 'btn-primary' : 'btn-danger'),
-				'style': 'width:100%; font-size:11px; padding:3px 4px; margin-top:6px; font-weight:700; border-radius:4px;',
+				'style': 'width:100%; font-size:11px; padding:4px; margin-top:6px; font-weight:700; border-radius:4px; cursor:pointer;',
 				'click': function(ev) {
 					ev.preventDefault();
 					var nextAction = isDisabled ? 'enable' : 'disable';
@@ -353,8 +387,8 @@ return baseclass.extend({
 					if (confirm(confirmMsg)) {
 						ev.target.disabled = true;
 						ev.target.innerText = '⏳...';
-						fs.exec('/usr/bin/port_control', [ 'set', devname, nextAction ]).then(function() {
-							location.reload();
+						executePortAction(devname, nextAction).then(function() {
+							setTimeout(function() { location.reload(); }, 600);
 						}).catch(function(e) {
 							ui.addNotification(null, E('p', 'خطأ: ' + e));
 							ev.target.disabled = false;
@@ -407,24 +441,40 @@ return baseclass.extend({
 		];
 
 		radios.forEach(function(r) {
-			var isDisabled = (uci.get('wireless', r.id, 'disabled') === '1');
-			var channel = uci.get('wireless', r.id, 'channel') || 'Auto';
-			var htmode = uci.get('wireless', r.id, 'htmode') || '';
-
-			// Find matching wifi-iface
+			var isDisabled = false;
+			var channel = 'Auto';
+			var htmode = '';
 			var iface_ssid = r.default_ssid;
 			var iface_mode = 'AP';
 			var iface_netdev = null;
 
-			var ifaces = uci.sections('wireless', 'wifi-iface');
-			for (var j = 0; j < ifaces.length; j++) {
-				if (ifaces[j].device === r.id) {
-					iface_ssid = ifaces[j].ssid || iface_ssid;
-					iface_mode = (ifaces[j].mode || 'ap').toUpperCase();
-					if (ifaces[j].ifname)
-						iface_netdev = network.instantiateDevice(ifaces[j].ifname);
-					break;
+			// Check uci wireless if available
+			try {
+				isDisabled = (uci.get('wireless', r.id, 'disabled') === '1');
+				channel = uci.get('wireless', r.id, 'channel') || 'Auto';
+				htmode = uci.get('wireless', r.id, 'htmode') || '';
+
+				var ifaces = uci.sections('wireless', 'wifi-iface') || [];
+				for (var j = 0; j < ifaces.length; j++) {
+					if (ifaces[j].device === r.id) {
+						iface_ssid = ifaces[j].ssid || iface_ssid;
+						iface_mode = (ifaces[j].mode || 'ap').toUpperCase();
+						if (ifaces[j].ifname)
+							iface_netdev = network.instantiateDevice(ifaces[j].ifname);
+						break;
+					}
 				}
+			} catch (e) {}
+
+			// Check port_control status override if available
+			if (port_ctl && port_ctl.wireless && port_ctl.wireless[r.id]) {
+				var rw = port_ctl.wireless[r.id];
+				if (rw.disabled !== undefined) isDisabled = (rw.disabled === 1 || rw.disabled === '1');
+				if (rw.channel) channel = rw.channel;
+				if (rw.htmode) htmode = rw.htmode;
+				if (rw.ssid) iface_ssid = rw.ssid;
+				if (rw.mode) iface_mode = rw.mode.toUpperCase();
+				if (rw.ifname && !iface_netdev) iface_netdev = network.instantiateDevice(rw.ifname);
 			}
 
 			// Fallback netdev search
@@ -438,13 +488,13 @@ return baseclass.extend({
 
 			var wifiActionBtn = E('button', {
 				'class': 'btn btn-sm ' + (isDisabled ? 'btn-primary' : 'btn-danger'),
-				'style': 'width:100%; font-size:11px; padding:3px 4px; margin-top:6px; font-weight:700; border-radius:4px;',
+				'style': 'width:100%; font-size:11px; padding:4px; margin-top:6px; font-weight:700; border-radius:4px; cursor:pointer;',
 				'click': function(ev) {
 					ev.preventDefault();
 					ev.target.disabled = true;
 					ev.target.innerText = '⏳...';
-					fs.exec('/usr/bin/port_control', [ 'toggle_wifi', r.id ]).then(function() {
-						location.reload();
+					executeWifiAction(r.id).then(function() {
+						setTimeout(function() { location.reload(); }, 1000);
 					}).catch(function(e) {
 						ui.addNotification(null, E('p', 'خطأ: ' + e));
 						ev.target.disabled = false;
@@ -466,7 +516,7 @@ return baseclass.extend({
 					]),
 					E('div', { 'style': 'font-size:11px; font-weight:700; color:#1e293b; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' }, [ iface_ssid ]),
 					E('div', { 'style': 'font-size:10px; color:#64748b;' }, [
-						isDisabled ? _('معطل (Off)') : (channel + ' (' + htmode + ')')
+						isDisabled ? _('معطل (Off)') : (channel + (htmode ? ' (' + htmode + ')' : ''))
 					])
 				]),
 				E('div', { 'class': 'ifacebox-head', 'style': 'height:3px; background:' + (isDisabled ? '#cbd5e1' : '#10b981') + ';' }),

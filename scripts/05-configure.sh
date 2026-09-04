@@ -155,9 +155,13 @@ PYEOF
 # SECTION B3: Inject LAN Port Control UI into 29_ports.js
 # ============================================
 if [ -f "../files_ap/www/luci-static/resources/view/status/include/29_ports.js" ]; then
-    mkdir -p feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/
+    mkdir -p feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/ 2>/dev/null || true
     cp -f ../files_ap/www/luci-static/resources/view/status/include/29_ports.js feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/29_ports.js 2>/dev/null || true
-    echo "OK: Injected LAN Port Control UI into LuCI 29_ports.js"
+    mkdir -p package/feeds/luci/luci-mod-status/htdocs/luci-static/resources/view/status/include/ 2>/dev/null || true
+    cp -f ../files_ap/www/luci-static/resources/view/status/include/29_ports.js package/feeds/luci/luci-mod-status/htdocs/luci-static/resources/view/status/include/29_ports.js 2>/dev/null || true
+    mkdir -p files/www/luci-static/resources/view/status/include/ 2>/dev/null || true
+    cp -f ../files_ap/www/luci-static/resources/view/status/include/29_ports.js files/www/luci-static/resources/view/status/include/29_ports.js 2>/dev/null || true
+    echo "OK: Injected LAN & Wireless Port Control UI into LuCI 29_ports.js"
 fi
 
 # ============================================

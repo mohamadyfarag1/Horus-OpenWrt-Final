@@ -264,4 +264,14 @@ if [ -z "$REGDB" ]; then
 fi
 echo "OK: custom regulatory.db present ($(stat -c%s "$REGDB") bytes)"
 
-echo "? Firmware compilation complete!"
+# Verify and enforce custom 29_ports.js in rootfs
+find build_dir -type f -path '*/root-*/www/luci-static/resources/view/status/include/29_ports.js' 2>/dev/null | while read -r pjs; do
+    if ! grep -q 'port_control' "$pjs" 2>/dev/null; then
+        echo "Updating rootfs $pjs with custom LAN & Wi-Fi port control..."
+        cp -f ../files_ap/www/luci-static/resources/view/status/include/29_ports.js "$pjs"
+    else
+        echo "OK: $pjs has custom LAN & Wi-Fi port control."
+    fi
+done
+
+echo "Firmware compilation complete!"
