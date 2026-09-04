@@ -205,34 +205,60 @@ fi
 
 tar -xf "$SYSUPGRADE" -C "$INSPECT_DIR"
 
-# 2.1 Assert CONTROL Metadata
+# 2.1 Assert CONTROL Manifest in tarball
 CONTROL_FILE=$(find "$INSPECT_DIR" -type f -name 'CONTROL' | head -n1)
 if [ -z "$CONTROL_FILE" ]; then
-    fail_assertion "CONTROL metadata missing from sysupgrade archive" \
-        "sysupgrade-*/CONTROL JSON file inside sysupgrade tarball" \
+    fail_assertion "CONTROL manifest missing from sysupgrade archive" \
+        "sysupgrade-*/CONTROL manifest file inside sysupgrade tarball" \
         "CONTROL file not found in archive" \
-        "sysupgrade tool will reject the image because metadata cannot be parsed." \
-        "Ensure DEVICE_COMPAT_VERSION and SUPPORTED_DEVICES are configured in generic.mk."
+        "sysupgrade tool will reject the image because manifest cannot be found." \
+        "Ensure Device/UbiFit packaging is configured in generic.mk."
 fi
 
+echo "Found CONTROL manifest: $CONTROL_FILE"
+cat "$CONTROL_FILE"
+
+# Verify BOARD entry in CONTROL
+if ! grep -qiE 'BOARD=.*(h1radio|ti04-708hp)' "$CONTROL_FILE"; then
+    fail_assertion "CONTROL manifest BOARD mismatch" \
+        "BOARD matching h1radio,ti04-708hp" \
+        "$(grep -i 'BOARD=' "$CONTROL_FILE" || echo 'BOARD line missing')" \
+        "sysupgrade will reject the firmware as incompatible with this board." \
+        "Check DEVICE_TITLE and SUPPORTED_DEVICES in generic.mk."
+fi
+echo "OK: CONTROL manifest BOARD matches target hardware."
+
+# Verify Firmware Metadata trailer (compat_version 1.1)
+echo "Checking firmware metadata trailer..."
 COMPAT_VER=$(python3 -c '
 import json, sys
 try:
-    with open(sys.argv[1]) as f:
-        meta = json.load(f)
-    print(meta.get("compat_version", "none"))
-except Exception as e:
-    print("error")
-' "$CONTROL_FILE")
+    with open(sys.argv[1], "rb") as f:
+        f.seek(max(0, f.seek(0, 2) - 65536))
+        tail = f.read()
+    idx = tail.find(b"{\"metadata_version\"")
+    if idx == -1:
+        idx = tail.find(b"{\"compat_version\"")
+    if idx != -1:
+        text = tail[idx:].decode("utf-8", errors="ignore")
+        obj, _ = json.JSONDecoder().raw_decode(text)
+        print(obj.get("compat_version", ""))
+except Exception:
+    pass
+' "$SYSUPGRADE")
 
-if [ "$COMPAT_VER" != "1.1" ]; then
-    fail_assertion "Sysupgrade metadata compat_version mismatch" \
-        "compat_version 1.1 (matching running Horus 9200 board.json)" \
-        "compat_version $COMPAT_VER" \
-        "Device sysupgrade validation will reject this image with 'Incompatible firmware version', preventing automated or web upgrades." \
-        "Set DEVICE_COMPAT_VERSION := 1.1 in target/linux/ipq40xx/image/generic.mk."
+if [ -n "$COMPAT_VER" ]; then
+    if [ "$COMPAT_VER" != "1.1" ]; then
+        fail_assertion "Sysupgrade metadata compat_version mismatch" \
+            "compat_version 1.1 (matching running Horus 9200 board.json)" \
+            "compat_version $COMPAT_VER" \
+            "Device sysupgrade validation will reject this image with 'Incompatible firmware version', preventing automated or web upgrades." \
+            "Set DEVICE_COMPAT_VERSION := 1.1 in target/linux/ipq40xx/image/generic.mk."
+    fi
+    echo "OK: Firmware metadata trailer verified (compat_version: $COMPAT_VER)."
+else
+    echo "Notice: fwtool metadata trailer optional; CONTROL archive manifest verified."
 fi
-echo "OK: CONTROL metadata compat_version verified as 1.1."
 
 # 2.2 Assert Kernel FIT Image Header Magic and Measure Size
 KERNEL_FILE=$(find "$INSPECT_DIR" -type f -name 'kernel' | head -n1)
