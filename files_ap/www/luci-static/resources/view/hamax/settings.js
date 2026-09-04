@@ -144,7 +144,9 @@ return view.extend({
 						badge('العزل البروتوكولي', !!st.isolation, 'مفعّل 🛡 (مخفي ومحمي عن الأجهزة العادية)', 'معطل (بث عام)'),
 						badge('عدالة الهواء (hostapd)', !!caps.airtime_hostapd, 'مدعوم', 'غير مدعوم'),
 						badge('جدولة الهواء (kernel)', !!caps.airtime_kernel, 'مكتشَف', 'غير مكتشَف'),
-						badge('بصمة HAMax IE', !!caps.vendor_ie, 'مدعوم', 'غير مدعوم')
+						badge('تحويل البث المتعدد', !!caps.mcast_to_ucast, 'مفعّل ⚡', 'معطّل'),
+						badge('ذاكرة النواة (4MB)', !!caps.buffer_tuning, 'مفعّل 🚀', 'معطّل'),
+						badge('ath10k-ct', !!caps.ath10k_ct, 'مكتشَف', 'قياسي')
 					])
 				]),
 
@@ -596,6 +598,23 @@ return view.extend({
 		o = s.taboption('link', form.Flag, 'disable_legacy_rates', _('معدلات OFDM فقط'),
 			_('يلغي المعدلات القديمة ويثبّت مجموعة معدلات أساسية عالية، فلا ينزلق الراديو إلى معدلات بطيئة تهدر الهواء.'));
 		o.default = '1';
+
+		o = s.taboption('link', form.Flag, 'multicast_to_unicast', _('تحويل البث المتعدد إلى أحادي (Multicast-to-Unicast)'),
+			_('تحويل حزم البث العام والمتعدد (ARP, DHCP, routing) إلى حزم أحادية مرسلة بأقصى سرعة MCS مع تأكيد الاستلام (ACK). يمنع تقطيع البينج وفقدان الحزم واستهلاك وقت الهواء في الوصلات الخارجية.'));
+		o.default = '1';
+
+		o = s.taboption('link', form.Flag, 'tune_buffers', _('مضاعفة مسارات الذاكرة للنواة (Kernel Buffer Scaling)'),
+			_('يرفع مسارات الذاكرة المؤقتة (rmem/wmem_max=4MB) وطابور بطاقات الشبكة (netdev_max_backlog=5000) لمنع إسقاط حزم التدفقات الضخمة A-MPDU عبر الرابط اللاسلكي.'));
+		o.default = '1';
+
+		o = s.taboption('link', form.Flag, 'ct_suppress_kick', _('حماية ثبات إشارة ath10k-ct (Fading Protection)'),
+			_('يضبط درايفر وفيرموير Candela Technologies لمنع إسقاط وفصل العملاء البعيدين عند هبوط الإشارة المؤقت الناتج عن العوامل الجوية أو الانعكاسات.'));
+		o.default = '1';
+
+		o = s.taboption('link', form.Value, 'antenna_gain', _('كسب الهوائي الخارجي (Antenna Gain dBi)'),
+			_('قيمة كسب الهوائي الموجه (مثلاً 23 أو 30 لهوائيات الدش والبانل). اتركه فارغاً لاستخدام الافتراضي. يساعد الراديو على ضبط طاقة الإرسال بدقة ومطابقة الحدود التنظيمية.'));
+		o.datatype = 'range(0, 40)';
+		o.rmempty = true;
 
 		/* airtime */
 		o = s.taboption('airtime', form.Flag, 'airtime', _('عدالة توزيع الهواء (Airtime Fairness)'),

@@ -47,6 +47,10 @@ hamax_read_config() {
     DTIM=$(uci -q get hamax.settings.dtim_period);                  DTIM="${DTIM:-1}"
     RTS=$(uci -q get hamax.settings.rts);                           RTS="${RTS:-512}"
     MCAST_RATE=$(uci -q get hamax.settings.mcast_rate);             MCAST_RATE="${MCAST_RATE:-24000}"
+    MCAST_TO_UCAST=$(uci -q get hamax.settings.multicast_to_unicast); MCAST_TO_UCAST="${MCAST_TO_UCAST:-1}"
+    TUNE_BUFFERS=$(uci -q get hamax.settings.tune_buffers);           TUNE_BUFFERS="${TUNE_BUFFERS:-1}"
+    CT_SUPPRESS_KICK=$(uci -q get hamax.settings.ct_suppress_kick);   CT_SUPPRESS_KICK="${CT_SUPPRESS_KICK:-1}"
+    ANTENNA_GAIN=$(uci -q get hamax.settings.antenna_gain)
     TXPOWER=$(uci -q get hamax.settings.txpower)
     SHORT_GI=$(uci -q get hamax.settings.short_gi);                 SHORT_GI="${SHORT_GI:-1}"
     NOSCAN=$(uci -q get hamax.settings.noscan);                     NOSCAN="${NOSCAN:-1}"

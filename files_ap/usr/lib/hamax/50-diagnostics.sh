@@ -88,6 +88,9 @@ hamax_check() {
     echo "hostapd airtime policy : $([ "$CAP_AIRTIME" = "1" ] && echo "supported" || echo "NOT SUPPORTED (needs full wpad)")"
     echo "mac80211 airtime sched : $([ "$CAP_ATF_KERNEL" = "1" ] && echo "detected" || echo "not detected")"
     echo "hostapd vendor_elements: $([ "$CAP_VENDOR_IE" = "1" ] && echo "supported" || echo "NOT SUPPORTED")"
+    echo "ath10k-ct driver/fw    : $([ "$CAP_ATH10K_CT" = "1" ] && echo "detected" || echo "standard ath10k / not detected")"
+    echo "multicast to unicast   : $([ "$MCAST_TO_UCAST" = "1" ] && echo "enabled (lowers latency, 0% ARP loss)" || echo "disabled")"
+    echo "kernel buffer scaling  : $([ "$TUNE_BUFFERS" = "1" ] && echo "enabled (4MB socket buffers, 5000 backlog)" || echo "disabled")"
     echo
     echo "backup file            : $([ -f "$HAMAX_BACKUP" ] && echo "$HAMAX_BACKUP ($(wc -l < "$HAMAX_BACKUP") entries)" || echo "none (HAMax not applied)")"
 
@@ -158,6 +161,12 @@ hamax_verify() {
         fi
         echo
     done
+
+    echo "--- kernel buffers & network queues ---"
+    printf '  rmem_max             : %s bytes\n' "$(sysctl -n net.core.rmem_max 2>/dev/null)"
+    printf '  wmem_max             : %s bytes\n' "$(sysctl -n net.core.wmem_max 2>/dev/null)"
+    printf '  netdev_max_backlog   : %s\n' "$(sysctl -n net.core.netdev_max_backlog 2>/dev/null)"
+    echo
 
     if [ -n "$first_if" ]; then
         set -- $(hamax_survey_raw "$first_if")

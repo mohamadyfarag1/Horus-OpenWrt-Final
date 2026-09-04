@@ -40,6 +40,18 @@ config hamax 'settings'
 	# Multicast/broadcast rate in kbps (lifts multicast off 6 Mbit/s floor)
 	option mcast_rate '24000'
 
+	# Convert multicast/broadcast to unicast on air (drastically lowers latency and packet loss on PtP/PtMP)
+	option multicast_to_unicast '1'
+
+	# Optimize Linux kernel network socket buffers and device backlog for high-throughput aggregated wireless
+	option tune_buffers '1'
+
+	# Candela Technologies ath10k-ct firmware optimization (prevents aggressive station drop on fading links)
+	option ct_suppress_kick '1'
+
+	# Antenna gain in dBi (e.g. 23 for a 23 dBi dish, empty to leave default)
+	option antenna_gain ''
+
 	# Empty leaves the radio's existing txpower alone.
 	option txpower ''
 
@@ -55,3 +67,4 @@ config hamax 'settings'
 
 	# HAMax vendor IE (OUI 00:07:89) in beacons and probe responses.
 	option vendor_ie '1'
+

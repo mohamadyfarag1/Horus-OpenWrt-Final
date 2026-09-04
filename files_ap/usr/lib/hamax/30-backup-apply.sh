@@ -59,8 +59,56 @@ hamax_set_list() {
     done
 }
 
+# ---------------------------------------------------------------------
+# kernel buffer scaling & Candela Technologies CT optimizations
+# ---------------------------------------------------------------------
+HAMAX_SYSCTL_BACKUP="$HAMAX_DIR/sysctl.backup"
+
+hamax_apply_sysctl() {
+    mkdir -p "$HAMAX_DIR"
+    if [ ! -f "$HAMAX_SYSCTL_BACKUP" ]; then
+        {
+            echo "net.core.rmem_max=$(sysctl -n net.core.rmem_max 2>/dev/null)"
+            echo "net.core.wmem_max=$(sysctl -n net.core.wmem_max 2>/dev/null)"
+            echo "net.core.netdev_max_backlog=$(sysctl -n net.core.netdev_max_backlog 2>/dev/null)"
+        } > "$HAMAX_SYSCTL_BACKUP"
+    fi
+
+    sysctl -q -w net.core.rmem_max=4194304 2>/dev/null
+    sysctl -q -w net.core.wmem_max=4194304 2>/dev/null
+    sysctl -q -w net.core.netdev_max_backlog=5000 2>/dev/null
+    hamax_log "scaled kernel socket buffers (4MB) and netdev backlog (5000) for high-speed aggregated wireless"
+}
+
+hamax_restore_sysctl() {
+    if [ -f "$HAMAX_SYSCTL_BACKUP" ]; then
+        local k v
+        while IFS='=' read -r k v; do
+            [ -n "$k" ] && [ -n "$v" ] && sysctl -q -w "${k}=${v}" 2>/dev/null
+        done < "$HAMAX_SYSCTL_BACKUP"
+        rm -f "$HAMAX_SYSCTL_BACKUP"
+        hamax_log "restored original kernel socket buffers and backlog"
+    fi
+}
+
+hamax_apply_ct_tuning() {
+    local radio="$1" phy ct_special
+    phy=$(hamax_phy_for_radio "$radio" 2>/dev/null)
+    [ -n "$phy" ] || phy="$HAMAX_PHY"
+    if [ -n "$phy" ]; then
+        ct_special="/sys/kernel/debug/ieee80211/${phy}/ath10k/ct_special"
+        if [ -w "$ct_special" ]; then
+            # Candela Technologies CT flag 0x100100000000 suppresses aggressive station kickout
+            echo "0x100100000000" > "$ct_special" 2>/dev/null && \
+                hamax_log "applied Candela Technologies firmware link stability flags to ${phy}"
+        fi
+    fi
+}
+
 hamax_restore() {
     local line key val v
+
+    hamax_restore_sysctl
 
     if [ -f "$HAMAX_BACKUP" ]; then
         while IFS= read -r line; do
@@ -99,6 +147,7 @@ hamax_restore() {
             uci -q delete "wireless.${iface}.hostapd_options"
             uci -q delete "wireless.${iface}.disassoc_low_ack"
             uci -q delete "wireless.${iface}.basic_rate"
+            uci -q delete "wireless.${iface}.multicast_to_unicast"
             local cur_key
             cur_key=$(uci -q get "wireless.${iface}.key")
             if [ "$cur_key" = "$LOCK_KEY" ]; then
@@ -109,6 +158,7 @@ hamax_restore() {
         uci -q delete "wireless.${RADIO}.distance"
         uci -q delete "wireless.${RADIO}.noscan"
         uci -q delete "wireless.${RADIO}.rts"
+        uci -q delete "wireless.${RADIO}.antenna_gain"
     fi
 
     uci commit wireless
@@ -149,8 +199,17 @@ hamax_apply_radio() {
     fi
 
     [ -n "$TXPOWER" ] && hamax_set "wireless.${radio}.txpower" "$TXPOWER"
+    [ -n "$ANTENNA_GAIN" ] && hamax_set "wireless.${radio}.antenna_gain" "$ANTENNA_GAIN"
 
     hamax_apply_channel "$radio"
+
+    if [ "$TUNE_BUFFERS" = "1" ]; then
+        hamax_apply_sysctl
+    fi
+
+    if [ "$CT_SUPPRESS_KICK" = "1" ]; then
+        hamax_apply_ct_tuning "$radio"
+    fi
 
     # country and country_ie stay untouched: they are the operator's
     # regulatory decision, and country_ie=0 is already set in the shipped
@@ -204,6 +263,12 @@ hamax_apply_iface() {
     imode=$(uci -q get "wireless.${iface}.mode")
 
     [ "$WDS" = "1" ] && hamax_set "wireless.${iface}.wds" "1"
+
+    if [ "$MCAST_TO_UCAST" = "1" ]; then
+        hamax_set "wireless.${iface}.multicast_to_unicast" "1"
+    else
+        hamax_del "wireless.${iface}.multicast_to_unicast"
+    fi
 
     hamax_set "wireless.${iface}.mcast_rate" "$MCAST_RATE"
 

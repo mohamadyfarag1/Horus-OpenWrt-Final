@@ -122,6 +122,7 @@ hamax_phy_for_radio() {
 CAP_AIRTIME=0
 CAP_VENDOR_IE=0
 CAP_ATF_KERNEL=0
+CAP_ATH10K_CT=0
 
 hamax_probe_caps() {
     local bin="" b
@@ -143,6 +144,15 @@ hamax_probe_caps() {
     elif [ -n "$HAMAX_PHY" ] &&
          grep -q 'airtime' "/sys/kernel/debug/ieee80211/${HAMAX_PHY}/aqm" 2>/dev/null; then
         CAP_ATF_KERNEL=1
+    fi
+
+    # Candela Technologies CT driver / firmware detection
+    if [ -n "$HAMAX_PHY" ] && [ -d "/sys/kernel/debug/ieee80211/${HAMAX_PHY}/ath10k" ]; then
+        CAP_ATH10K_CT=1
+    elif lsmod 2>/dev/null | grep -q 'ath10k_ct'; then
+        CAP_ATH10K_CT=1
+    elif [ -d /sys/module/ath10k_ct_core ]; then
+        CAP_ATH10K_CT=1
     fi
 }
 

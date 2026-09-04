@@ -184,7 +184,10 @@ hamax_write_json() {
   "caps": {
     "airtime_hostapd": $([ "$CAP_AIRTIME" = "1" ] && echo true || echo false),
     "airtime_kernel": $([ "$CAP_ATF_KERNEL" = "1" ] && echo true || echo false),
-    "vendor_ie": $([ "$CAP_VENDOR_IE" = "1" ] && echo true || echo false)
+    "vendor_ie": $([ "$CAP_VENDOR_IE" = "1" ] && echo true || echo false),
+    "ath10k_ct": $([ "$CAP_ATH10K_CT" = "1" ] && echo true || echo false),
+    "mcast_to_ucast": $([ "$MCAST_TO_UCAST" = "1" ] && echo true || echo false),
+    "buffer_tuning": $([ "$TUNE_BUFFERS" = "1" ] && echo true || echo false)
   },
   "links": [${links}]
 }
