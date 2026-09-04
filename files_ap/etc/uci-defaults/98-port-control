@@ -1,0 +1,7 @@
+#!/bin/sh
+# Ensure port_control service is enabled and executable
+[ -x /etc/init.d/port_control ] && /etc/init.d/port_control enable
+chmod +x /usr/bin/port_control 2>/dev/null || true
+chmod +x /etc/init.d/port_control 2>/dev/null || true
+mkdir -p /etc/horus/disabled_ports
+exit 0

@@ -1,0 +1,17 @@
+{
+	"luci-port-control": {
+		"description": "Grant access to Horus LAN and Wireless port control",
+		"read": {
+			"uci": [ "network", "wireless" ],
+			"file": {
+				"/etc/horus/disabled_ports/*": [ "read" ]
+			}
+		},
+		"write": {
+			"uci": [ "network", "wireless" ],
+			"file": {
+				"/usr/bin/port_control": [ "exec" ]
+			}
+		}
+	}
+}
