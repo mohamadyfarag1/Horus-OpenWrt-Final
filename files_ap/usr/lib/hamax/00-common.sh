@@ -10,16 +10,18 @@ HAMAX_LOG="/tmp/hamax.log"
 HAMAX_LOG_MAX=400
 
 # Vendor-specific element, IEEE 802.11 clause 9.4.2.26:
-#   DD <len> <3-byte OUI> <OUI type> <version> <role>
-# OUI 00:07:89 is the same OUI the device carries on its MAC addresses
-# (see the factory-OUI normalisation commit), so a HAMax beacon is
-# attributable to the same vendor identity as the hardware.
-#   len   = 6  (3 OUI + type + version + role)
-#   type  = 0x01  HAMax profile
-#   ver   = 0x01
-#   role  = 0x01 AP, 0x02 station
-HAMAX_IE_AP="dd06000789010101"
-HAMAX_IE_STA="dd06000789010102"
+# Ubiquiti airMAX Interoperability Elements:
+# OUI 00:27:22 (Ubiquiti Networks)
+#   Tag  = 0xDD (221)
+#   Len  = 0x08 (8 bytes)
+#   OUI  = 00:27:22
+#   Data = 00 02 04 06 08 (airMAX M5 / AC Mixed mode signature)
+# Station mode uses Ubiquiti airMAX signature so Rocket AC / airMAX APs accept association.
+# AP mode uses Dual-Identity (Ubiquiti airMAX + Horus HAMax) so both Ubiquiti clients and Horus clients connect.
+HAMAX_IE_UBNT="dd080027220002040608"
+HAMAX_IE_STA="dd080027220002040608"
+HAMAX_IE_AP="dd080027220002040608dd06000789010101"
+HAMAX_IE_HORUS="dd06000789010101"
 
 # ---------------------------------------------------------------------
 # logging
@@ -53,7 +55,7 @@ hamax_read_config() {
     ANTENNA_GAIN=$(uci -q get hamax.settings.antenna_gain)
     TXPOWER=$(uci -q get hamax.settings.txpower)
     SHORT_GI=$(uci -q get hamax.settings.short_gi);                 SHORT_GI="${SHORT_GI:-1}"
-    NOSCAN=$(uci -q get hamax.settings.noscan);                     NOSCAN="${NOSCAN:-1}"
+    NOSCAN=$(uci -q get hamax.settings.noscan);                     NOSCAN="${NOSCAN:-0}"
     LEGACY_OFF=$(uci -q get hamax.settings.disable_legacy_rates);   LEGACY_OFF="${LEGACY_OFF:-1}"
     WDS=$(uci -q get hamax.settings.wds);                           WDS="${WDS:-1}"
     ATF=$(uci -q get hamax.settings.airtime);                       ATF="${ATF:-1}"
@@ -65,6 +67,7 @@ hamax_read_config() {
     STEALTH=$(uci -q get hamax.settings.stealth);                   STEALTH="${STEALTH:-0}"
     ISOLATION=$(uci -q get hamax.settings.isolation);               ISOLATION="${ISOLATION:-1}"
     LOCK_KEY=$(uci -q get hamax.settings.lock_key);                 LOCK_KEY="${LOCK_KEY:-HAMax@Horus9200#Link}"
+    AIRMAX_COMPAT=$(uci -q get hamax.settings.airmax_compat);       AIRMAX_COMPAT="${AIRMAX_COMPAT:-1}"
 
     # A point-to-point backhaul has exactly one peer, so there is no
     # hidden node to protect against and nothing to share airtime with.

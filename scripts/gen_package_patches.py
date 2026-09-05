@@ -42,11 +42,15 @@ import os
 import re
 import sys
 
-CHANS = list(range(36, 147, 2)) + list(range(149, 166, 2)) + [169, 173, 177]
+# 5 GHz channel plan: 5 MHz step spacing across the safe calibrated band (5120 MHz - 5925 MHz)
+# Formula: freq = 5000 + 5 * channel
+# Channel 24 = 5120 MHz ... Channel 185 = 5925 MHz (162 channels)
+# Matching Ubiquiti airMAX AC / Rocket Prism 5AC 5 MHz channel resolution
+CHANS = list(range(24, 186))
 # ATH10K_NUM_CHANS is NOT a free parameter and NOT a buffer size to pad.
 # mac.c enforces it at compile time with an equality test, so it is derived
 # from the arrays at generation time - see patch_ath10k().
-MAX_5G = max(CHANS)             # 177
+MAX_5G = max(CHANS)             # 185
 
 
 def fail(msg):
@@ -153,7 +157,7 @@ def patch_ath10k(build_dir, pkg_dir):
     lines = "".join("\tCHAN5G(%d, %d, 0),\n" % (c, 5000 + 5 * c) for c in CHANS)
     new_array = ("static const struct ieee80211_channel ath10k_5ghz_channels[] = {\n"
                  + lines
-                 + "\t/* Horus: 10 MHz-spaced plan, matches the reference AP "
+                 + "\t/* Horus: 5 MHz-spaced plan matching Ubiquiti spectrum resolution "
                    "(%d channels) */\n" % len(CHANS)
                  + "};\n")
     array_re = re.compile(
@@ -238,12 +242,12 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
     header = (
-        "Horus: register the reference AP's 10 MHz-spaced 5 GHz channel plan.\n"
+        "Horus: register 5 MHz-spaced 5 GHz channel plan matching Ubiquiti AC resolution.\n"
         "\n"
         "ath10k builds its channel list from ath10k_5ghz_channels[]. Upstream\n"
-        "ships it 20 MHz-spaced (%d entries); the reference AP for this device\n"
-        "uses %d entries - 36..146 step 2, 149..165 step 2, then 169/173/177 -\n"
-        "and reports 30 dBm on every one of them. freq = 5000 + 5*channel.\n"
+        "ships it 20 MHz-spaced (%d entries); Horus expands it to %d entries -\n"
+        "channels 24..185 in 5 MHz steps (5120 MHz - 5925 MHz) -\n"
+        "and reports 30 dBm across the calibrated spectrum. freq = 5000 + 5*channel.\n"
         "\n"
         "ATH10K_NUM_CHANS sizes survey[], so it has to grow with the table or\n"
         "the driver indexes past the end of the array.\n"

@@ -86,30 +86,29 @@ All of these are real OpenWrt / mac80211 / hostapd options, applied only to the
 
 ### AP vs Station — what each side gets
 
-The station runs `wpa_supplicant`, not `hostapd`, so hostapd-side features do not
-exist there. This is a hard boundary, not an omission:
-
-| | AP (tower) | Station (CPE) |
+| Feature | AP (tower) | Station (CPE) |
 |---|:---:|:---:|
 | `distance`, `rts`, `noscan`, `short_gi` | ✅ | ✅ |
 | `wds`, `mcast_rate`, `basic_rate` | ✅ | ✅ |
 | `dtim_period`, `disassoc_low_ack` | ✅ | ❌ |
-| Vendor IE, airtime fairness, stealth | ✅ | ❌ |
+| airtime fairness, stealth (`hidden 1`) | ✅ | ❌ |
+| **Vendor IE (Ubiquiti OUI 00:27:22 & airMAX signature)** | ✅ (Dual Identity) | ✅ (Injected in Probe/Assoc via `hostapd.sh`) |
+| **airMAX Interoperability (connect to Rocket AC)** | ✅ (Serves UBNT STAs) | ✅ (Connects to UBNT APs) |
 
 ---
 
-## 4. Spectrum: the one real invisibility mechanism
+## 4. Spectrum: 162 Channels with 5 MHz Step Resolution
 
 ### The channel plan
 
-The superchannel work (see `skills/01-superchannel-architecture.md`) registers a
-**10 MHz-spaced table of 68 channels spanning 5180–5885 MHz** in
+The superchannel driver patches (in `scripts/gen_package_patches.py`) register a
+**5 MHz continuous step table of 162 channels spanning 5120–5925 MHz** in
 `ath10k_5ghz_channels[]`. `HAMAX_CHANS` in the engine mirrors `CHANS` in
-`scripts/gen_package_patches.py` — **if you change one, change the other.**
+`scripts/gen_package_patches.py` — channels 24 through 185:
 
-```
+```text
 freq = 5000 + 5 × channel
-36,38,40 … 146   |   149,151 … 165   |   169,173,177
+Channel 24 (5120 MHz) … Channel 89 (5445 MHz Rocket AC) … Channel 185 (5925 MHz)
 ```
 
 ### On-grid vs off-grid
@@ -242,7 +241,7 @@ radio never reloaded — and that gap is precisely what this exposes.
 
 ```
 --- hostapd config in use (/var/run/hostapd-phy1.conf) ---
-  ✓ vendor_elements=dd06000789010101
+  ✓ vendor_elements=dd080027220002040608dd06000789010101
   ✓ airtime_mode=2
   ✓ ignore_broadcast_ssid=1
   · wds_sta: not present

@@ -72,31 +72,26 @@ if os.path.exists(path):
 
     # LuCI dropdown list - MIRRORS the driver channel table.
     #
-    # As of the PATCH 5 rewrite in 07-unlock-superchannel.sh, these 68
+    # LuCI dropdown list - MIRRORS the driver channel table.
+    #
+    # As of the PATCH 5 rewrite in 07-unlock-superchannel.sh, these 162
     # frequencies are now REAL channels in ath10k_5ghz_channels[], so LuCI
     # already enumerates them from the phy. This block is belt-and-braces:
     # it de-dupes against what the phy reports and only adds anything if a
-    # LuCI version filters the list. The array below is byte-for-byte the
-    # same channel plan the driver now registers and the same list read
-    # off the reference AP with "iw phy": 36..146 step 2, 149..165 step 2,
-    # then 169/173/177 (10 MHz spacing, 68 entries).
+    # LuCI version filters the list. The plan matches the driver table:
+    # 24..185 in 5 MHz steps (5120 - 5925 MHz, 162 entries).
     #
     # Keep this array and the driver array (PATCH 5) in lock-step. A
     # frequency listed here but absent from the driver table would read
     # 0 dBm; one in the driver but not here still works, just not shown.
     injection = """
-            /* === HORUS SUPERCHANNEL INJECTION START === */
+            /* === HORUS SUPERCHANNEL INJECTION START (162 Channels, 5 MHz Step) === */
             if (this.channels && this.channels['5g'] && this.channels['5g'].length > 0) {
                 var existing_5g = this.channels['5g'];
-                var horus_freqs = [5180,5190,5200,5210,5220,5230,5240,5250,
-                                   5260,5270,5280,5290,5300,5310,5320,5330,
-                                   5340,5350,5360,5370,5380,5390,5400,5410,
-                                   5420,5430,5440,5450,5460,5470,5480,5490,
-                                   5500,5510,5520,5530,5540,5550,5560,5570,
-                                   5580,5590,5600,5610,5620,5630,5640,5650,
-                                   5660,5670,5680,5690,5700,5710,5720,5730,
-                                   5745,5755,5765,5775,5785,5795,5805,5815,
-                                   5825,5845,5865,5885];
+                var horus_freqs = [];
+                for (var f = 5120; f <= 5925; f += 5) {
+                    horus_freqs.push(f);
+                }
                 for (var hi = 0; hi < horus_freqs.length; hi++) {
                     var f_mhz = horus_freqs[hi];
                     var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
@@ -162,6 +157,15 @@ if [ -f "../files_ap/www/luci-static/resources/view/status/include/29_ports.js" 
     mkdir -p files/www/luci-static/resources/view/status/include/ 2>/dev/null || true
     cp -f ../files_ap/www/luci-static/resources/view/status/include/29_ports.js files/www/luci-static/resources/view/status/include/29_ports.js 2>/dev/null || true
     echo "OK: Injected LAN & Wireless Port Control UI into LuCI 29_ports.js"
+fi
+
+# ============================================
+# SECTION B4: Inject Ubiquiti airMAX Interoperability into hostapd.sh
+# ============================================
+if [ -f "../files_ap/lib/netifd/hostapd.sh" ]; then
+    mkdir -p package/network/config/wifi-scripts/files/lib/netifd 2>/dev/null || true
+    cp -f ../files_ap/lib/netifd/hostapd.sh package/network/config/wifi-scripts/files/lib/netifd/hostapd.sh 2>/dev/null || true
+    echo "OK: Injected Ubiquiti airMAX vendor element support into hostapd.sh"
 fi
 
 # ============================================
@@ -279,5 +283,6 @@ chmod +x files/etc/init.d/* 2>/dev/null || true
 chmod +x files/etc/uci-defaults/* 2>/dev/null || true
 chmod +x files/usr/bin/* 2>/dev/null || true
 chmod +x files/usr/lib/hamax/* 2>/dev/null || true
+chmod +x files/lib/netifd/hostapd.sh 2>/dev/null || true
 
 echo "Done: Feeds updated, Superchannel JS injected, config applied, custom files copied."

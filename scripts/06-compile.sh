@@ -170,11 +170,11 @@ if [ -z "$CTMAC" ]; then
 fi
 CT5G=$(grep -c 'CHAN5G(' "$CTMAC" 2>/dev/null || true); CT5G=${CT5G:-0}
 echo "shipped driver source : $CTMAC"
-echo "CHAN5G entries        : $CT5G  (stock 28, patched 69)"
-if [ "$CT5G" -lt 60 ]; then
+echo "CHAN5G entries        : $CT5G  (stock 28, patched 162)"
+if [ "$CT5G" -lt 150 ]; then
     echo "!!!! The SHIPPED ath10k-ct variant does NOT have the extended table."
     echo "     999-horus-superchannels.patch did not reach this variant, so the"
-    echo "     driver would expose ~27 channels while LuCI offers 68 - picking"
+    echo "     driver would expose ~27 channels while LuCI offers 162 - picking"
     echo "     one of the extras then kills the radio. Refusing to ship."
     exit 1
 fi
@@ -184,7 +184,7 @@ if grep -q "channels\[64\]" "$(dirname "$CTMAC")/wmi.h" 2>/dev/null; then
     echo "!!!! wmi.h still has stock channels[64] - scans with >64 channels will fail with -22"
     exit 1
 fi
-echo "OK: shipped ath10k-ct carries the 68-channel table and extended scan buffer."
+echo "OK: shipped ath10k-ct carries the 162-channel table and extended scan buffer."
 
 # ---------------------------------------------------------------------
 # Post-build verification.

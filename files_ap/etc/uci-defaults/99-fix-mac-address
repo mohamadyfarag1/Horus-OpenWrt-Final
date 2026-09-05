@@ -77,7 +77,10 @@ uci set wireless.radio1.disabled='0'
 uci set wireless.radio1.channel='36'
 uci set wireless.radio1.htmode='VHT80'
 uci set wireless.radio1.country='YE'
+uci set wireless.radio1.country_ie='0'
+uci set wireless.radio1.doth='0'
 uci set wireless.radio1.txpower='30'
+uci set wireless.radio1.airmax_compat='1'
 uci set wireless.radio1.macaddr="$MAC_WIFI5G"
 uci set wireless.default_radio1.macaddr="$MAC_WIFI5G"
 

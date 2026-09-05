@@ -148,6 +148,8 @@ hamax_restore() {
             uci -q delete "wireless.${iface}.disassoc_low_ack"
             uci -q delete "wireless.${iface}.basic_rate"
             uci -q delete "wireless.${iface}.multicast_to_unicast"
+            uci -q delete "wireless.${iface}.vendor_elements"
+            uci -q delete "wireless.${iface}.airmax_compat"
             local cur_key
             cur_key=$(uci -q get "wireless.${iface}.key")
             if [ "$cur_key" = "$LOCK_KEY" ]; then
@@ -174,8 +176,13 @@ hamax_apply_radio() {
     hamax_set "wireless.${radio}.distance" "$DISTANCE"
     hamax_set "wireless.${radio}.beacon_int" "$BEACON_INT"
 
-    if [ "$NOSCAN" = "1" ]; then
+    # Only enforce noscan if explicitly requested AND the channel is standard.
+    # On off-grid superchannels, noscan=1 prevents hostapd from starting when non-standard channel pairs are used.
+    local cur_ch="${CHANNEL:-$(uci -q get wireless.${radio}.channel)}"
+    if [ "$NOSCAN" = "1" ] && hamax_chan_is_standard "$cur_ch"; then
         hamax_set "wireless.${radio}.noscan" "1"
+    else
+        hamax_del "wireless.${radio}.noscan"
     fi
 
     # rts=0 means "leave RTS/CTS alone"; a PtP link has no hidden node.
@@ -211,10 +218,14 @@ hamax_apply_radio() {
         hamax_apply_ct_tuning "$radio"
     fi
 
-    # country and country_ie stay untouched: they are the operator's
-    # regulatory decision, and country_ie=0 is already set in the shipped
-    # wireless config so clients cannot push their home channel mask
-    # onto this link.
+    # country_ie=0 disables ieee80211d; if doth (802.11h) is 1, hostapd aborts with
+    # "Cannot enable IEEE 802.11h without IEEE 802.11d enabled".
+    # Ensure doth=0 on radio to prevent this fatal abort:
+    local cur_cie
+    cur_cie=$(uci -q get "wireless.${radio}.country_ie")
+    if [ "$cur_cie" = "0" ]; then
+        hamax_set "wireless.${radio}.doth" "0"
+    fi
 }
 
 # Channel selection across the unlocked 10 MHz-spaced plan. Left alone
@@ -280,10 +291,28 @@ hamax_apply_iface() {
         fi
     fi
 
-    if [ "$imode" = "sta" ] && [ "$ISOLATION" = "1" ]; then
-        hamax_log "configuring Station CPE with HAMax protocol lock key"
-        hamax_set "wireless.${iface}.encryption" "psk2"
-        hamax_set "wireless.${iface}.key" "$LOCK_KEY"
+    if [ "$imode" = "sta" ]; then
+        # Station (CPE / Client) Mode:
+        # 1. Protect existing user key: Only apply LOCK_KEY if key is unset, empty, or already LOCK_KEY.
+        if [ "$ISOLATION" = "1" ]; then
+            local cur_key
+            cur_key=$(uci -q get "wireless.${iface}.key")
+            if [ -z "$cur_key" ] || [ "$cur_key" = "none" ] || [ "$cur_key" = "$LOCK_KEY" ]; then
+                hamax_log "configuring Station CPE with HAMax protocol lock key"
+                hamax_set "wireless.${iface}.encryption" "psk2"
+                hamax_set "wireless.${iface}.key" "$LOCK_KEY"
+            else
+                hamax_log "Station CPE has custom network key configured - preserving existing passphrase for association"
+            fi
+        fi
+
+        # 2. Inject airMAX compatible vendor elements and directed scanning
+        hamax_set "wireless.${iface}.scan_ssid" "1"
+        hamax_set "wireless.${iface}.airmax_compat" "1"
+        if [ "$VENDOR_IE" = "1" ]; then
+            hamax_set "wireless.${iface}.vendor_elements" "$HAMAX_IE_STA"
+        fi
+        return 0
     fi
 
     # Everything below is hostapd-side and only exists on an AP.
@@ -310,7 +339,7 @@ hamax_apply_iface() {
     set --
 
     if [ "$VENDOR_IE" = "1" ] && [ "$CAP_VENDOR_IE" = "1" ]; then
-        [ "$role" = "client" ] && ie="$HAMAX_IE_STA" || ie="$HAMAX_IE_AP"
+        ie="$HAMAX_IE_AP"
         set -- "$@" "vendor_elements=${ie}"
     fi
 
