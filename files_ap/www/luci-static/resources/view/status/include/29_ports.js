@@ -208,31 +208,43 @@ function formatStats(portdev) {
 function renderNetworksTooltip(pmap) {
 	var res = [ null ], zmap = {};
 
-	for (var i = 0; pmap && i < pmap.zones.length; i++) {
-		var networknames = pmap.zones[i].getNetworks();
+	if (!pmap)
+		return _('Port is not part of any network');
+
+	for (var i = 0; pmap.zones && i < pmap.zones.length; i++) {
+		var z = pmap.zones[i];
+		if (!z || typeof(z.getNetworks) !== 'function') continue;
+		var networknames = z.getNetworks();
 		for (var k = 0; k < networknames.length; k++)
-			zmap[networknames[k]] = pmap.zones[i].getName();
+			zmap[networknames[k]] = (typeof(z.getName) === 'function') ? z.getName() : '';
 	}
 
-	for (var i = 0; pmap && i < pmap.networks.length; i++) {
-		var l3dev = pmap.networks[i].getDevice();
+	for (var i = 0; pmap.networks && i < pmap.networks.length; i++) {
+		var net = pmap.networks[i];
+		if (!net || typeof(net.getName) !== 'function') continue;
+		var netName = net.getName();
+		var l3dev = (typeof(net.getDevice) === 'function') ? net.getDevice() : null;
+		var badgeStyle = (firewall && typeof(firewall.getZoneColorStyle) === 'function') ? firewall.getZoneColorStyle(zmap[netName]) : '';
 		var span = E('span', { 'class': 'ifacebadge', 'style': 'margin:.125em 0' }, [
 			E('span', {
 				'class': 'zonebadge',
-				'style': firewall.getZoneColorStyle(zmap[pmap.networks[i].getName()])
+				'style': badgeStyle
 			}, '\u202f'),
-			'\u202f', pmap.networks[i].getName(), ': '
+			'\u202f', netName, ': '
 		]);
-		if (l3dev) {
+		if (l3dev && typeof(l3dev.getType) === 'function') {
+			var isUp = (typeof(l3dev.isUp) === 'function') ? l3dev.isUp() : false;
 			span.appendChild(E('img', {
-				'src': L.resource('icons/%s%s.svg'.format(l3dev.getType(), l3dev.isUp() ? '' : '_disabled'))
+				'src': L.resource('icons/%s%s.svg'.format(l3dev.getType(), isUp ? '' : '_disabled'))
 			}));
 		}
 		res.push(E('br'), span);
 	}
 
-	if (res.length > 1)
-		res[0] = N_((res.length - 1) / 2, 'Part of network:', 'Part of networks:');
+	if (res.length > 2)
+		res[0] = _('Part of networks:');
+	else if (res.length > 1)
+		res[0] = _('Part of network:');
 	else
 		res[0] = _('Port is not part of any network');
 
@@ -276,7 +288,9 @@ return baseclass.extend({
 	},
 
 	render: function(data) {
-		var board = JSON.parse(data[1] || '{}'),
+		var cards = [];
+		try {
+			var board = JSON.parse(data[1] || '{}'),
 		    known_ports = [],
 		    port_map = buildInterfaceMapping(data[2], data[3]),
 		    disabled_ports_files = data[6] || [],
@@ -347,16 +361,22 @@ return baseclass.extend({
 			return L.naturalCompare(a.device, b.device);
 		});
 
-		var cards = [];
-
 		known_ports.forEach(function(port) {
 			var devname = port.netdev ? port.netdev.getName() : port.device,
 			    speed = port.netdev ? port.netdev.getSpeed() : null,
 			    duplex = port.netdev ? port.netdev.getDuplex() : null,
 			    carrier = port.netdev ? port.netdev.getCarrier() : false,
 			    isDisabled = !!disabledMap[devname],
-			    pmap = port_map[devname],
-			    pzones = (pmap && pmap.zones.length) ? pmap.zones.sort(function(a, b) { return L.naturalCompare(a.getName(), b.getName()); }) : [ null ];
+			    pmap = port_map[devname];
+			var pzones = [ null ];
+			if (pmap && Array.isArray(pmap.zones) && pmap.zones.length > 0) {
+				pzones = pmap.zones.filter(Boolean).sort(function(a, b) {
+					var an = (a && typeof(a.getName) === 'function') ? a.getName() : '';
+					var bn = (b && typeof(b.getName) === 'function') ? b.getName() : '';
+					return L.naturalCompare(an, bn);
+				});
+				if (pzones.length === 0) pzones = [ null ];
+			}
 
 			if (port_ctl && port_ctl.ports && port_ctl.ports[devname]) {
 				var cp = port_ctl.ports[devname];
@@ -546,5 +566,11 @@ return baseclass.extend({
 		return E('div', {
 			'style': 'display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-bottom:1.5em; align-items:stretch;'
 		}, cards);
+	} catch (err) {
+		console.error('Error rendering 29_ports:', err);
+		return cards.length ? E('div', {
+			'style': 'display:flex; flex-wrap:wrap; justify-content:center; gap:8px; margin-bottom:1.5em; align-items:stretch;'
+		}, cards) : E('div');
 	}
+}
 });
