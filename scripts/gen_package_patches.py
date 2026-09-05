@@ -42,14 +42,14 @@ import os
 import re
 import sys
 
-# 5 GHz channel plan: expanded 162-channel spectrum plan (5120 MHz - 5925 MHz, 5 MHz step)
-# Channels 24..185 inclusive. All 162 channels are calibrated and supported by IPQ4019 radio.
-# Target DMA Copy Engine buffer protection is handled in ath10k_update_channel_list().
-CHANS = list(range(24, 186))
+# 5 GHz channel plan: calibrated 68-channel spectrum plan (5180 MHz - 5885 MHz)
+# Matching the Golden Reference AP and ath10k hardware DMA Copy Engine limits (max 2048 bytes).
+# Channels: 36..146 step 2, 149..165 step 2, 169, 173, 177 (68 channels)
+CHANS = list(range(36, 147, 2)) + list(range(149, 166, 2)) + [169, 173, 177]
 # ATH10K_NUM_CHANS is NOT a free parameter and NOT a buffer size to pad.
 # mac.c enforces it at compile time with an equality test, so it is derived
 # from the arrays at generation time - see patch_ath10k().
-MAX_5G = max(CHANS)             # 185
+MAX_5G = max(CHANS)             # 177
 
 
 def fail(msg):
@@ -325,21 +325,19 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
     header = (
-        "Horus: register the 162-channel 5 GHz plan with CE DMA buffer protection.\n"
+        "Horus: register the reference AP's 10 MHz-spaced 5 GHz channel plan.\n"
         "\n"
         "ath10k builds its channel list from ath10k_5ghz_channels[]. Upstream\n"
-        "ships it 20 MHz-spaced (%d entries); Horus uses %d entries (channels 24..185,\n"
-        "5120-5925 MHz, 5 MHz steps). All channels operate at full calibrated 30 dBm power.\n"
-        "\n"
-        "ath10k_update_channel_list protects against Copy Engine DMA buffer overflow\n"
-        "(CE3 2048-byte limit) by filtering background scan entries to 2.4 GHz channels +\n"
-        "20 MHz grid anchors on 5 GHz (max 60 channels total, ~1552 bytes).\n"
+        "ships it 20 MHz-spaced (%d entries); the reference AP for this device\n"
+        "uses %d entries - 36..146 step 2, 149..165 step 2, then 169/173/177 -\n"
+        "and reports 30 dBm on every one of them. freq = 5000 + 5*channel.\n"
         "\n"
         "ATH10K_NUM_CHANS sizes survey[], so it has to grow with the table or\n"
         "the driver indexes past the end of the array.\n"
         "\n"
         "wmi.h channels[] in struct wmi_start_scan_arg must also grow to\n"
-        "ATH10K_NUM_CHANS (%d), otherwise full-band scans fail with -EINVAL (-22).\n"
+        "ATH10K_NUM_CHANS (%d), otherwise full-band scans (>64 channels) fail with\n"
+        "-EINVAL (-22): 'failed to start hw scan: -22'.\n"
         % (array_re.search(old_mac).group(0).count("CHAN5G"), len(CHANS), num_chans))
 
     # Record the exact frequency list for the drift check in 06-compile.sh.
