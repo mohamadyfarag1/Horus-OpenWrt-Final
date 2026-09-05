@@ -104,6 +104,77 @@ function readState() {
 	});
 }
 
+var HAMAX_STATIC_CHANNELS = [
+	{ channel: 36,  freq: 5180, standard: true  },
+	{ channel: 38,  freq: 5190, standard: false },
+	{ channel: 40,  freq: 5200, standard: true  },
+	{ channel: 42,  freq: 5210, standard: false },
+	{ channel: 44,  freq: 5220, standard: true  },
+	{ channel: 46,  freq: 5230, standard: false },
+	{ channel: 48,  freq: 5240, standard: true  },
+	{ channel: 50,  freq: 5250, standard: false },
+	{ channel: 52,  freq: 5260, standard: true  },
+	{ channel: 54,  freq: 5270, standard: false },
+	{ channel: 56,  freq: 5280, standard: true  },
+	{ channel: 58,  freq: 5290, standard: false },
+	{ channel: 60,  freq: 5300, standard: true  },
+	{ channel: 62,  freq: 5310, standard: false },
+	{ channel: 64,  freq: 5320, standard: true  },
+	{ channel: 66,  freq: 5330, standard: false },
+	{ channel: 68,  freq: 5340, standard: false },
+	{ channel: 70,  freq: 5350, standard: false },
+	{ channel: 72,  freq: 5360, standard: false },
+	{ channel: 74,  freq: 5370, standard: false },
+	{ channel: 76,  freq: 5380, standard: false },
+	{ channel: 78,  freq: 5390, standard: false },
+	{ channel: 80,  freq: 5400, standard: false },
+	{ channel: 82,  freq: 5410, standard: false },
+	{ channel: 84,  freq: 5420, standard: false },
+	{ channel: 86,  freq: 5430, standard: false },
+	{ channel: 88,  freq: 5440, standard: false },
+	{ channel: 90,  freq: 5450, standard: false },
+	{ channel: 92,  freq: 5460, standard: false },
+	{ channel: 94,  freq: 5470, standard: false },
+	{ channel: 96,  freq: 5480, standard: false },
+	{ channel: 98,  freq: 5490, standard: false },
+	{ channel: 100, freq: 5500, standard: true  },
+	{ channel: 102, freq: 5510, standard: false },
+	{ channel: 104, freq: 5520, standard: true  },
+	{ channel: 106, freq: 5530, standard: false },
+	{ channel: 108, freq: 5540, standard: true  },
+	{ channel: 110, freq: 5550, standard: false },
+	{ channel: 112, freq: 5560, standard: true  },
+	{ channel: 114, freq: 5570, standard: false },
+	{ channel: 116, freq: 5580, standard: true  },
+	{ channel: 118, freq: 5590, standard: false },
+	{ channel: 120, freq: 5600, standard: true  },
+	{ channel: 122, freq: 5610, standard: false },
+	{ channel: 124, freq: 5620, standard: true  },
+	{ channel: 126, freq: 5630, standard: false },
+	{ channel: 128, freq: 5640, standard: true  },
+	{ channel: 130, freq: 5650, standard: false },
+	{ channel: 132, freq: 5660, standard: true  },
+	{ channel: 134, freq: 5670, standard: false },
+	{ channel: 136, freq: 5680, standard: true  },
+	{ channel: 138, freq: 5690, standard: false },
+	{ channel: 140, freq: 5700, standard: true  },
+	{ channel: 142, freq: 5710, standard: false },
+	{ channel: 144, freq: 5720, standard: true  },
+	{ channel: 146, freq: 5730, standard: false },
+	{ channel: 149, freq: 5745, standard: true  },
+	{ channel: 151, freq: 5755, standard: false },
+	{ channel: 153, freq: 5765, standard: true  },
+	{ channel: 155, freq: 5775, standard: false },
+	{ channel: 157, freq: 5785, standard: true  },
+	{ channel: 159, freq: 5795, standard: false },
+	{ channel: 161, freq: 5805, standard: true  },
+	{ channel: 163, freq: 5815, standard: false },
+	{ channel: 165, freq: 5825, standard: true  },
+	{ channel: 169, freq: 5845, standard: false },
+	{ channel: 173, freq: 5865, standard: false },
+	{ channel: 177, freq: 5885, standard: false }
+];
+
 return view.extend({
 
 	load: function() {
@@ -111,11 +182,7 @@ return view.extend({
 			readState(),
 			L.resolveDefault(fs.read('/tmp/hamax.log'), ''),
 			uci.load('hamax'),
-			uci.load('wireless'),
-			L.resolveDefault(fs.exec('/usr/bin/hamax', [ 'channels' ]), {}).then(function(r) {
-				try { return JSON.parse(r.stdout || '{}').channels || []; }
-				catch (e) { return []; }
-			})
+			uci.load('wireless')
 		]);
 	},
 
@@ -759,7 +826,7 @@ return view.extend({
 	render: function(data) {
 		var st = data[0] || {};
 		var log0 = (data[1] || '').trim();
-		var chans = data[4] || [];
+		var chans = (data[4] && data[4].length) ? data[4] : HAMAX_STATIC_CHANNELS;
 		var self = this;
 		var m, s, o;
 
@@ -802,7 +869,7 @@ return view.extend({
 		o.value('ptp',  _('PtP \u2014 Point-to-Point (Backhaul)'));
 		o.default = 'ptmp';
 
-		var usable = chans.filter(function(c) { return c.state === 'usable'; });
+		var usable = chans.filter(function(c) { return c.state === 'usable' || c.state === undefined; });
 		o = s.taboption('wireless', form.ListValue, 'channel', _('Operating Frequency / Channel'),
 			_('Select operating channel. Off-Grid channels provide enhanced isolation and interference immunity.'));
 		o.value('', _('\u2014 Keep Current Frequency \u2014'));
@@ -958,7 +1025,7 @@ return view.extend({
 					logBox.textContent = lg.split('\n').slice(-50).join('\n');
 				}
 			});
-		}, 3);
+		}, 5);
 
 		return m.render();
 	}

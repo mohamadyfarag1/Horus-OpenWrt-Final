@@ -25,8 +25,16 @@ done
 # Initialize config and hardware context
 hamax_read_config
 RADIO=$(hamax_find_radio)
-hamax_load_phy || true
-hamax_probe_caps
+
+case "$1" in
+    enable|apply|status|channels|check|verify)
+        hamax_load_phy || true
+        hamax_probe_caps
+        ;;
+    telemetry)
+        hamax_probe_caps
+        ;;
+esac
 
 # CLI Command Dispatcher
 case "$1" in

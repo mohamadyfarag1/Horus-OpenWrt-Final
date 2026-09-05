@@ -125,6 +125,11 @@ CAP_ATF_KERNEL=0
 CAP_ATH10K_CT=0
 
 hamax_probe_caps() {
+    if [ -s /tmp/hamax.caps ]; then
+        . /tmp/hamax.caps
+        return 0
+    fi
+
     local bin="" b
 
     for b in /usr/sbin/hostapd /usr/sbin/wpad; do
@@ -154,6 +159,13 @@ hamax_probe_caps() {
     elif [ -d /sys/module/ath10k_ct_core ]; then
         CAP_ATH10K_CT=1
     fi
+
+    cat > /tmp/hamax.caps <<EOF
+CAP_AIRTIME=$CAP_AIRTIME
+CAP_VENDOR_IE=$CAP_VENDOR_IE
+CAP_ATF_KERNEL=$CAP_ATF_KERNEL
+CAP_ATH10K_CT=$CAP_ATH10K_CT
+EOF
 }
 
 # ---------------------------------------------------------------------
