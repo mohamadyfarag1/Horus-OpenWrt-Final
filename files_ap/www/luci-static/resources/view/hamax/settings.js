@@ -7,7 +7,7 @@
 'require poll';
 
 /*
- * Horus AirMax (HAMax) - Ubiquiti airOS 8 / Rocket 5AC Inspired Wireless Bridge Engine
+ * Horus AirMax (HAMax) - High-Performance Wireless Bridge Engine
  * Scope: 5 GHz Radio ONLY.
  */
 
@@ -151,7 +151,7 @@ return view.extend({
 		var roleTitle = isClient ? 'Station PtP (CPE)' : (st.profile === 'ptp' ? 'Access Point PtP' : 'Access Point PtMP');
 		var freqStr = st.freq ? (st.freq + ' MHz') : (st.channel ? ('Ch ' + st.channel) : 'Auto');
 		var widthStr = st.htmode || '80 MHz';
-		var modelName = st.device_model || 'Horus Rocket 5AC';
+		var modelName = st.device_model || 'Horus AirMax';
 
 		return E('div', {
 			'style': 'display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;' +
@@ -160,9 +160,9 @@ return view.extend({
 			E('div', { 'style': 'display:flex; align-items:center; gap:14px;' }, [
 				E('div', {
 					'style': 'background:linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff;' +
-					         'font-weight:900; font-size:18px; padding:6px 14px; border-radius:8px;' +
+					         'font-weight:900; font-size:16px; padding:6px 14px; border-radius:8px;' +
 					         'letter-spacing:1px; box-shadow:0 2px 8px rgba(2, 132, 199, 0.4);'
-				}, [ 'airMAX' ]),
+				}, [ 'Horus AirMax' ]),
 				E('div', {}, [
 					E('div', { 'style': 'font-size:18px; font-weight:800; color:' + T.textMain + '; letter-spacing:0.5px;' }, [
 						modelName,
@@ -337,7 +337,7 @@ return view.extend({
 					E('div', { 'style': 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;' }, [
 						E('div', {}, [
 							E('span', { 'style': 'font-size:11px; font-weight:700; color:' + T.accentBlue + '; text-transform:uppercase;' }, [ 'LOCAL RADIO' ]),
-							E('div', { 'style': 'font-size:15px; font-weight:800; color:' + T.textMain + ';' }, [ st.device_model || 'Horus Rocket 5AC' ])
+							E('div', { 'style': 'font-size:15px; font-weight:800; color:' + T.textMain + ';' }, [ st.device_model || 'Horus AirMax' ])
 						]),
 						E('div', { 'style': 'text-align:right;' }, [
 							E('span', { 'style': 'font-size:22px; font-weight:900; color:' + T.accentGreen + ';' }, [

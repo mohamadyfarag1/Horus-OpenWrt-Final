@@ -235,12 +235,15 @@ hamax_write_json() {
         links=""
     fi
 
+    model=$(cat /tmp/sysinfo/model 2>/dev/null || echo "Horus AirMax")
+    [ -z "$model" ] && model="Horus AirMax"
+
     cat > "$HAMAX_JSON" <<EOF
 {
   "state": "$(hamax_json_escape "$state")",
   "role": "$(hamax_json_escape "$role")",
   "profile": "$(hamax_json_escape "$PROFILE")",
-  "device_model": "Horus Rocket 5AC",
+  "device_model": "$(hamax_json_escape "$model")",
   "radio": "$(hamax_json_escape "${RADIO:-}")",
   "band": "$(hamax_json_escape "${radio_band:-}")",
   "channel": "$(hamax_json_escape "${chan:-}")",
