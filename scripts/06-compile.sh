@@ -274,6 +274,18 @@ find build_dir -type f -path '*/root-*/www/luci-static/resources/view/status/inc
     fi
 done
 
+# Ensure port_control, port_action, and init script exist with executable permissions in all rootfs directories
+find build_dir -maxdepth 2 -type d -name 'root-*' 2>/dev/null | while read -r rdir; do
+    echo "Enforcing port control utilities in $rdir..."
+    mkdir -p "$rdir/usr/bin" "$rdir/etc/init.d" "$rdir/www/cgi-bin"
+    cp -f ../files_ap/usr/bin/port_control "$rdir/usr/bin/port_control"
+    chmod 755 "$rdir/usr/bin/port_control"
+    cp -f ../files_ap/etc/init.d/port_control "$rdir/etc/init.d/port_control"
+    chmod 755 "$rdir/etc/init.d/port_control"
+    cp -f ../files_ap/www/cgi-bin/port_action "$rdir/www/cgi-bin/port_action"
+    chmod 755 "$rdir/www/cgi-bin/port_action"
+done
+
 echo "======================================="
 echo "Step 5: Post-Build Self-Proving Output Verification..."
 echo "======================================="

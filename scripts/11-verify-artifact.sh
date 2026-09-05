@@ -471,23 +471,25 @@ if command -v node >/dev/null 2>&1; then
 fi
 
 # Assert port_control and port_action exist in rootfs
-if [ ! -f "$DIR_TO_SEARCH/usr/bin/port_control" ]; then
+ROOTFS_PORT_CTRL=$(find build_dir -type f -path '*/root-*/usr/bin/port_control' 2>/dev/null | head -n1)
+if [ -z "$ROOTFS_PORT_CTRL" ] || [ ! -f "$ROOTFS_PORT_CTRL" ]; then
     fail_assertion "port_control binary missing from rootfs" \
         "/usr/bin/port_control present in rootfs" \
         "File not found in rootfs" \
         "LAN port disabling/enabling buttons will not work." \
         "Ensure files_ap/usr/bin/port_control is copied into rootfs."
 fi
-echo "OK: rootfs /usr/bin/port_control is present."
+echo "OK: rootfs /usr/bin/port_control is present ($ROOTFS_PORT_CTRL)."
 
-if [ ! -f "$DIR_TO_SEARCH/www/cgi-bin/port_action" ]; then
+ROOTFS_PORT_ACT=$(find build_dir -type f -path '*/root-*/www/cgi-bin/port_action' 2>/dev/null | head -n1)
+if [ -z "$ROOTFS_PORT_ACT" ] || [ ! -f "$ROOTFS_PORT_ACT" ]; then
     fail_assertion "port_action CGI missing from rootfs" \
         "/www/cgi-bin/port_action present in rootfs" \
         "File not found in rootfs" \
         "Web requests to toggle LAN ports or Wi-Fi will fail." \
         "Ensure files_ap/www/cgi-bin/port_action is copied into rootfs."
 fi
-echo "OK: rootfs /www/cgi-bin/port_action is present."
+echo "OK: rootfs /www/cgi-bin/port_action is present ($ROOTFS_PORT_ACT)."
 
 echo ""
 echo "========================================================================"
