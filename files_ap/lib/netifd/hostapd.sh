@@ -1353,7 +1353,6 @@ wpa_supplicant_prepare_interface() {
 ${scan_list:+freq_list=$scan_list}
 $ap_scan
 $country_str
-${g_ve:+vendor_elements=$g_ve}
 EOF
 	return 0
 }
@@ -1683,7 +1682,13 @@ wpa_supplicant_add_network() {
 			net_ve="dd080027220002040608"
 		fi
 	fi
-	[ -n "$net_ve" ] && append network_data "vendor_elements=$net_ve" "$N$T"
+	if [ -n "$net_ve" ]; then
+		(
+			sleep 2
+			wpa_cli -p /var/run/wpa_supplicant -i "$ifname" vendor_elem_add 0 "$net_ve" 2>/dev/null || true
+			wpa_cli -p /var/run/wpa_supplicant -i "$ifname" vendor_elem_add 11 "$net_ve" 2>/dev/null || true
+		) &
+	fi
 
 	json_get_values extra_supplicant_opts wpa_supplicant_options
 	[ -z "$extra_supplicant_opts" ] && json_get_values extra_supplicant_opts supplicant_options

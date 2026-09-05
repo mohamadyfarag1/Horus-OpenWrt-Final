@@ -1,0 +1,27 @@
+#!/bin/sh
+# scan-rocket: Specifically scan for Ubiquiti Rocket AC on 5445 MHz
+FREQ="${1:-5445}"
+
+echo "=========================================================="
+echo "  Horus Deep Scanner -> Frequency $FREQ MHz (Channel 89)"
+echo "=========================================================="
+
+found=0
+for iface in $(iw dev 2>/dev/null | grep Interface | awk '{print $2}'); do
+    case "$iface" in
+        phy1*|*5g*|*radio1*)
+            echo "[*] Scanning on interface: $iface at $FREQ MHz..."
+            res=$(iw dev "$iface" scan freq "$FREQ" 2>/dev/null)
+            if [ -n "$res" ]; then
+                echo "$res" | grep -E '(BSS|SSID|freq:|signal:|capability:|WPA:)'
+                found=1
+            fi
+        ;;
+    esac
+done
+
+if [ "$found" = "0" ]; then
+    echo "[*] Trying direct phy1 scan..."
+    iw phy phy1 scan freq "$FREQ" 2>/dev/null | grep -E '(BSS|SSID|freq:|signal:|capability:|WPA:)' || echo "No AP detected on $FREQ MHz yet. Ensure 5 GHz radio is ON."
+fi
+echo "=========================================================="
