@@ -471,20 +471,76 @@ def patch_hostapd(build_dir, pkg_dir):
              "\t * Upstream forced 802.11b here for JP regulatory. */"
            + old[close_at + 1:])
 
-    header = (
-        "Horus: let channel 14 keep OFDM/HT.\n"
-        "\n"
-        "hostapd_select_hw_mode() force-downgrades channel 14 to bare 802.11b\n"
-        "because Japan forbids OFDM at 2484 MHz. Drop the block so the channel\n"
-        "runs with whatever hw_mode/htmode the UCI config asked for.\n"
-        "\n"
-        "This only decides the MODE. Whether channel 14 is usable at all is a\n"
-        "regulatory question: a 20 MHz channel centred on 2484 needs a rule\n"
-        "covering 2474-2494, which is why 09-generate-regdb.sh emits 2182-2494\n"
-        "rather than stopping at 2484.\n")
+    # --- src/common/ieee802_11_common.c (SuperChannel freq-to-chan mapping) ---
+    common = find_file(build_dir, "ieee802_11_common.c", "ieee80211_freq_to_channel_ext")
+    if not common:
+        fail("hostapd ieee802_11_common.c with ieee80211_freq_to_channel_ext not found under "
+             + build_dir)
+    rel_common = os.path.relpath(common, pkg_build_dir).replace(os.sep, "/")
+    old_common = open(common, encoding="utf-8", errors="ignore").read()
 
+    # 1. 2.4 GHz SuperChannels (2.3 GHz - 2.732 GHz)
+    target_2g = "\tif (freq >= 2412 && freq <= 2472) {"
+    inject_2g = (
+        "\t/* Horus: 2.3 GHz SuperChannels (2312 - 2407 MHz) -> channels 237..256 */\n"
+        "\tif (freq >= 2312 && freq <= 2407) {\n"
+        "\t\tif ((freq - 2312) % 5)\n"
+        "\t\t\treturn NUM_HOSTAPD_MODES;\n"
+        "\t\t*channel = 237 + (freq - 2312) / 5;\n"
+        "\t\t*op_class = 81;\n"
+        "\t\treturn HOSTAPD_MODE_IEEE80211G;\n"
+        "\t}\n\n"
+        "\t/* Horus: 2.4 GHz transition channels (2477 - 2507 MHz) -> channels 74..80 */\n"
+        "\tif (freq >= 2477 && freq <= 2507 && freq != 2484) {\n"
+        "\t\tif ((freq - 2477) % 5)\n"
+        "\t\t\treturn NUM_HOSTAPD_MODES;\n"
+        "\t\t*channel = 74 + (freq - 2477) / 5;\n"
+        "\t\t*op_class = 81;\n"
+        "\t\treturn HOSTAPD_MODE_IEEE80211G;\n"
+        "\t}\n\n"
+        "\t/* Horus: Upper 2.5 - 2.732 GHz SuperChannels (2512 - 2732 MHz) -> channels 15..59 */\n"
+        "\tif (freq >= 2512 && freq <= 2732) {\n"
+        "\t\tif ((freq - 2437) % 5)\n"
+        "\t\t\treturn NUM_HOSTAPD_MODES;\n"
+        "\t\t*channel = (freq - 2437) / 5;\n"
+        "\t\t*op_class = 81;\n"
+        "\t\treturn HOSTAPD_MODE_IEEE80211G;\n"
+        "\t}\n\n"
+        + target_2g
+    )
+    if target_2g not in old_common:
+        fail("anchor 'if (freq >= 2412 && freq <= 2472) {' not found in %s" % common)
+    new_common = old_common.replace(target_2g, inject_2g, 1)
+
+    # 2. 5 GHz SuperChannels (expand ceiling from 5900 MHz to 6000 MHz)
+    target_5g = "\tif (freq >= 5000 && freq < 5900) {"
+    replace_5g = (
+        "\t/* Horus: 5 GHz SuperChannels expanded to 6000 MHz (channels 24..200) */\n"
+        "\tif (freq >= 5000 && freq <= 6000 && freq != 5935) {"
+    )
+    if target_5g not in new_common:
+        fail("anchor 'if (freq >= 5000 && freq < 5900) {' not found in %s" % common)
+    new_common = new_common.replace(target_5g, replace_5g, 1)
+
+    header = (
+        "Horus: let channel 14 keep OFDM/HT and unlock SuperChannel frequencies in hostapd.\n"
+        "\n"
+        "1. hostapd_select_hw_mode() force-downgrades channel 14 to bare 802.11b\n"
+        "   because Japan forbids OFDM at 2484 MHz. Drop the block so the channel\n"
+        "   runs with whatever hw_mode/htmode the UCI config asked for.\n"
+        "2. ieee80211_freq_to_channel_ext() maps frequency to channel numbers.\n"
+        "   - Standard 5 GHz stopped strictly at < 5900 MHz, causing channels 180..185\n"
+        "     (5900..5925 MHz) to fail with 'Could not determine operating frequency'\n"
+        "     and drop Tx-Power to 0 dBm. Expanded to 6000 MHz.\n"
+        "   - 2.4 GHz plan includes 2.3 GHz (channels 237..256), transition channels\n"
+        "     (74..80), and upper band (15..59, up to 2732 MHz), matching NanoStation M2.\n")
+
+    entries = [
+        (rel, old, new),
+        (rel_common, old_common, new_common),
+    ]
     emit_patch(os.path.join(pkg_dir, "patches", "999-horus-channel14.patch"),
-               [(rel, old, new)], header)
+               entries, header)
 
 
 def main():
