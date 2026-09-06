@@ -65,8 +65,9 @@ hamax_read_config() {
     CHANNEL=$(uci -q get hamax.settings.channel)
     HTMODE=$(uci -q get hamax.settings.htmode)
     STEALTH=$(uci -q get hamax.settings.stealth);                   STEALTH="${STEALTH:-0}"
-    ISOLATION=$(uci -q get hamax.settings.isolation);               ISOLATION="${ISOLATION:-1}"
-    LOCK_KEY=$(uci -q get hamax.settings.lock_key);                 LOCK_KEY="${LOCK_KEY:-HAMax@Horus9200#Link}"
+    TARGET_BAND=$(uci -q get hamax.settings.target_band);           TARGET_BAND="${TARGET_BAND:-radio1}"
+    AIRMAX_PRIORITY=$(uci -q get hamax.settings.priority);          AIRMAX_PRIORITY="${AIRMAX_PRIORITY:-high}"
+    PTP_LONG_RANGE=$(uci -q get hamax.settings.ptp_long_range);     PTP_LONG_RANGE="${PTP_LONG_RANGE:-0}"
     AIRMAX_COMPAT=$(uci -q get hamax.settings.airmax_compat);       AIRMAX_COMPAT="${AIRMAX_COMPAT:-1}"
 
     # A point-to-point backhaul has exactly one peer, so there is no

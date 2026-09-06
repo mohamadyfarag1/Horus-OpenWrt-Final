@@ -15,11 +15,13 @@ config hamax 'settings'
 	# Leave empty to auto-detect the 5 GHz radio (radio1).
 	option radio ''
 
-	# HAMax Exclusive Isolation - 5 GHz ONLY
-	# 1 = Off-grid channel + Hidden SSID + WPA2 Protocol Lock Key
-	# Prevents all normal phones and standard access points from discovering or joining!
-	option isolation '1'
-	option lock_key 'HAMax@Horus9200#Link'
+	# Target Band:
+	# radio1 = 5 GHz only (Backhaul to Rocket AC while 2.4 GHz broadcasts normal Wi-Fi)
+	# radio0 = 2.4 GHz only (Connection to NanoStation M2)
+	# both   = Both 5 GHz and 2.4 GHz
+	option target_band 'radio1'
+	option priority 'high'
+	option ptp_long_range '0'
 
 	# 5 GHz channel: leave empty to use existing configured channel, or choose any channel (5180-5885 MHz).
 	option channel ''

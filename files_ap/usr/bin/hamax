@@ -47,12 +47,14 @@ case "$1" in
     apply)
         if [ -n "$RADIO" ]; then
             hamax_backup_init
-            hamax_apply_radio "$RADIO"
-            role=$(hamax_role "$RADIO")
-            for iface in $(hamax_ifaces_on_radio "$RADIO"); do
-                hamax_apply_iface "$iface" "$role"
+            for r in $RADIO; do
+                hamax_apply_radio "$r"
+                role=$(hamax_role "$r")
+                for iface in $(hamax_ifaces_on_radio "$r"); do
+                    hamax_apply_iface "$iface" "$role"
+                done
+                hamax_reload_radio "$r"
             done
-            hamax_reload_radio "$RADIO"
             sleep 2
             hamax_write_json
         fi

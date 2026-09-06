@@ -21,51 +21,46 @@ hamax_enable() {
     role=$(hamax_role "$RADIO")
 
     hamax_log "=========================================================="
-    hamax_log "enabling HAMax on $RADIO (5 GHz) - role=$role profile=$PROFILE"
-    hamax_log "2.4 GHz radio is not touched"
+    hamax_log "enabling airMAX on target radio(s): $RADIO (profile=$PROFILE)"
 
     if [ "$CAP_AIRTIME" != "1" ]; then
         hamax_log "NOTE: this hostapd build has no airtime policy support; airtime fairness is skipped"
     elif [ "$CAP_ATF_KERNEL" != "1" ]; then
         hamax_log "NOTE: mac80211 airtime scheduler not detected; airtime weights may have no effect"
     fi
-    [ "$CAP_VENDOR_IE" = "1" ] || hamax_log "NOTE: hostapd has no vendor_elements support; the HAMax IE is skipped"
+    [ "$CAP_VENDOR_IE" = "1" ] || hamax_log "NOTE: hostapd has no vendor_elements support; the airMAX IE is skipped"
 
     hamax_backup_init
-    hamax_apply_radio "$RADIO"
 
-    for iface in $(hamax_ifaces_on_radio "$RADIO"); do
-        hamax_apply_iface "$iface" "$role"
-        hamax_log "configured interface $iface"
+    for r in $RADIO; do
+        role=$(hamax_role "$r")
+        hamax_apply_radio "$r"
+        for iface in $(hamax_ifaces_on_radio "$r"); do
+            hamax_apply_iface "$iface" "$role"
+            hamax_log "configured interface $iface on $r"
+        done
+        hamax_reload_radio "$r"
     done
-
-    hamax_reload_radio "$RADIO"
 
     mkdir -p "$HAMAX_DIR"
     date '+%Y-%m-%d %H:%M:%S' > "$HAMAX_SINCE"
 
-    # netifd returns as soon as it has asked the radio to come up, not
-    # when the phy is actually beaconing. Writing telemetry immediately
-    # captures a radio with no interfaces and no stations, which then
-    # sits in the UI as "0 clients" until the next poll. Give the phy a
-    # moment, and invalidate the cached phy info so the new channel is
-    # read rather than the pre-reload one.
     sleep 3
     HAMAX_PHY_READ=0
     hamax_load_phy || true
 
     hamax_write_json
-    hamax_log "HAMax enabled"
+    hamax_log "airMAX enabled"
 }
 
 hamax_disable() {
-    hamax_log "disabling HAMax - restoring the 5 GHz radio"
+    hamax_log "disabling airMAX - restoring standard 802.11 Wi-Fi"
 
     hamax_restore
 
-    if [ -n "$RADIO" ]; then
-        hamax_reload_radio "$RADIO"
-    fi
+    for r in $RADIO; do
+        hamax_reload_radio "$r"
+    done
 
     rm -f "$HAMAX_SINCE"
     hamax_write_json

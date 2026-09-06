@@ -851,7 +851,7 @@ return view.extend({
 		s.addremove = false;
 
 		s.tab('wireless', _('Wireless RF'));
-		s.tab('airmax',   _('airMAX & Security'));
+		s.tab('airmax',   _('airMAX Settings'));
 		s.tab('airtime',  _('AirTime QoS & Advanced'));
 		s.tab('log',      _('System Log'));
 
@@ -909,28 +909,33 @@ return view.extend({
 			_('Enable true 4-Address Layer-2 Ethernet bridge for transparent MAC and VLAN passing.'));
 		o.default = '1';
 
-		/* Tab 2: airMAX & Security */
-		o = s.taboption('airmax', form.Flag, 'isolation', _('airMAX Protocol Isolation'),
-			_('Locks the link to authenticated Horus airMAX units with stealth beaconing.'));
-		o.default = '1';
+		/* Tab 2: Ubiquiti airMAX Settings */
+		o = s.taboption('airmax', form.ListValue, 'target_band', _('airMAX Wireless Band'),
+			_('Select which wireless band runs the airMAX protocol. Standard WISP deployment uses 5 GHz for outdoor backhaul to Rocket while keeping 2.4 GHz as normal Wi-Fi for mobile devices.'));
+		o.value('radio1', _('5 GHz Radio ONLY (Backhaul / Rocket AC) \u2014 2.4 GHz remains standard Wi-Fi'));
+		o.value('radio0', _('2.4 GHz Radio ONLY (NanoStation M2 Link) \u2014 5 GHz remains standard Wi-Fi'));
+		o.value('both',   _('Both Radios (5 GHz & 2.4 GHz)'));
+		o.default = 'radio1';
 
-		o = s.taboption('airmax', form.Value, 'lock_key', _('airMAX Security Key'),
-			_('Shared handshake authentication key between local and remote units.'));
-		o.default = 'HAMax@Horus9200#Link';
-		o.password = true;
-		o.depends('isolation', '1');
+		o = s.taboption('airmax', form.ListValue, 'priority', _('airMAX Priority'),
+			_('Station priority in airMAX TDMA polling scheduler. Higher priority allocates more time slots.'));
+		o.value('high',   _('High \u2014 Maximum time slot allocation'));
+		o.value('medium', _('Medium \u2014 Standard time slot allocation'));
+		o.value('low',    _('Low \u2014 Reduced time slot allocation'));
+		o.value('none',   _('None \u2014 Baseline time slot allocation'));
+		o.default = 'high';
+
+		o = s.taboption('airmax', form.Flag, 'ptp_long_range', _('Long Range PtP Link Mode'),
+			_('Disables traditional 802.11 ACK timeouts for ultra-long-distance Point-to-Point backhauls (> 20 km).'));
+		o.default = '0';
+
+		o = s.taboption('airmax', form.Flag, 'airmax_compat', _('Ubiquiti airMAX Interoperability'),
+			_('Injects official Ubiquiti vendor elements (OUI 00:27:22) for seamless connection with Rocket AC, PowerBeam, and NanoStation.'));
+		o.default = '1';
 
 		o = s.taboption('airmax', form.Flag, 'stealth', _('Hide SSID (Stealth Mode)'),
 			_('Suppresses SSID broadcast in beacons to prevent detection by standard scanners.'));
-		o.default = '1';
-
-		o = s.taboption('airmax', form.Flag, 'vendor_ie', _('airMAX Discovery Beacon IE'),
-			_('Broadcasts airMAX Information Element for rapid mutual discovery.'));
-		o.default = '1';
-
-		o = s.taboption('airmax', form.Flag, 'airmax_compat', _('Ubiquiti airMAX Interoperability'),
-			_('Injects official Ubiquiti vendor elements (OUI 00:27:22) for seamless discovery and connection with Rocket AC, PowerBeam, and LiteBeam.'));
-		o.default = '1';
+		o.default = '0';
 
 		/* Tab 3: AirTime QoS & Advanced */
 		o = s.taboption('airtime', form.Flag, 'airtime', _('AirTime Fairness Scheduler'),

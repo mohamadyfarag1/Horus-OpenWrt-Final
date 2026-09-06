@@ -13,31 +13,36 @@ hamax_wifi_ifaces() {
     uci -q show wireless | sed -n 's/^wireless\.\([^.=]*\)=wifi-iface$/\1/p'
 }
 
-# Returns the name of the 5 GHz wifi-device, or nothing if there is none.
-# Never returns a 2.4 GHz radio: that is the whole point of the profile.
+# Returns the target radio device(s) based on TARGET_BAND configuration
 hamax_find_radio() {
-    local dev band hwmode
-
-    if [ -n "$RADIO_OVERRIDE" ]; then
-        band=$(uci -q get "wireless.${RADIO_OVERRIDE}.band")
-        hwmode=$(uci -q get "wireless.${RADIO_OVERRIDE}.hwmode")
-        if [ "$band" = "5g" ] || [ "$hwmode" = "11a" ]; then
-            echo "$RADIO_OVERRIDE"
+    case "$TARGET_BAND" in
+        radio0|2g|2.4g)
+            echo "radio0"
             return 0
-        fi
-        hamax_log "WARNING: radio override '$RADIO_OVERRIDE' is not a 5 GHz radio, ignoring it"
-    fi
-
-    for dev in $(hamax_wifi_devices); do
-        band=$(uci -q get "wireless.${dev}.band")
-        hwmode=$(uci -q get "wireless.${dev}.hwmode")
-        if [ "$band" = "5g" ] || [ "$hwmode" = "11a" ]; then
-            echo "$dev"
+            ;;
+        both|all)
+            echo "radio1 radio0"
             return 0
-        fi
-    done
-
-    return 1
+            ;;
+        *)
+            # Default: 5 GHz radio (radio1)
+            local dev band hwmode
+            if [ -n "$RADIO_OVERRIDE" ]; then
+                echo "$RADIO_OVERRIDE"
+                return 0
+            fi
+            for dev in $(hamax_wifi_devices); do
+                band=$(uci -q get "wireless.${dev}.band")
+                hwmode=$(uci -q get "wireless.${dev}.hwmode")
+                if [ "$band" = "5g" ] || [ "$hwmode" = "11a" ]; then
+                    echo "$dev"
+                    return 0
+                fi
+            done
+            echo "radio1"
+            return 0
+            ;;
+    esac
 }
 
 hamax_ifaces_on_radio() {

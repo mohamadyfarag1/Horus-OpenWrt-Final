@@ -1231,10 +1231,15 @@ hostapd_set_bss_options() {
 	# Horus Ubiquiti airMAX AP Beacon/Probe IE Injection (OUI 00:27:22)
 	local dev_airmax
 	json_get_vars airmax airmax_compat vendor_elements
-	dev_airmax=$(uci -q get "wireless.${phy}.airmax_compat")
-	[ -z "$dev_airmax" ] && dev_airmax=$(uci -q get "wireless.radio0.airmax_compat")
-	[ -z "$dev_airmax" ] && dev_airmax=$(uci -q get "wireless.radio1.airmax_compat")
-	if [ "$airmax" = "1" ] || [ "$airmax_compat" = "1" ] || [ "$dev_airmax" = "1" ]; then
+	if [ "$airmax" = "1" ] || [ "$airmax_compat" = "1" ]; then
+		dev_airmax=1
+	else
+		local rdev
+		rdev=$(uci -q get "wireless.${vif}.device")
+		[ -n "$rdev" ] && dev_airmax=$(uci -q get "wireless.${rdev}.airmax_compat")
+		[ -z "$dev_airmax" ] && dev_airmax=$(uci -q get "wireless.${phy}.airmax_compat")
+	fi
+	if [ "$dev_airmax" = "1" ]; then
 		local airmax_ie="dd080027220002040608"
 		if [ -n "$vendor_elements" ]; then
 			case "$vendor_elements" in

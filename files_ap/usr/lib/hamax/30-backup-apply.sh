@@ -147,15 +147,9 @@ hamax_restore() {
             uci -q delete "wireless.${iface}.hostapd_options"
             uci -q delete "wireless.${iface}.disassoc_low_ack"
             uci -q delete "wireless.${iface}.basic_rate"
-            uci -q delete "wireless.${iface}.multicast_to_unicast"
             uci -q delete "wireless.${iface}.vendor_elements"
             uci -q delete "wireless.${iface}.airmax_compat"
-            local cur_key
-            cur_key=$(uci -q get "wireless.${iface}.key")
-            if [ "$cur_key" = "$LOCK_KEY" ]; then
-                uci -q set "wireless.${iface}.encryption=none"
-                uci -q delete "wireless.${iface}.key"
-            fi
+            uci -q delete "wireless.${iface}.airmax_priority"
         done
         uci -q delete "wireless.${RADIO}.distance"
         uci -q delete "wireless.${RADIO}.noscan"
@@ -176,14 +170,8 @@ hamax_apply_radio() {
     hamax_set "wireless.${radio}.distance" "$DISTANCE"
     hamax_set "wireless.${radio}.beacon_int" "$BEACON_INT"
 
-    # Only enforce noscan if explicitly requested AND the channel is standard.
-    # On off-grid superchannels, noscan=1 prevents hostapd from starting when non-standard channel pairs are used.
-    local cur_ch="${CHANNEL:-$(uci -q get wireless.${radio}.channel)}"
-    if [ "$NOSCAN" = "1" ] && hamax_chan_is_standard "$cur_ch"; then
-        hamax_set "wireless.${radio}.noscan" "1"
-    else
-        hamax_del "wireless.${radio}.noscan"
-    fi
+    # Always enforce noscan=1 so hostapd does not abort on 40/80MHz coexistence checks on SuperChannels
+    hamax_set "wireless.${radio}.noscan" "1"
 
     # rts=0 means "leave RTS/CTS alone"; a PtP link has no hidden node.
     if [ "${RTS:-0}" -gt 0 ] 2>/dev/null; then
@@ -293,22 +281,11 @@ hamax_apply_iface() {
 
     if [ "$imode" = "sta" ]; then
         # Station (CPE / Client) Mode:
-        # 1. Protect existing user key: Only apply LOCK_KEY if key is unset, empty, or already LOCK_KEY.
-        if [ "$ISOLATION" = "1" ]; then
-            local cur_key
-            cur_key=$(uci -q get "wireless.${iface}.key")
-            if [ -z "$cur_key" ] || [ "$cur_key" = "none" ] || [ "$cur_key" = "$LOCK_KEY" ]; then
-                hamax_log "configuring Station CPE with HAMax protocol lock key"
-                hamax_set "wireless.${iface}.encryption" "psk2"
-                hamax_set "wireless.${iface}.key" "$LOCK_KEY"
-            else
-                hamax_log "Station CPE has custom network key configured - preserving existing passphrase for association"
-            fi
-        fi
-
-        # 2. Inject airMAX compatible vendor elements and directed scanning
+        # Ubiquiti airOS standard: Never tamper with user Wi-Fi encryption/key!
+        hamax_log "configuring Station CPE with airMAX protocol compatibility"
         hamax_set "wireless.${iface}.scan_ssid" "1"
         hamax_set "wireless.${iface}.airmax_compat" "1"
+        hamax_set "wireless.${iface}.airmax_priority" "$AIRMAX_PRIORITY"
         if [ "$VENDOR_IE" = "1" ]; then
             hamax_set "wireless.${iface}.vendor_elements" "$HAMAX_IE_STA"
         fi
@@ -319,21 +296,15 @@ hamax_apply_iface() {
     [ "$imode" = "ap" ] || return 0
 
     hamax_set "wireless.${iface}.dtim_period" "$DTIM"
-
-    # A fixed CPE on a tower should not be dropped for a few missed
-    # ACKs, and it has no battery to save.
     hamax_set "wireless.${iface}.disassoc_low_ack" "0"
+    hamax_set "wireless.${iface}.airmax_compat" "1"
+    hamax_set "wireless.${iface}.airmax_priority" "$AIRMAX_PRIORITY"
 
-    # HAMax Exclusive Isolation & Stealth:
-    # 1. Hide SSID so standard Wi-Fi scans cannot see the network.
-    # 2. Lock with WPA2-PSK protocol key so non-HAMax devices cannot associate.
-    if [ "$ISOLATION" = "1" ]; then
-        hamax_log "enforcing HAMax protocol isolation lock (hidden SSID + WPA2-PSK lock key)"
+    # Stealth mode (optional, only if operator explicitly requested)
+    if [ "$STEALTH" = "1" ]; then
         hamax_set "wireless.${iface}.hidden" "1"
-        hamax_set "wireless.${iface}.encryption" "psk2"
-        hamax_set "wireless.${iface}.key" "$LOCK_KEY"
-    elif [ "$STEALTH" = "1" ]; then
-        hamax_set "wireless.${iface}.hidden" "1"
+    else
+        hamax_del "wireless.${iface}.hidden"
     fi
 
     set --
