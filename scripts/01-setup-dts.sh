@@ -33,6 +33,26 @@ dts = re.sub(r"compatible\s*=\s*\"[^\"]+\"(.*?);", "compatible = \"h1radio,ti04-
 # We match label = "rootfs" and the following reg = <offset size>
 dts = re.sub(r"(label\s*=\s*\"rootfs\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
 dts = re.sub(r"(label\s*=\s*\"ubi\";\s*reg\s*=\s*<0x[0-9a-fA-F]+\s+)(0x[0-9a-fA-F]+)(>;)", r"\g<1>0x8000000\g<3>", dts)
+# Switch PHY reset timings to prevent cold boot switch reset loop:
+# Increase reset-delay-us from 5ms (0x1388) to 30ms (0x7530) and add reset-post-delay-us (30ms)
+dts = re.sub(
+    r"reset-delay-us\s*=\s*<0x[0-9a-fA-F]+>;",
+    "reset-delay-us = <0x7530>;\n\t\t\treset-post-delay-us = <0x7530>;",
+    dts
+)
+
+# Debounce reset and wps buttons to prevent cold boot floating pin failsafe trigger
+dts = re.sub(
+    r"(label\s*=\s*\"reset\";\s*gpios\s*=\s*<0x[0-9a-fA-F]+\s+0x3F\s+0x1>;\s*linux,code\s*=\s*<0x198>;)",
+    r"\g<1>\n\t\t\tdebounce-interval = <100>;",
+    dts
+)
+dts = re.sub(
+    r"(label\s*=\s*\"wps\";\s*gpios\s*=\s*<0x[0-9a-fA-F]+\s+0x2\s+0x1>;\s*linux,code\s*=\s*<0x211>;)",
+    r"\g<1>\n\t\t\tdebounce-interval = <100>;",
+    dts
+)
+
 with open(sys.argv[1], "w") as f:
     f.write(dts)
 ' "$dts_path_66"
