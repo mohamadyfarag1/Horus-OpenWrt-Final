@@ -95,3 +95,30 @@ $$\mathbf{2312\text{ MHz} \longleftrightarrow 2732\text{ MHz}}$$
    * في Mercury (`mt76` / `mt7915`): إضافة قنوات 2312-2732 MHz إلى جدول `mt76_channel_freq` لراديو الـ 2.4G.
 3. **تحديث واجهة LuCI**:
    * إضافة القنوات 237-255 و 0 وقنوات 76-80 و 15-59 في القوائم المنسدلة لواجهة الويب.
+
+---
+
+## 5. بروتوكول التوافق مع Ubiquiti airMAX على تردد 2.4 GHz
+
+### أ. كيف يعمل airMAX Polling على أجهزة M2؟
+* عند تفعيل خيار airMAX في نانو M2 (`radio.1.polling=enabled`):
+  1. يقوم المعالج بنقل إدارة الإرسال إلى موديول الكيرنل `ubnt_poll.ko`.
+  2. يقوم الراديو بحقن **عنصر معلومات المطور (Vendor Specific Information Element)** في إطارات الـ Beacon والـ Probe Response:
+     - المعرف **OUI**: `00:27:22` (الخاص بـ Ubiquiti Networks).
+     - الشفرة الهندسية: `dd080027220002040608`.
+  3. **شرط قبول الاتصال**: يرفض النانو M2 أي طلب مصادقة (Authentication/Association Request) من أي محطة عادية ما لم ترسل هذه الشفرة في إطارات طلب الفحص (Probe Request) وإطارات طلب الربط (Assoc Request)!
+
+### ب. الحل المعماري في Horus IPQ4019:
+1. **تفعيل الـ Vendor Elements ديناميكياً**:
+   تم تحديث [`files_ap/lib/netifd/hostapd.sh`](file:///c:/Users/hp/OneDrive/Desktop/New%20folder%20%283%29/hub/Horus-OpenWrt-Final/files_ap/lib/netifd/hostapd.sh) للتعرف على `radio0.airmax_compat` تلقائياً وحقن الشفرة عبر `wpa_cli`:
+   ```bash
+   wpa_cli -p /var/run/wpa_supplicant -i "$ifname" vendor_elem_add 0 dd080027220002040608
+   wpa_cli -p /var/run/wpa_supplicant -i "$ifname" vendor_elem_add 11 dd080027220002040608
+   ```
+2. **سكربت الربط السريع بنقرة واحدة (`connect-nano`)**:
+   تم إنشاء [`files_ap/usr/bin/connect-nano`](file:///c:/Users/hp/OneDrive/Desktop/New%20folder%20%283%29/hub/Horus-OpenWrt-Final/files_ap/usr/bin/connect-nano) لربط راديو 2.4 GHz بالنانو M2 مباشرة:
+   ```bash
+   connect-nano "RedaNet LG" "" 2412 1
+   ```
+   يقوم السكربت بضبط قناة الراديو، وتفعيل نمط المحطة WDS (4-Address mode)، وتفعيل `airmax_compat=1`، وحقن شفرة airMAX للربط الفوري حتى لو كان خيار airMAX مفعلاً على النانو!
+

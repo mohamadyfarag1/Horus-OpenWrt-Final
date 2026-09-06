@@ -1232,6 +1232,7 @@ hostapd_set_bss_options() {
 	local dev_airmax
 	json_get_vars airmax airmax_compat vendor_elements
 	dev_airmax=$(uci -q get "wireless.${phy}.airmax_compat")
+	[ -z "$dev_airmax" ] && dev_airmax=$(uci -q get "wireless.radio0.airmax_compat")
 	[ -z "$dev_airmax" ] && dev_airmax=$(uci -q get "wireless.radio1.airmax_compat")
 	if [ "$airmax" = "1" ] || [ "$airmax_compat" = "1" ] || [ "$dev_airmax" = "1" ]; then
 		local airmax_ie="dd080027220002040608"
