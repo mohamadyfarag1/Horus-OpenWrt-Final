@@ -64,37 +64,57 @@ hamax_detect_role() {
 }
 
 hamax_role() {
-    local radio="$1"
+    local radio="${1%% *}"
     case "$MODE" in
         ap|client) echo "$MODE" ;;
         *)         hamax_detect_role "$radio" ;;
     esac
 }
 
-# Live netdev names belonging to the 5 GHz radio, via netifd, so we
-# never report or touch an interface that lives on the 2.4 GHz phy.
+# Live netdev names belonging to the target radio(s), via netifd, so we
+# never report or touch an interface that lives on other phys.
 hamax_live_ifnames() {
-    local radio="$1" out
+    local radios="$1" r out="" single_out phy w_status
+    [ -z "$radios" ] && radios="radio1 radio0"
 
-    out=$(ubus call network.wireless status 2>/dev/null |
-          jsonfilter -e "@['${radio}'].interfaces[*].ifname" 2>/dev/null)
+    w_status=$(ubus call network.wireless status 2>/dev/null)
 
-    if [ -z "$out" ]; then
-        # netifd unavailable: fall back to the phy that owns the radio
-        local phy
-        phy=$(hamax_phy_for_radio "$radio")
-        [ -n "$phy" ] && out=$(iw dev 2>/dev/null | awk -v want="$phy" '
-            /^phy#/    { cur = "phy" substr($1, 5) }
-            $1 == "Interface" { if (cur == want) print $2 }
-        ')
-    fi
+    for r in $radios; do
+        single_out=""
+        if [ -n "$w_status" ]; then
+            single_out=$(printf '%s' "$w_status" | jsonfilter -e "@['${r}'].interfaces[*].ifname" 2>/dev/null)
+        fi
+
+        if [ -z "$single_out" ]; then
+            # netifd unavailable: fall back to the phy that owns the radio
+            phy=$(hamax_phy_for_radio "$r")
+            if [ -n "$phy" ]; then
+                single_out=$(iw dev 2>/dev/null | awk -v want="$phy" '
+                    /^phy#/           { cur = "phy" substr($1, 5) }
+                    $1 == "Interface" { if (cur == want) print $2 }
+                ')
+            fi
+        fi
+        [ -n "$single_out" ] && out="${out:+$out }$single_out"
+    done
 
     echo "$out"
 }
 
 hamax_phy_for_radio() {
-    local radio="$1" path p n ifn
+    local radio="$1" path p
 
+    # Take first token if multiple are passed
+    radio="${radio%% *}"
+    [ -z "$radio" ] && return 1
+
+    # 1. Direct standard OpenWrt mapping
+    case "$radio" in
+        radio0) [ -d /sys/class/ieee80211/phy0 ] && { echo "phy0"; return 0; } ;;
+        radio1) [ -d /sys/class/ieee80211/phy1 ] && { echo "phy1"; return 0; } ;;
+    esac
+
+    # 2. Match UCI path to sysfs
     path=$(uci -q get "wireless.${radio}.path")
     if [ -n "$path" ]; then
         for p in /sys/class/ieee80211/phy*; do
@@ -105,13 +125,20 @@ hamax_phy_for_radio() {
         done
     fi
 
-    # Fallback: ask a live interface of this radio which wiphy it is on.
-    # Needed when the UCI path does not match the sysfs layout, or when
-    # the radio is identified some other way.
-    for ifn in $(hamax_live_ifnames "$radio"); do
+    # 3. Direct directory check
+    if [ -d "/sys/class/ieee80211/${radio}" ]; then
+        echo "$radio"
+        return 0
+    fi
+
+    # 4. Fallback: ask ubus for the first interface and check its wiphy (strictly NO recursion)
+    local ifn n
+    ifn=$(ubus call network.wireless status 2>/dev/null |
+          jsonfilter -e "@['${radio}'].interfaces[0].ifname" 2>/dev/null)
+    if [ -n "$ifn" ]; then
         n=$(iw dev "$ifn" info 2>/dev/null | awk '$1 == "wiphy" { print $2; exit }')
         [ -n "$n" ] && { echo "phy${n}"; return 0; }
-    done
+    fi
 
     return 1
 }

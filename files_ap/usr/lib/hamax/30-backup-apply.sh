@@ -142,19 +142,21 @@ hamax_restore() {
         hamax_log "restored the 5 GHz radio from backup configuration"
     else
         hamax_log "no backup file found; restoring standard 802.11 defaults on 5 GHz radio"
-        for iface in $(hamax_ifaces_on_radio "$RADIO"); do
-            uci -q delete "wireless.${iface}.hidden"
-            uci -q delete "wireless.${iface}.hostapd_options"
-            uci -q delete "wireless.${iface}.disassoc_low_ack"
-            uci -q delete "wireless.${iface}.basic_rate"
-            uci -q delete "wireless.${iface}.vendor_elements"
-            uci -q delete "wireless.${iface}.airmax_compat"
-            uci -q delete "wireless.${iface}.airmax_priority"
+        for r in $RADIO; do
+            for iface in $(hamax_ifaces_on_radio "$r"); do
+                uci -q delete "wireless.${iface}.hidden"
+                uci -q delete "wireless.${iface}.hostapd_options"
+                uci -q delete "wireless.${iface}.disassoc_low_ack"
+                uci -q delete "wireless.${iface}.basic_rate"
+                uci -q delete "wireless.${iface}.vendor_elements"
+                uci -q delete "wireless.${iface}.airmax_compat"
+                uci -q delete "wireless.${iface}.airmax_priority"
+            done
+            uci -q delete "wireless.${r}.distance"
+            uci -q delete "wireless.${r}.noscan"
+            uci -q delete "wireless.${r}.rts"
+            uci -q delete "wireless.${r}.antenna_gain"
         done
-        uci -q delete "wireless.${RADIO}.distance"
-        uci -q delete "wireless.${RADIO}.noscan"
-        uci -q delete "wireless.${RADIO}.rts"
-        uci -q delete "wireless.${RADIO}.antenna_gain"
     fi
 
     uci commit wireless

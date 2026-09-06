@@ -36,7 +36,7 @@ hamax_survey_raw() {
 hamax_survey_json() {
     local ifname freq noise act busy rxt txt util="" tx_pct="" rx_pct="" intf_pct="" free_pct=""
 
-    for ifname in $(hamax_live_ifnames "$RADIO"); do
+    for ifname in ${HAMAX_ACTIVE_IFNAMES:-$(hamax_live_ifnames "$RADIO")}; do
         set -- $(hamax_survey_raw "$ifname")
         freq="$1"; noise="$2"; act="$3"; busy="$4"; rxt="$5"; txt="$6"
         [ -n "$freq" ] && break
@@ -68,7 +68,7 @@ hamax_survey_json() {
 hamax_ap_links_json() {
     local ifname
 
-    for ifname in $(hamax_live_ifnames "$RADIO"); do
+    for ifname in ${HAMAX_ACTIVE_IFNAMES:-$(hamax_live_ifnames "$RADIO")}; do
         iw dev "$ifname" info 2>/dev/null | grep -q 'type AP' || continue
 
         iw dev "$ifname" station dump 2>/dev/null | awk -v iface="$ifname" '
@@ -135,7 +135,7 @@ hamax_ap_links_json() {
 hamax_sta_links_json() {
     local ifname info
 
-    for ifname in $(hamax_live_ifnames "$RADIO"); do
+    for ifname in ${HAMAX_ACTIVE_IFNAMES:-$(hamax_live_ifnames "$RADIO")}; do
         iw dev "$ifname" info 2>/dev/null | grep -q 'type managed' || continue
 
         info=$(iw dev "$ifname" link 2>/dev/null)
@@ -208,13 +208,15 @@ hamax_write_json() {
         fi
     done
 
-    if [ -n "$RADIO" ]; then
-        role=$(hamax_role "$RADIO")
-        radio_band=$(uci -q get "wireless.${RADIO}.band")
-        chan=$(uci -q get "wireless.${RADIO}.channel")
-        htmode=$(uci -q get "wireless.${RADIO}.htmode")
+    HAMAX_ACTIVE_IFNAMES=$(hamax_live_ifnames "$RADIO")
+    local primary_radio="${RADIO%% *}"
+    if [ -n "$primary_radio" ]; then
+        role=$(hamax_role "$primary_radio")
+        radio_band=$(uci -q get "wireless.${primary_radio}.band")
+        chan=$(uci -q get "wireless.${primary_radio}.channel")
+        htmode=$(uci -q get "wireless.${primary_radio}.htmode")
 
-        for ifn in $(hamax_live_ifnames "$RADIO"); do
+        for ifn in $HAMAX_ACTIVE_IFNAMES; do
             txpower=$(iw dev "$ifn" info 2>/dev/null | sed -n 's/.*txpower \([0-9.]*\) dBm.*/\1/p' | head -n1)
             ssid=$(iw dev "$ifn" info 2>/dev/null | sed -n 's/.*ssid \(.*\)/\1/p' | head -n1)
             [ -n "$ssid" ] && break
@@ -244,7 +246,7 @@ hamax_write_json() {
   "role": "$(hamax_json_escape "$role")",
   "profile": "$(hamax_json_escape "$PROFILE")",
   "device_model": "$(hamax_json_escape "$model")",
-  "radio": "$(hamax_json_escape "${RADIO:-}")",
+  "radio": "$(hamax_json_escape "${primary_radio:-$RADIO}")",
   "band": "$(hamax_json_escape "${radio_band:-}")",
   "channel": "$(hamax_json_escape "${chan:-}")",
   "htmode": "$(hamax_json_escape "${htmode:-}")",

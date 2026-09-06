@@ -70,14 +70,18 @@ hamax_disable() {
 hamax_check() {
     echo "HAMax capability report"
     echo "======================="
-    echo "5 GHz radio          : ${RADIO:-NOT FOUND}"
     if [ -n "$RADIO" ]; then
-        echo "  band               : $(uci -q get "wireless.${RADIO}.band")"
-        echo "  channel            : $(uci -q get "wireless.${RADIO}.channel")"
-        echo "  htmode             : $(uci -q get "wireless.${RADIO}.htmode")"
-        echo "  detected role      : $(hamax_role "$RADIO")"
-        echo "  interfaces         : $(hamax_ifaces_on_radio "$RADIO" | tr '\n' ' ')"
-        echo "  live netdevs       : $(hamax_live_ifnames "$RADIO" | tr '\n' ' ')"
+        for r in $RADIO; do
+            echo "Radio: $r"
+            echo "  band               : $(uci -q get "wireless.${r}.band")"
+            echo "  channel            : $(uci -q get "wireless.${r}.channel")"
+            echo "  htmode             : $(uci -q get "wireless.${r}.htmode")"
+            echo "  detected role      : $(hamax_role "$r")"
+            echo "  interfaces         : $(hamax_ifaces_on_radio "$r" | tr '\n' ' ')"
+            echo "  live netdevs       : $(hamax_live_ifnames "$r" | tr '\n' ' ')"
+        done
+    else
+        echo "Radios: NOT FOUND"
     fi
     echo
     echo "hostapd airtime policy : $([ "$CAP_AIRTIME" = "1" ] && echo "supported" || echo "NOT SUPPORTED (needs full wpad)")"

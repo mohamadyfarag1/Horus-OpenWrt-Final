@@ -24,7 +24,21 @@ HAMAX_CHANS="$(seq 24 185)"
 HAMAX_STD_CHANS="36 40 44 48 52 56 60 64 100 104 108 112 116 120 124 128 132 136 140 144 149 153 157 161 165"
 
 hamax_chan_freq() {
-    echo $((5000 + 5 * $1))
+    local ch="$1"
+    case "$ch" in
+        ''|*[!0-9-]*) echo ""; return 1 ;;
+    esac
+    if [ "$ch" -ge 1 ] 2>/dev/null && [ "$ch" -le 14 ] 2>/dev/null; then
+        if [ "$ch" -eq 14 ]; then
+            echo 2484
+        else
+            echo $((2407 + 5 * ch))
+        fi
+    elif [ "$ch" -ge 24 ] 2>/dev/null; then
+        echo $((5000 + 5 * ch))
+    else
+        echo ""
+    fi
 }
 
 # 0 = off-grid (invisible to stock clients), 1 = standard centre
@@ -73,9 +87,13 @@ HAMAX_USABLE_CHANS=""
 HAMAX_PHY_READ=0
 
 hamax_load_phy() {
-    local info
+    local info r
 
-    HAMAX_PHY=$(hamax_phy_for_radio "$RADIO" 2>/dev/null)
+    HAMAX_PHY=""
+    for r in $RADIO; do
+        HAMAX_PHY=$(hamax_phy_for_radio "$r" 2>/dev/null)
+        [ -n "$HAMAX_PHY" ] && break
+    done
     [ -n "$HAMAX_PHY" ] || return 1
 
     info=$(iw phy "$HAMAX_PHY" info 2>/dev/null)

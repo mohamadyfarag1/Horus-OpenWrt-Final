@@ -982,10 +982,19 @@ return view.extend({
 		};
 
 		/* --- Live Polling & SVG Graph Update --- */
+		var telemetryRunning = false;
 		poll.add(function() {
-			return fs.exec('/usr/bin/hamax', [ 'telemetry' ]).then(function() {
+			if (telemetryRunning) return Promise.resolve();
+			telemetryRunning = true;
+			return fs.exec('/usr/bin/hamax', [ 'telemetry' ]).catch(function() {
+				/* ignore error */
+			}).then(function() {
+				telemetryRunning = false;
 				return Promise.all([ readState(), L.resolveDefault(fs.read('/tmp/hamax.log'), '') ]);
+			}).catch(function() {
+				telemetryRunning = false;
 			}).then(function(res) {
+				if (!res) return;
 				var cur = res[0] || {};
 				var lg = (res[1] || '').trim();
 
