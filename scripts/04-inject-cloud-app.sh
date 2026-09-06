@@ -48,8 +48,8 @@ chmod +x files/etc/init.d/cloud 2>/dev/null || true
 # ============================================
 
 # CRITICAL: Strip Windows CRLF line endings
-find files/ -type f ! -name '*.bin' ! -name '*.db' -exec sed -i 's/\r$//' {} +
-chmod +x files/etc/uci-defaults/*
+find files/ -type f ! -name '*.bin' ! -name '*.db' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+[ -d files/etc/uci-defaults ] && chmod +x files/etc/uci-defaults/* 2>/dev/null || true
 
 # ============================================
 # SECTION D: Board Data Extractor Tool
