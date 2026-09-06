@@ -50,9 +50,9 @@ with open('db.txt', 'w') as f:
             f.write('country 00:\n')
         else:
             f.write(f'country {c}:\n')
-        # Safely bounded frequencies covering 2.3 GHz - 2.732 GHz and 5.115 - 5.980 GHz SuperChannel
+        # Safely bounded frequencies covering 2.3 GHz - 2.732 GHz and 5.115 - 6.120 GHz SuperChannel
         f.write('\t(2182 - 2750 @ 40), (33)\n')
-        f.write('\t(5115 - 5980 @ 160), (33)\n')
+        f.write('\t(5115 - 6120 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')
 "
