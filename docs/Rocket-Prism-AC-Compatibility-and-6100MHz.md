@@ -1,7 +1,7 @@
 # Rocket Prism 5AC Gen2 Interoperability & 6100 MHz SuperChannel
 
 ## Executive Summary
-This document records the comprehensive reverse-engineering of the live **Ubiquiti Rocket Prism 5AC Gen2** (`192.168.22.77`, running airOS `XC.v8.7.22`) and establishes the technical specifications for Horus firmware to achieve 100% frequency alignment, seamless airMAX AC Mixed Mode association, and high-speed bidirectional throughput.
+This document records the comprehensive reverse-engineering of the live **Ubiquiti Rocket Prism 5AC Gen2** (`192.168.22.77`, running airOS `XC.v8.7.22`) and establishes the technical specifications for Horus firmware to achieve 100% frequency alignment, seamless airMAX AC Mixed Mode association, high-speed bidirectional throughput, and robust LAN/Ethernet integration with Ubiquiti CPE devices (such as the NanoStation M2).
 
 ---
 
@@ -23,11 +23,20 @@ From live kernel extraction (`system.cfg`, `/etc/sysinit/radio.conf`, `/proc/sys
 4. `wireless.1.wds.status=enabled`: WDS 4-address bridging active on the AP.
 5. `wireless.1.ampdu.frames=32`, `wireless.1.amsdu=1`: Hardware frame aggregation enabled.
 6. `radio.1.countrycode=511`: Licensed / Compliance Test mode unlocking channels from 4.920 GHz to 6.100 GHz.
-7. `flags: 137, cbp_dur: 180, cbp_usable_dur: 200`: In Mixed Mode, the Rocket allocates a Contention-Based Period (`cbp_dur`) within each TDMA frame for CSMA/CA fallback and non-airMAX frames.
+7. `flags: 137, cbp_dur: 180, cbp_usable_dur: 200`: In Mixed Mode, the Rocket allocates a Contention-Based Period (`cbp_dur: 180 us`) within each TDMA frame (down: 4880 us, up: 4370 us) for CSMA/CA fallback and non-airMAX frames.
+
+### Extracted Kernel Modules & Internal Signatures
+1. **`ubnt_poll_host.ko`** (189,880 bytes):
+   - Internal association verification:
+     `%02X:%02X:%02X:%02X:%02X:%02X PTMP=%d H=%d FF=%d DP=%d`
+     `Disallowing STA %02X:%02X:%02X:%02X:%02X:%02X from associating: invalid mode (!11N-PTMP-XM)`
+     `Disallowing STA %02X:%02X:%02X:%02X:%02X:%02X from associating: invalid mode (!11N-PTMP-XW)`
+2. **`umac.ko`** (2,358,736 bytes):
+   - Contains Qualcomm / Ubiquiti hooks: `WMI_UBNT_POLL_CMDID`, `WMI_UBNT_POLL_EVENTID`, `is_ubnt_ff`, `is_ubnt_ptp`.
 
 ### Proof of 11n / Non-AC Interoperability
 Live connected stations dumped via `wstalist` include:
-- `NanoBeam M5 16` (`04:18:D6:5C:44:90`, airOS `XW.v6.3.12`, IP: `192.168.21.19`): Connected with MCS rate 162/90 Mbps.
+- `NanoBeam M5 16` (`04:18:D6:5C:44:90`, airOS `XW.v6.3.12`, IP: `192.168.21.19`): Connected with MCS rate 162/90 Mbps, airMAX Priority: 2.
 - `NanoBeam M5 16` (`04:18:D6:5C:46:29`, airOS `XW.v6.3.12`, IP: `192.168.21.8`): Connected with MCS rate 162/81.5 Mbps.
 - `NanoStation 5AC loco` (`68:D7:9A:92:0D:75`, airOS `WA.v8.7.12`, IP: `192.168.109.200`).
 
@@ -98,3 +107,36 @@ The previous Horus airMAX freeze issue has been completely identified and resolv
 2. **Apply Guard**: If `enabled=0`, the configuration scripts exit cleanly in `< 5 ms` without calling `wifi reload`.
 3. **20 MHz Auto-Clamping on Channels >= 180**: Prevents hostapd from crashing on channels 180..220 where 40/80 MHz secondary channels do not exist.
 4. **Kernel Buffer Sizing**: Kernel network buffers scaled to safe, bounded limits (`rmem_max=4MB`, `wmem_max=4MB`, `netdev_max_backlog=5000`), leaving `147+ MB` free RAM and CPU load at `0.64`.
+
+---
+
+## 5. Ethernet Switch Architecture: 100M PHY LEDs & Ubiquiti IP Subnet Isolation
+
+### The 100M Link LED Phenomenon
+- **Observed Behavior**: When plugging a 100 Mbps device (NanoStation M2) into LAN4, the LuCI dashboard shows `LAN4: 100 M` (link active), but the physical green LED on the Horus router does not illuminate, while the LED on the NanoStation M2 turns on.
+- **Root Cause**:
+  - The NanoStation M2 has a 10/100 Mbps Fast Ethernet PHY whose LED pin turns on for any link speed.
+  - The Horus router uses an enterprise Qualcomm QCA8075 5-port Gigabit PHY.
+  - The port LEDs on Horus are driven directly by the QCA8075 PHY hardware registers, not by software GPIOs.
+  - In the default PHY power-on state, the green LED pin is mapped to `LED_1000_LINK_ACT` (lights only on 1 Gbps / 1000 Mbps links, such as the PC on LAN3).
+  - When a 100 Mbps link negotiates, the link layer is 100% active and healthy (as confirmed by the kernel and dashboard), but the Gigabit-specific LED remains dark.
+
+### The Zero-Traffic Phenomenon (`▲ 0 B / ▼ 0 B`) on `192.168.1.20`
+- **Observed Behavior**: The dashboard shows `LAN4: 100 M` but traffic counters stay at `0 B / 0 B` and the NanoStation web page does not open.
+- **Root Cause**:
+  - Horus LAN operates on subnet `192.168.100.0/24` (Router: `192.168.100.1`, PC: `192.168.100.2`).
+  - Ubiquiti devices out-of-the-box operate on factory static IP `192.168.1.20` (`192.168.1.0/24`).
+  - TCP/IP isolation: Devices on `192.168.100.x` cannot route to `192.168.1.x` without an interface alias. When the PC requests `192.168.1.20`, Horus has no route for `192.168.1.0/24` and drops the packets.
+- **Solutions**:
+  - **PC Solution**: Add secondary IP `192.168.1.100` (`255.255.255.0`) to Windows Ethernet adapter advanced TCP/IPv4 properties.
+  - **Router Solution**: Add a static interface alias on `br-lan`:
+    ```uci
+    uci set network.ubnt_alias=interface
+    uci set network.ubnt_alias.device='br-lan'
+    uci set network.ubnt_alias.proto='static'
+    uci set network.ubnt_alias.ipaddr='192.168.1.2'
+    uci set network.ubnt_alias.netmask='255.255.255.0'
+    uci commit network
+    /etc/init.d/network reload
+    ```
+  - Both methods immediately allow full bidirectional traffic flow to `192.168.1.20`.
