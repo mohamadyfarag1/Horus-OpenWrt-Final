@@ -46,10 +46,34 @@ import sys
 # Channels 24..185 inclusive. All 162 channels are calibrated and supported by IPQ4019 radio.
 # Target DMA Copy Engine buffer protection is handled in ath10k_update_channel_list().
 CHANS = list(range(24, 186))
-# ATH10K_NUM_CHANS is NOT a free parameter and NOT a buffer size to pad.
-# mac.c enforces it at compile time with an equality test, so it is derived
-# from the arrays at generation time - see patch_ath10k().
 MAX_5G = max(CHANS)             # 185
+
+# 2.4 GHz channel plan: 86-channel expanded spectrum (2312 MHz - 2732 MHz)
+# Matches Ubiquiti NanoStation M2 spectrum + standard 802.11 channels:
+# - 2.3 GHz band: Channels 237-255 (2312-2402 MHz, 5 MHz step) + Ch 256 (2407 MHz)
+# - Standard 2.4 GHz: Channels 1-13 (2412-2472 MHz)
+# - Standard 802.11b Japan: Channel 14 (2484 MHz)
+# - Transition band: Channels 74-80 (2477-2507 MHz, 5 MHz step)
+# - Upper 2.5-2.732 GHz band: Channels 15-59 (2512-2732 MHz, 5 MHz step)
+CHANS_2G = [
+    # 2.3 GHz Sub-band: 2312 - 2407 MHz
+    (237, 2312), (238, 2317), (239, 2322), (240, 2327), (241, 2332),
+    (242, 2337), (243, 2342), (244, 2347), (245, 2352), (246, 2357),
+    (247, 2362), (248, 2367), (249, 2372), (250, 2377), (251, 2382),
+    (252, 2387), (253, 2392), (254, 2397), (255, 2402), (256, 2407),
+    # Standard 2.4 GHz ISM: 2412 - 2472 MHz
+    (1, 2412), (2, 2417), (3, 2422), (4, 2427), (5, 2432),
+    (6, 2437), (7, 2442), (8, 2447), (9, 2452), (10, 2457),
+    (11, 2462), (12, 2467), (13, 2472),
+    # Standard 802.11b Japan: 2484 MHz
+    (14, 2484),
+    # Transition 5 MHz step: 2477 - 2507 MHz
+    (74, 2477), (75, 2482), (76, 2487), (77, 2492), (78, 2497),
+    (79, 2502), (80, 2507),
+] + [
+    # Upper 2.5 - 2.732 GHz Band: 2512 - 2732 MHz (Channels 15..59)
+    (ch, 2437 + ch * 5) for ch in range(15, 60)
+]
 
 
 def fail(msg):
@@ -168,30 +192,34 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  5 GHz table         : %d -> %d channels"
           % (array_re.search(old_mac).group(0).count("CHAN5G"), len(CHANS)))
 
-    # --- channel 14 --------------------------------------------------
-    # Upstream already carries CHAN2G(14, 2484, 0); add it only if a fork
-    # stripped it. Whether it is usable is a regulatory question, handled
-    # by 09-generate-regdb.sh emitting 2182-2494.
-    g2 = re.search(r"static const struct ieee80211_channel ath10k_2ghz_channels\[\]"
-                   r"\s*=\s*\{.*?\};", new_mac, re.DOTALL)
-    if g2 and "CHAN2G(14," not in g2.group(0):
-        new_mac = new_mac.replace(
-            "\tCHAN2G(13, 2472, 0),\n",
-            "\tCHAN2G(13, 2472, 0),\n\tCHAN2G(14, 2484, 0),\n", 1)
-        print("  channel 14          : added")
-    else:
-        print("  channel 14          : already present upstream")
+    # --- 2.4 GHz table -----------------------------------------------
+    lines_2g = "".join("\tCHAN2G(%d, %d, 0),\n" % (ch, freq) for ch, freq in CHANS_2G)
+    new_array_2g = ("static const struct ieee80211_channel ath10k_2ghz_channels[] = {\n"
+                    + lines_2g
+                    + "\t/* Horus: 86-channel 2.4 GHz superchannel plan (2312-2732 MHz), "
+                      "matches NanoStation M2 (%d channels) */\n" % len(CHANS_2G)
+                    + "};\n")
+    array_2g_re = re.compile(
+        r"static const struct ieee80211_channel ath10k_2ghz_channels\[\]\s*=\s*\{.*?\};",
+        re.DOTALL)
+    new_mac, n2 = array_2g_re.subn(new_array_2g, new_mac)
+    if not n2:
+        fail("ath10k_2ghz_channels[] did not match in %s" % mac)
+    print("  2.4 GHz table       : %d -> %d channels"
+          % (array_2g_re.search(old_mac).group(0).count("CHAN2G") if array_2g_re.search(old_mac) else 14, len(CHANS_2G)))
 
     # --- CE buffer overflow protection in ath10k_update_channel_list ---
     # The IPQ4019 firmware Copy Engine CE3 (Host->Target WMI) has a maximum buffer
     # size of 2048 bytes (src_sz_max = 2048). In TLV firmware, each scan channel
-    # descriptor takes 28 bytes. Packing all 162+14 = 176 channels into a single
-    # wmi_scan_chan_list_cmd requires 4944 bytes, which overruns target SRAM and
+    # descriptor takes 28 bytes. Packing all 162+86 = 248 channels into a single
+    # wmi_scan_chan_list_cmd requires 6944 bytes, which overruns target SRAM and
     # crashes the firmware with -108, causing a watchdog reboot loop.
-    # We filter the scan channel list in ath10k_update_channel_list to 2.4 GHz
-    # channels + 20 MHz grid anchors on 5 GHz (max 60 channels total, 1552 bytes),
-    # ensuring packet size <= 1700 < 2048 bytes. All 162 channels remain fully
-    # registered in ath10k_5ghz_channels[] for AP and STA operation.
+    # We filter the scan channel list in ath10k_update_channel_list:
+    # 2.4 GHz: 11 grid anchors (Ch 1, 6, 11, 14, 237, 247, 256, 76, 25, 45, 59)
+    # 5 GHz: 20 MHz grid anchors + priority airMAX channels (~40 channels)
+    # Total scan channels <= 60 (~1680 bytes), ensuring packet size <= 1700 < 2048 bytes.
+    # All 86 2.4GHz + 162 5GHz channels remain fully registered in ath10k channel
+    # arrays for normal AP and STA operation.
     scan_t1 = (
         "\tbands = hw->wiphy->bands;\n"
         "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
@@ -219,10 +247,19 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\t    IEEE80211_CHAN_DISABLED)\n"
         "\t\t\t\tcontinue;\n"
         "\n"
-        "\t\t\t/* Horus: limit scan channels to 2.4 GHz + 20 MHz grid anchors on 5 GHz + Rocket AC/airMAX priority channels (<= 60 channels)\n"
-        "\t\t\t * to prevent Copy Engine DMA buffer overflow (CE3 limit 2048 bytes).\n"
-        "\t\t\t * All 162 channels remain fully registered in ath10k_5ghz_channels[] for AP/STA use.\n"
+        "\t\t\t/* Horus: limit scan channels to prevent Copy Engine DMA buffer overflow (CE3 limit 2048 bytes).\n"
+        "\t\t\t * Total scan channels capped <= 60 (~1680 bytes < 2048 bytes).\n"
+        "\t\t\t * All 86 2.4GHz + 162 5GHz channels remain fully registered in ath10k channel arrays for AP/STA use.\n"
         "\t\t\t */\n"
+        "\t\t\tif (channel->band == NL80211_BAND_2GHZ) {\n"
+        "\t\t\t\tif (channel->hw_value != 1 && channel->hw_value != 6 &&\n"
+        "\t\t\t\t    channel->hw_value != 11 && channel->hw_value != 14 &&\n"
+        "\t\t\t\t    channel->hw_value != 237 && channel->hw_value != 247 &&\n"
+        "\t\t\t\t    channel->hw_value != 256 && channel->hw_value != 76 &&\n"
+        "\t\t\t\t    channel->hw_value != 25 && channel->hw_value != 45 &&\n"
+        "\t\t\t\t    channel->hw_value != 59)\n"
+        "\t\t\t\t\tcontinue;\n"
+        "\t\t\t}\n"
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tif ((channel->center_freq % 20 != 0) &&\n"
         "\t\t\t\t    channel->center_freq != 5445 && channel->center_freq != 5455 &&\n"
@@ -261,6 +298,15 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\tif (channel->flags & IEEE80211_CHAN_DISABLED)\n"
         "\t\t\t\tcontinue;\n"
         "\n"
+        "\t\t\tif (channel->band == NL80211_BAND_2GHZ) {\n"
+        "\t\t\t\tif (channel->hw_value != 1 && channel->hw_value != 6 &&\n"
+        "\t\t\t\t    channel->hw_value != 11 && channel->hw_value != 14 &&\n"
+        "\t\t\t\t    channel->hw_value != 237 && channel->hw_value != 247 &&\n"
+        "\t\t\t\t    channel->hw_value != 256 && channel->hw_value != 76 &&\n"
+        "\t\t\t\t    channel->hw_value != 25 && channel->hw_value != 45 &&\n"
+        "\t\t\t\t    channel->hw_value != 59)\n"
+        "\t\t\t\t\tcontinue;\n"
+        "\t\t\t}\n"
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tif ((channel->center_freq % 20 != 0) &&\n"
         "\t\t\t\t    channel->center_freq != 5445 && channel->center_freq != 5455 &&\n"
@@ -297,6 +343,8 @@ def patch_ath10k(build_dir, pkg_dir):
     n_2g = count_entries(new_mac, "ath10k_2ghz_channels", "CHAN2G")
     n_5g = count_entries(new_mac, "ath10k_5ghz_channels", "CHAN5G")
     num_chans = n_2g + n_5g
+    if n_2g != len(CHANS_2G):
+        fail("emitted %d 2.4 GHz channels but the plan has %d" % (n_2g, len(CHANS_2G)))
     if n_5g != len(CHANS):
         fail("emitted %d 5 GHz channels but the plan has %d" % (n_5g, len(CHANS)))
     print("  array sizes         : %d (2.4G) + %d (5G) = %d" % (n_2g, n_5g, num_chans))
@@ -335,22 +383,25 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
     header = (
-        "Horus: register the 162-channel 5 GHz plan with CE DMA buffer protection.\n"
+        "Horus: register the 86-channel 2.4 GHz and 162-channel 5 GHz plans with CE DMA buffer protection.\n"
         "\n"
-        "ath10k builds its channel list from ath10k_5ghz_channels[]. Upstream\n"
-        "ships it 20 MHz-spaced (%d entries); Horus uses %d entries (channels 24..185,\n"
-        "5120-5925 MHz, 5 MHz steps). All channels operate at full calibrated 30 dBm power.\n"
+        "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
+        "- 2.4 GHz: %d channels (2312-2732 MHz, continuous 5 MHz steps + Ch 14 2484 MHz).\n"
+        "  Matches Ubiquiti NanoStation M2 full spectrum.\n"
+        "- 5 GHz: %d channels (5120-5925 MHz, channels 24..185, 5 MHz steps).\n"
+        "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
+        "All channels operate at full calibrated 30 dBm power.\n"
         "\n"
         "ath10k_update_channel_list protects against Copy Engine DMA buffer overflow\n"
-        "(CE3 2048-byte limit) by filtering background scan entries to 2.4 GHz channels +\n"
-        "20 MHz grid anchors on 5 GHz (max 60 channels total, ~1552 bytes).\n"
+        "(CE3 2048-byte limit) by filtering background scan entries across both bands\n"
+        "(max 60 channels total, ~1680 bytes < 2048 bytes).\n"
         "\n"
-        "ATH10K_NUM_CHANS sizes survey[], so it has to grow with the table or\n"
+        "ATH10K_NUM_CHANS sizes survey[], so it has to grow with the combined table (%d) or\n"
         "the driver indexes past the end of the array.\n"
         "\n"
         "wmi.h channels[] in struct wmi_start_scan_arg must also grow to\n"
         "ATH10K_NUM_CHANS (%d), otherwise full-band scans fail with -EINVAL (-22).\n"
-        % (array_re.search(old_mac).group(0).count("CHAN5G"), len(CHANS), num_chans))
+        % (len(CHANS_2G), len(CHANS), num_chans, num_chans))
 
     # Record the exact frequency list for the drift check in 06-compile.sh.
     # Do NOT recover it from the unified diff: every channel that already

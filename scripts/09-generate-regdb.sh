@@ -50,8 +50,8 @@ with open('db.txt', 'w') as f:
             f.write('country 00:\n')
         else:
             f.write(f'country {c}:\n')
-        # Safely bounded frequencies based EXACTLY on Golden Router Hexdump!
-        f.write('\t(2182 - 2494 @ 40), (33)\n')
+        # Safely bounded frequencies covering 2.3 GHz - 2.732 GHz SuperChannel (NanoStation M2 compatible)
+        f.write('\t(2182 - 2750 @ 40), (33)\n')
         f.write('\t(5115 - 5930 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')

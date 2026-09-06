@@ -11,14 +11,14 @@ echo "============================================"
 #############################################
 # PATCH 1: ath/regd.c (Kernel Regulatory)
 # We expand frequencies ONLY to what board-2.bin EEPROM supports!
-# 2GHz: 2182-2484 MHz
+# 2GHz: 2182-2750 MHz (Full 2.3 GHz - 2.732 GHz SuperChannel)
 # 5GHz: 5115-5930 MHz
 #############################################
 for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
   echo "[PATCH 1] Patching: $REGD"
-  sed -i 's/REG_RULE(2412-10, 2462+10, 40, 0, 20, 0)/REG_RULE(2182-10, 2484+10, 40, 0, 33, 0)/g' "$REGD"
-  sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2182-10, 2484+10, 40, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2484-10, 2484+10, 40, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(2412-10, 2462+10, 40, 0, 20, 0)/REG_RULE(2182-10, 2750+10, 40, 0, 33, 0)/g' "$REGD"
+  sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
   
   sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(5115-10, 5930+10, 160, 0, 33,/g' "$REGD"
   sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5115-10, 5930+10, 160, 0, 33,/g' "$REGD"
@@ -31,9 +31,9 @@ done
 
 for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
   echo "[PATCH 2] Patching: $REG"
-  sed -i 's/REG_RULE(2412-10, 2462+10, 40, 6, 20, 0)/REG_RULE(2182-10, 2484+10, 40, 6, 33, 0)/g' "$REG"
-  sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2182-10, 2484+10, 40, 6, 33,/g' "$REG"
-  sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2484-10, 2484+10, 40, 6, 33,/g' "$REG"
+  sed -i 's/REG_RULE(2412-10, 2462+10, 40, 6, 20, 0)/REG_RULE(2182-10, 2750+10, 40, 6, 33, 0)/g' "$REG"
+  sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2182-10, 2750+10, 40, 6, 33,/g' "$REG"
+  sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2182-10, 2750+10, 40, 6, 33,/g' "$REG"
   
   sed -i '/if (!is_valid_rd(rd)) {/{N;N;N;N;d}' "$REG"
   sed -i '/if (WARN(!is_valid_rd(rd)/{N;N;N;d}' "$REG"

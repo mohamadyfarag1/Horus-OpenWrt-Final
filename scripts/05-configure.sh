@@ -125,14 +125,57 @@ if os.path.exists(path):
                 }
             }
 
-            /* === HORUS CHANNEL 14 INJECTION === */
+            /* === HORUS 2.4 GHz SUPERCHANNEL INJECTION (86 Channels: 2312 - 2732 MHz) === */
             if (this.channels && this.channels['2g'] && this.channels['2g'].length > 0) {
-                var found14 = false;
-                for (var j = 0; j < this.channels['2g'].length; j += 3) {
-                    if (this.channels['2g'][j] == 14) { found14 = true; break; }
-                }
-                if (!found14) {
-                    this.channels['2g'].push(14, '14 (2484 MHz)', {available: true});
+                var existing_2g = this.channels['2g'];
+                var horus_2g_list = [
+                    /* 2.3 GHz Sub-band: 2312 - 2407 MHz */
+                    [237, '237 (2312 MHz)'], [238, '238 (2317 MHz)'], [239, '239 (2322 MHz)'],
+                    [240, '240 (2327 MHz)'], [241, '241 (2332 MHz)'], [242, '242 (2337 MHz)'],
+                    [243, '243 (2342 MHz)'], [244, '244 (2347 MHz)'], [245, '245 (2352 MHz)'],
+                    [246, '246 (2357 MHz)'], [247, '247 (2362 MHz)'], [248, '248 (2367 MHz)'],
+                    [249, '249 (2372 MHz)'], [250, '250 (2377 MHz)'], [251, '251 (2382 MHz)'],
+                    [252, '252 (2387 MHz)'], [253, '253 (2392 MHz)'], [254, '254 (2397 MHz)'],
+                    [255, '255 (2402 MHz)'], [256, '256 (2407 MHz)'],
+                    /* Standard 2.4 GHz Channels: 1-13 */
+                    [1, '1 (2412 MHz)'], [2, '2 (2417 MHz)'], [3, '3 (2422 MHz)'],
+                    [4, '4 (2427 MHz)'], [5, '5 (2432 MHz)'], [6, '6 (2437 MHz)'],
+                    [7, '7 (2442 MHz)'], [8, '8 (2447 MHz)'], [9, '9 (2452 MHz)'],
+                    [10, '10 (2457 MHz)'], [11, '11 (2462 MHz)'], [12, '12 (2467 MHz)'],
+                    [13, '13 (2472 MHz)'],
+                    /* Standard Channel 14 Japan */
+                    [14, '14 (2484 MHz)'],
+                    /* Transition Channels: 74-80 (2477 - 2507 MHz) */
+                    [74, '74 (2477 MHz)'], [75, '75 (2482 MHz)'], [76, '76 (2487 MHz)'],
+                    [77, '77 (2492 MHz)'], [78, '78 (2497 MHz)'], [79, '79 (2502 MHz)'],
+                    [80, '80 (2507 MHz)'],
+                    /* Upper Band: 15-59 (2512 - 2732 MHz) */
+                    [15, '15 (2512 MHz)'], [16, '16 (2517 MHz)'], [17, '17 (2522 MHz)'],
+                    [18, '18 (2527 MHz)'], [19, '19 (2532 MHz)'], [20, '20 (2537 MHz)'],
+                    [21, '21 (2542 MHz)'], [22, '22 (2547 MHz)'], [23, '23 (2552 MHz)'],
+                    [24, '24 (2557 MHz)'], [25, '25 (2562 MHz)'], [26, '26 (2567 MHz)'],
+                    [27, '27 (2572 MHz)'], [28, '28 (2577 MHz)'], [29, '29 (2582 MHz)'],
+                    [30, '30 (2587 MHz)'], [31, '31 (2592 MHz)'], [32, '32 (2597 MHz)'],
+                    [33, '33 (2602 MHz)'], [34, '34 (2607 MHz)'], [35, '35 (2612 MHz)'],
+                    [36, '36 (2617 MHz)'], [37, '37 (2622 MHz)'], [38, '38 (2627 MHz)'],
+                    [39, '39 (2632 MHz)'], [40, '40 (2637 MHz)'], [41, '41 (2642 MHz)'],
+                    [42, '42 (2647 MHz)'], [43, '43 (2652 MHz)'], [44, '44 (2657 MHz)'],
+                    [45, '45 (2662 MHz)'], [46, '46 (2667 MHz)'], [47, '47 (2672 MHz)'],
+                    [48, '48 (2677 MHz)'], [49, '49 (2682 MHz)'], [50, '50 (2687 MHz)'],
+                    [51, '51 (2692 MHz)'], [52, '52 (2697 MHz)'], [53, '53 (2702 MHz)'],
+                    [54, '54 (2707 MHz)'], [55, '55 (2712 MHz)'], [56, '56 (2717 MHz)'],
+                    [57, '57 (2722 MHz)'], [58, '58 (2727 MHz)'], [59, '59 (2732 MHz)']
+                ];
+                for (var hi = 0; hi < horus_2g_list.length; hi++) {
+                    var ch = horus_2g_list[hi][0];
+                    var label = horus_2g_list[hi][1];
+                    var found = false;
+                    for (var j = 0; j < existing_2g.length; j += 3) {
+                        if (existing_2g[j] == ch) { found = true; break; }
+                    }
+                    if (!found) {
+                        this.channels['2g'].push(ch, label, {available: true});
+                    }
                 }
             }
 

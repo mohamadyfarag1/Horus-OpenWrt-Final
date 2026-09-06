@@ -5,7 +5,30 @@
 SSID="${1:-RedaNet LG}"
 KEY="${2:-}"
 FREQ="${3:-2412}"
-CHAN="${4:-1}"
+CHAN="${4:-}"
+
+# Auto-calculate channel from frequency if not explicitly passed
+if [ -z "$CHAN" ] && [ -n "$FREQ" ]; then
+    if [ "$FREQ" -ge 2312 ] && [ "$FREQ" -le 2402 ]; then
+        CHAN=$(( 256 + (FREQ - 2407) / 5 ))
+    elif [ "$FREQ" -eq 2407 ]; then
+        CHAN=256
+    elif [ "$FREQ" -ge 2412 ] && [ "$FREQ" -le 2472 ]; then
+        CHAN=$(( (FREQ - 2407) / 5 ))
+    elif [ "$FREQ" -eq 2484 ]; then
+        CHAN=14
+    elif [ "$FREQ" -eq 2477 ]; then
+        CHAN=74
+    elif [ "$FREQ" -eq 2482 ]; then
+        CHAN=75
+    elif [ "$FREQ" -ge 2487 ] && [ "$FREQ" -le 2507 ]; then
+        CHAN=$(( 76 + (FREQ - 2487) / 5 ))
+    elif [ "$FREQ" -ge 2512 ] && [ "$FREQ" -le 2732 ]; then
+        CHAN=$(( (FREQ - 2437) / 5 ))
+    else
+        CHAN=1
+    fi
+fi
 
 echo "=========================================================="
 echo "  Horus IPQ4019 (2.4 GHz) -> Ubiquiti NanoStation M2 Setup"
