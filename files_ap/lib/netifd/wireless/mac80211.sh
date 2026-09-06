@@ -953,6 +953,7 @@ wpa_supplicant_add_interface() {
 	json_add_string config "$_config"
 	[ -n "$default_macaddr" ] || json_add_string macaddr "$macaddr"
 	[ -n "$network_bridge" ] && json_add_string bridge "$network_bridge"
+	[ "$mode" = "sta" ] && [ -n "$network_bridge" ] && [ "$wds" != "1" ] && wds=1
 	[ -n "$wds" ] && json_add_boolean 4addr "$wds"
 	json_add_boolean powersave "$powersave"
 	[ "$mode" = "mesh" ] && mac80211_add_mesh_params

@@ -1315,7 +1315,12 @@ wpa_supplicant_prepare_interface() {
 				fail=1
 			;;
 			sta)
-				[ "$wds" = 1 -o "$multi_ap" = 1 ] || fail=1
+				# Horus: When a client interface is attached to a bridge (e.g. LAN),
+				# auto-enable WDS (4-address mode) so transparent bridging succeeds.
+				# Never fail with BRIDGE_NOT_ALLOWED or destroy the wireless vif!
+				if [ "$wds" != 1 -a "$multi_ap" != 1 ]; then
+					wds=1
+				fi
 			;;
 		esac
 

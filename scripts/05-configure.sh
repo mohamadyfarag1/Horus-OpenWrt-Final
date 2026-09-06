@@ -99,7 +99,7 @@ if os.path.exists(path):
                 this.channels['5g'] = new_5g;
             }
 
-            /* 2.4 GHz SuperChannel Plan: 86 Channels (2312 - 2732 MHz, Strictly sorted by MHz ascending like NanoStation M2) */
+            /* 2.4 GHz SuperChannel Plan: 76 Channels (2312 - 2682 MHz, Strictly sorted by MHz ascending like NanoStation M2) */
             if (this.channels && this.channels['2g'] && this.channels['2g'].length > 0) {
                 var has_auto_2g = (this.channels['2g'][0] === 'auto');
                 var horus_2g_plan = [
@@ -115,16 +115,14 @@ if os.path.exists(path):
                     /* Transition & Japan: 2477 - 2507 MHz */
                     [74, 2477], [75, 2482], [14, 2484], [76, 2487], [77, 2492],
                     [78, 2497], [79, 2502], [80, 2507],
-                    /* Upper Band: 2512 - 2732 MHz (Channels 15..59) */
+                    /* Upper Band: 2512 - 2682 MHz (Channels 15..49) */
                     [15, 2512], [16, 2517], [17, 2522], [18, 2527], [19, 2532],
                     [20, 2537], [21, 2542], [22, 2547], [23, 2552], [24, 2557],
                     [25, 2562], [26, 2567], [27, 2572], [28, 2577], [29, 2582],
                     [30, 2587], [31, 2592], [32, 2597], [33, 2602], [34, 2607],
                     [35, 2612], [36, 2617], [37, 2622], [38, 2627], [39, 2632],
                     [40, 2637], [41, 2642], [42, 2647], [43, 2652], [44, 2657],
-                    [45, 2662], [46, 2667], [47, 2672], [48, 2677], [49, 2682],
-                    [50, 2687], [51, 2692], [52, 2697], [53, 2702], [54, 2707],
-                    [55, 2712], [56, 2717], [57, 2722], [58, 2727], [59, 2732]
+                    [45, 2662], [46, 2667], [47, 2672], [48, 2677], [49, 2682]
                 ];
                 var new_2g = has_auto_2g ? ['auto', 'auto', {available: true}] : [];
                 for (var i = 0; i < horus_2g_plan.length; i++) {
@@ -183,6 +181,11 @@ if [ -f "../files_ap/lib/netifd/hostapd.sh" ]; then
     mkdir -p package/network/config/wifi-scripts/files/lib/netifd 2>/dev/null || true
     cp -f ../files_ap/lib/netifd/hostapd.sh package/network/config/wifi-scripts/files/lib/netifd/hostapd.sh 2>/dev/null || true
     echo "OK: Injected Ubiquiti airMAX vendor element support into hostapd.sh"
+fi
+if [ -f "../files_ap/lib/netifd/wireless/mac80211.sh" ]; then
+    mkdir -p package/network/config/wifi-scripts/files/lib/netifd/wireless 2>/dev/null || true
+    cp -f ../files_ap/lib/netifd/wireless/mac80211.sh package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh 2>/dev/null || true
+    echo "OK: Injected Client mode auto-WDS bridge fix into mac80211.sh"
 fi
 
 # ============================================
