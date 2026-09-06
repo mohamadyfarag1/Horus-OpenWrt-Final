@@ -20,9 +20,9 @@ for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
   sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
   sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
   
-  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(5115-10, 5930+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5115-10, 5930+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5115-10, 5930+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(5115-10, 5980+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5115-10, 5980+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5115-10, 5980+10, 160, 0, 33,/g' "$REGD"
   
   sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
   sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
