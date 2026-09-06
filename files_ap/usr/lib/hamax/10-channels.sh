@@ -5,12 +5,12 @@
 # ---------------------------------------------------------------------
 # 5 GHz channel plan
 #
-# The superchannel patches register a 5 MHz-spaced table (162 channels) in
+# The superchannel patches register a 5 MHz-spaced table (197 channels) in
 # ath10k_5ghz_channels[]; this list must stay in step with CHANS in
 # scripts/gen_package_patches.py. freq = 5000 + 5 * channel, so the plan
-# spans 5120 - 6000 MHz (channels 24..200).
+# spans 5120 - 6100 MHz (channels 24..220).
 # ---------------------------------------------------------------------
-HAMAX_CHANS="$(seq 24 200)"
+HAMAX_CHANS="$(seq 24 220)"
 
 # The 20 MHz centres a stock 802.11 client actually tunes to when it
 # scans. Anything outside this set is off-grid: a phone or laptop never

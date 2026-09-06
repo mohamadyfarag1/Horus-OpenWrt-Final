@@ -1364,6 +1364,7 @@ wpa_supplicant_prepare_interface() {
 ${scan_list:+freq_list=$scan_list}
 $ap_scan
 $country_str
+${g_ve:+vendor_elements=$g_ve}
 EOF
 	return 0
 }
