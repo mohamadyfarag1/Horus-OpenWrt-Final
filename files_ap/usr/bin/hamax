@@ -45,6 +45,10 @@ case "$1" in
         hamax_disable
         ;;
     apply)
+        [ "$ENABLED" = "1" ] || {
+            hamax_log "airMAX is disabled (enabled=0); leaving wireless radios untouched"
+            exit 0
+        }
         if [ -n "$RADIO" ]; then
             hamax_backup_init
             for r in $RADIO; do

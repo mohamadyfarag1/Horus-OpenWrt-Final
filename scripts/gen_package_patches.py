@@ -42,11 +42,11 @@ import os
 import re
 import sys
 
-# 5 GHz channel plan: expanded 162-channel spectrum plan (5120 MHz - 5925 MHz, 5 MHz step)
-# Channels 24..185 inclusive. All 162 channels are calibrated and supported by IPQ4019 radio.
+# 5 GHz channel plan: expanded 177-channel spectrum plan (5120 MHz - 6000 MHz, 5 MHz step)
+# Channels 24..200 inclusive. All 177 channels are calibrated and supported by IPQ4019 radio.
 # Target DMA Copy Engine buffer protection is handled in ath10k_update_channel_list().
-CHANS = list(range(24, 186))
-MAX_5G = max(CHANS)             # 185
+CHANS = list(range(24, 201))
+MAX_5G = max(CHANS)             # 200
 
 # 2.4 GHz channel plan: 86-channel expanded spectrum (2312 MHz - 2732 MHz)
 # Matches Ubiquiti NanoStation M2 spectrum + standard 802.11 channels:
@@ -383,12 +383,12 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
     header = (
-        "Horus: register the 86-channel 2.4 GHz and 162-channel 5 GHz plans with CE DMA buffer protection.\n"
+        "Horus: register the 86-channel 2.4 GHz and 177-channel 5 GHz plans with CE DMA buffer protection.\n"
         "\n"
         "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
         "- 2.4 GHz: %d channels (2312-2732 MHz, continuous 5 MHz steps + Ch 14 2484 MHz).\n"
         "  Matches Ubiquiti NanoStation M2 full spectrum.\n"
-        "- 5 GHz: %d channels (5120-5925 MHz, channels 24..185, 5 MHz steps).\n"
+        "- 5 GHz: %d channels (5120-6000 MHz, channels 24..200, 5 MHz steps).\n"
         "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
         "All channels operate at full calibrated 30 dBm power.\n"
         "\n"

@@ -256,6 +256,19 @@ hamax_apply_channel() {
 
     hamax_set "wireless.${radio}.channel" "$CHANNEL"
     [ -n "$HTMODE" ] && hamax_set "wireless.${radio}.htmode" "$HTMODE"
+
+    # Channels >= 180 (5900 - 6000 MHz) cannot form 40MHz or 80MHz pairs (no secondary channels exist).
+    # Clamp to VHT20 so hostapd brings the link up at full 30 dBm power!
+    if [ "$CHANNEL" -ge 180 ] 2>/dev/null; then
+        local cur_ht
+        cur_ht=$(uci -q get "wireless.${radio}.htmode")
+        case "$cur_ht" in
+            *80*|*40*|*HT40*)
+                hamax_log "Channel $CHANNEL (${freq} MHz) is in the 5.9-6.0 GHz superband; clamping bandwidth to 20 MHz (VHT20) to ensure full 30 dBm power"
+                hamax_set "wireless.${radio}.htmode" "VHT20"
+                ;;
+        esac
+    fi
 }
 
 hamax_apply_iface() {

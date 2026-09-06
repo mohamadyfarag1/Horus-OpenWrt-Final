@@ -161,6 +161,18 @@ mac80211_hostapd_setup_base() {
 	chan_ofs=0
 	[ "$band" = "6g" ] && chan_ofs=1
 
+	# Horus SuperChannel: channels >= 180 (5900 - 6000 MHz) cannot form 40MHz or 80MHz channel pairs in hostapd.
+	# Auto-clamp htmode to VHT20 so hostapd never crashes with 'HT40 channel pair not allowed',
+	# guaranteeing that power remains locked at 30 dBm (1000 mW) regardless of LuCI width setting!
+	if [ "$channel" -ge 180 ] 2>/dev/null; then
+		case "$htmode" in
+			*40*|*80*|*160*)
+				logger -t mac80211 "Horus: channel $channel is in 5.9-6.0 GHz superband; auto-clamping htmode $htmode -> VHT20 to maintain full 30 dBm"
+				htmode="VHT20"
+			;;
+		esac
+	fi
+
 	if [ "$band" != "6g" ]; then
 		ieee80211n=1
 		ht_capab=

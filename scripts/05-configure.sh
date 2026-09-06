@@ -88,26 +88,13 @@ if os.path.exists(path):
     # 0 dBm; one in the driver but not here still works, just not shown.
     injection = """
             /* === HORUS SUPERCHANNEL ORDERED INJECTION START === */
-            /* 5 GHz SuperChannel Plan: 5120 - 5925 MHz (Strictly sorted by MHz ascending) */
+            /* 5 GHz SuperChannel Plan: 5120 - 6000 MHz (Channels 24..200, Strictly sorted by MHz ascending like Rocket AC) */
             if (this.channels && this.channels['5g'] && this.channels['5g'].length > 0) {
                 var has_auto_5g = (this.channels['5g'][0] === 'auto');
-                var existing_5g = this.channels['5g'];
-                var map_5g = {};
-                for (var j = has_auto_5g ? 3 : 0; j < existing_5g.length; j += 3) {
-                    var ch = existing_5g[j];
-                    var f = (ch >= 180) ? (4000 + ch * 5) : (5000 + ch * 5);
-                    map_5g[f] = ch;
-                }
-                for (var f = 5120; f <= 5925; f += 5) {
-                    var ch = (f >= 5000) ? Math.round((f - 5000) / 5) : Math.round((f - 4000) / 5);
-                    map_5g[f] = ch;
-                }
-                var sorted_5g = Object.keys(map_5g).map(Number).sort(function(a, b) { return a - b; });
                 var new_5g = has_auto_5g ? ['auto', 'auto', {available: true}] : [];
-                for (var si = 0; si < sorted_5g.length; si++) {
-                    var f_mhz = sorted_5g[si];
-                    var ch_num = map_5g[f_mhz];
-                    new_5g.push(ch_num, f_mhz + ' MHz (Ch ' + ch_num + ')', {available: true});
+                for (var ch = 24; ch <= 200; ch++) {
+                    var f_mhz = 5000 + ch * 5;
+                    new_5g.push(ch, f_mhz + ' MHz (Ch ' + ch + ')', {available: true});
                 }
                 this.channels['5g'] = new_5g;
             }
