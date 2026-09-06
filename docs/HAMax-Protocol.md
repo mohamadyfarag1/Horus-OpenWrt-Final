@@ -1,7 +1,7 @@
-# 📡 HAMax — Horus Long-Range 5 GHz Profile
+# 📡 HAMax — Horus Outdoor airMAX Bridge Profile
 
-**Status:** implemented, `files_ap/usr/bin/hamax` (v3)
-**Scope:** the 5 GHz radio only. The 2.4 GHz radio is never read, written or reloaded.
+**Status:** implemented, `files_ap/usr/bin/hamax` (v4 with Ubiquiti airOS Parity)
+**Scope:** Selectable per-band (`target_band`: `radio1` 5GHz only, `radio0` 2.4GHz only, or `both`). Supports full Ubiquiti airMAX interoperability (OUI 00:27:22), airMAX priority scheduling, Long Range PtP link mode, with 100% independent standard Wi-Fi on untargeted bands.
 
 ---
 
