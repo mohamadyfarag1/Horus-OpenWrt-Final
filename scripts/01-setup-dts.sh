@@ -53,6 +53,39 @@ dts = re.sub(
     dts
 )
 
+# Wrap ethernet-phy@0..4 in ethernet-phy-package@0 for Linux 6.6 qca807x driver compatibility.
+# Without ethernet-phy-package@0, devm_of_phy_package_join() fails with -EINVAL (-22),
+# which forces fallback to Generic PHY (irq=POLL), disabling hardware link interrupts,
+# DAC tuning (qcom,control-dac=<5>), and analog calibration, causing delayed/broken LAN link.
+mdio_pattern = r"(mdio@90000\s*\{.*?)(\s*ethernet-phy@0\s*\{.*?\s*ethernet-phy@4\s*\{[^}]*?\};)(\s*psgmii-phy@5)"
+match = re.search(mdio_pattern, dts, re.DOTALL)
+if match:
+    phys_content = match.group(2).strip()
+    indented_phys = ""
+    for line in phys_content.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("ethernet-phy@") or s == "};":
+            indented_phys += "                " + s + "\n"
+        else:
+            indented_phys += "                    " + s + "\n"
+
+    package_block = (
+        "\n            ethernet-phy-package@0 {\n"
+        "                #address-cells = <1>;\n"
+        "                #size-cells = <0>;\n"
+        "                compatible = \"qcom,qca8075-package\";\n"
+        "                reg = <0>;\n"
+        "                qcom,tx-drive-strength-milliwatt = <300>;\n\n"
+        f"{indented_phys}"
+        "            };\n"
+    )
+    dts = dts[:match.start(2)] + package_block + dts[match.end(2):]
+    print("Wrapped QCA8075 PHYs in ethernet-phy-package@0 for Linux 6.6.")
+else:
+    print("WARNING: mdio@90000 ethernet-phy pattern did not match!")
+
 with open(sys.argv[1], "w") as f:
     f.write(dts)
 ' "$dts_path_66"
