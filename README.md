@@ -35,10 +35,12 @@
 
 | المستند | الوصف | الرابط |
 | :--- | :--- | :--- |
+| **استقرار الترددات حتى 6000MHz وحماية airMAX** | معمارية الـ 177 قناة حتى 6000 MHz، ونظام التقليص التلقائي (20MHz Auto-Clamp)، وفصل airMAX وحماية الباور. | [SuperChannel 6000MHz & Stability](docs/SuperChannel-6000MHz-Clamping-and-Stability.md) |
+| **معمارية فصل وتطابق airMAX** | تفاصيل فصل الترددات بين الكارتين، إلغاء التشفير الإجباري، ومطابقة نظام Ubiquiti airOS. | [airMAX Decoupling Architecture](docs/airMAX-Decoupling-and-Superchannel-Stability-Architecture.md) |
 | **المرجع التاريخي الشامل** | القصة الكاملة، التشريح الرياضي لانهيار CE3 DMA، الهندسة العكسية لشفرة الروكت، وسجلات الفحص الحي. | [Master Historical Doc](docs/Master-Historical-Superchannel-and-Rocket-AC-Breakthrough.md) |
 | **تحليل وتوافق Rocket AC** | التحليل الهندسي الميداني لمحطة الروكت `192.168.22.77`، وتفكيك كود MIPS لوحدة `ubnt_poll_host.ko`. | [Rocket AC Analysis](docs/Rocket-AC-Analysis-and-Interoperability.md) |
 | **جذر المشكلة وحل CE DMA** | التشريح الدقيق لمعمارية Copy Engine 3 وحسابات الـ DMA Buffer في دريفر `ath10k-ct`. | [Root Cause & Solution](docs/Frequency-Expansion-Root-Cause-and-Solution.md) |
-| **خارطة طريق الترددات 5MHz** | جدول القنوات الـ 162 التفصيلي من 5120 MHz إلى 5925 MHz وقيم الترددات المركزية. | [Frequency Roadmap](docs/Frequency-Expansion-Roadmap-5MHz.md) |
+| **خارطة طريق الترددات 5MHz** | جدول القنوات الـ 177 التفصيلي من 5120 MHz إلى 6000 MHz وقيم الترددات المركزية. | [Frequency Roadmap](docs/Frequency-Expansion-Roadmap-5MHz.md) |
 | **بروتوكول HAMax** | تفاصيل بروتوكول العزل وتوليد الشبكات والنسخ الاحتياطي في فيرموير Horus. | [HAMax Protocol](docs/HAMax-Protocol.md) |
 | **بنية مزامنة الـ Radius** | المعمارية التقنية لمزامنة بيانات المشتركين فائقة السرعة مع واجهة LuCI. | [Radius Sync Architecture](docs/Ultra_Fast_Radius_Sync_Architecture.md) |
 
