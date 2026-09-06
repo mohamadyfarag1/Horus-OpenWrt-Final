@@ -1,0 +1,73 @@
+#!/bin/sh /etc/rc.common
+# =====================================================================
+# Horus 9200 - IPQ4019 Quad-Core Wireless & Network SMP Orchestrator
+#
+# Core 0 (Mask 0x1): Linux Kernel, Netifd, Userland, Web UI, Hostapd
+# Core 1 (Mask 0x2): Radio 0 (2.4 GHz ath10k) NAPI & IRQ
+# Core 2 (Mask 0x4): Radio 1 (5 GHz SuperChannel ath10k) NAPI & IRQ
+# Core 3 (Mask 0x8): Ethernet EDMA Switch Queues & Crypto Acceleration
+# =====================================================================
+
+START=98
+STOP=10
+
+start() {
+    logger -t horus-smp "Applying optimized IPQ4019 SMP and IRQ affinity rules..."
+
+    # 1. CPU Frequency Scaling & Thermal Optimization
+    for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+        [ -f "$gov" ] && echo "ondemand" > "$gov" 2>/dev/null
+    done
+    if [ -d /sys/devices/system/cpu/cpufreq/ondemand ]; then
+        echo 80 > /sys/devices/system/cpu/cpufreq/ondemand/up_threshold 2>/dev/null || true
+        echo 50000 > /sys/devices/system/cpu/cpufreq/ondemand/sampling_rate 2>/dev/null || true
+    fi
+
+    # 2. Assign Wi-Fi IRQs (Radio 0 -> Core 1, Radio 1 -> Core 2)
+    # Search for specific ath10k or wifi interrupts
+    local w0_irqs=$(awk -F: '/(a000000\.wifi|ath10k.*0)/ {print $1}' /proc/interrupts | tr -d ' ')
+    local w1_irqs=$(awk -F: '/(a800000\.wifi|ath10k.*1)/ {print $1}' /proc/interrupts | tr -d ' ')
+
+    if [ -z "$w0_irqs" ] || [ -z "$w1_irqs" ]; then
+        # Fallback: distribute all ath10k interrupts
+        local all_ath=$(awk -F: '/ath10k/ {print $1}' /proc/interrupts | tr -d ' ')
+        local count=0
+        for irq in $all_ath; do
+            if [ $(( count % 2 )) -eq 0 ]; then
+                echo 2 > "/proc/irq/$irq/smp_affinity" 2>/dev/null
+            else
+                echo 4 > "/proc/irq/$irq/smp_affinity" 2>/dev/null
+            fi
+            count=$((count + 1))
+        done
+    else
+        for irq in $w0_irqs; do
+            echo 2 > "/proc/irq/$irq/smp_affinity" 2>/dev/null
+        done
+        for irq in $w1_irqs; do
+            echo 4 > "/proc/irq/$irq/smp_affinity" 2>/dev/null
+        done
+    fi
+
+    # 3. Assign Ethernet Switch EDMA IRQs to Core 3 (Mask 8)
+    for irq in $(awk -F: '/(edma|qca8k|ipq4019-mdio)/ {print $1}' /proc/interrupts | tr -d ' '); do
+        echo 8 > "/proc/irq/$irq/smp_affinity" 2>/dev/null
+    done
+
+    # 4. Enable Receive Packet Steering (RPS) across Cores 1, 2, 3 (Mask 0xE = 14)
+    # Core 0 is spared to handle userspace & management daemons without stutter
+    for rps in /sys/class/net/*/queues/rx-*/rps_cpus; do
+        [ -f "$rps" ] && echo "e" > "$rps" 2>/dev/null || true
+    done
+
+    # 5. Enable XPS (Transmit Packet Steering) where supported
+    for xps in /sys/class/net/*/queues/tx-*/xps_cpus; do
+        [ -f "$xps" ] && echo "e" > "$xps" 2>/dev/null || true
+    done
+
+    logger -t horus-smp "SMP affinity and RPS/XPS successfully applied."
+}
+
+boot() {
+    start
+}

@@ -536,6 +536,21 @@ return baseclass.extend({
 				'style': 'display:inline-block; font-size:10px; font-weight:700; padding:1px 8px; border-radius:10px; color:#fff; background:' + (isDisabled ? '#94a3b8' : '#10b981') + ';'
 			}, [ isDisabled ? 'OFF' : 'ON' ]);
 
+			var badges = [ statusBadge ];
+			var r_temp = (rw && rw.temp !== undefined) ? parseInt(rw.temp, 10) : 0;
+			if (r_temp > 0) {
+				var tempColor = '#10b981'; // Green: Normal (<65°C)
+				if (r_temp >= 80) {
+					tempColor = '#ef4444'; // Red: Hot (>=80°C)
+				} else if (r_temp >= 65) {
+					tempColor = '#f59e0b'; // Amber: Warm (65-79°C)
+				}
+				badges.push(E('span', {
+					'style': 'display:inline-block; margin-left:4px; font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; color:#fff; background:' + tempColor + ';',
+					'title': _('Wireless Radio Temperature / \u062f\u0631\u062c\u0629 \u062d\u0631\u0627\u0631\u0629 \u0627\u0644\u0643\u0627\u0631\u062a')
+				}, [ '\ud83c\udf21\ufe0f ' + r_temp + '\u00b0C' ]));
+			}
+
 			cards.push(E('div', {
 				'class': 'ifacebox',
 				'style': 'margin:.35em; width:124px; min-width:124px; max-width:124px; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1); border:1px solid ' + (isDisabled ? '#cbd5e1' : '#60a5fa') + '; display:flex; flex-direction:column; justify-content:space-between;'
@@ -545,7 +560,7 @@ return baseclass.extend({
 					'style': 'background:' + (r.id === 'radio1' ? '#4f46e5' : '#2563eb') + '; color:#fff; font-weight:bold; font-size:12px; height:24px; line-height:24px; text-align:center;'
 				}, [ r.label ]),
 				E('div', { 'class': 'ifacebox-body', 'style': 'height:78px; padding:6px 4px; background:#fff; display:flex; flex-direction:column; justify-content:center; align-items:center;' }, [
-					E('div', { 'style': 'margin-bottom:3px;' }, [ statusBadge ]),
+					E('div', { 'style': 'margin-bottom:3px; display:flex; align-items:center; justify-content:center;' }, badges),
 					E('div', { 'style': 'font-size:12px; font-weight:700; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:116px; margin-bottom:2px;' }, [ iface_ssid ]),
 					E('div', { 'style': 'font-size:10px; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:116px;' }, [
 						isDisabled ? _('Disabled / \u0645\u0639\u0637\u0644') : (channel + (htmode ? ' (' + htmode + ')' : ''))

@@ -35,11 +35,28 @@ jobs:
           sudo find /etc/apt/ -type f -exec sed -i 's/security.ubuntu.com/mirrors.kernel.org/g' {} + 2>/dev/null || true
           sudo apt-get clean
           sudo apt-get update -o Acquire::ForceIPv4=true -o Acquire::Retries=3
-          sudo apt-get install -y --no-install-recommends -o Acquire::ForceIPv4=true -o Acquire::Retries=3 build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-distutils python3-setuptools rsync unzip zlib1g-dev file wget device-tree-compiler python3-pip python3-m2crypto swig libelf-dev
+          sudo apt-get install -y --no-install-recommends -o Acquire::ForceIPv4=true -o Acquire::Retries=3 build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-distutils python3-setuptools rsync unzip zlib1g-dev file wget device-tree-compiler python3-pip python3-m2crypto swig libelf-dev ccache
 
       - name: Clone OpenWrt Source
         run: |
           git clone --depth 1 --branch v24.10.8 https://git.openwrt.org/openwrt/openwrt.git openwrt
+
+      - name: Cache OpenWrt Package Downloads (dl directory)
+        uses: actions/cache@v4
+        with:
+          path: openwrt/dl
+          key: openwrt-dl-${{ hashFiles('openwrt/include/kernel-version.mk') }}
+          restore-keys: |
+            openwrt-dl-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: openwrt-ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            openwrt-ccache-${{ runner.os }}-${{ github.ref }}-
+            openwrt-ccache-${{ runner.os }}-
 
       - name: Setup Device Tree
         run: bash scripts/01-setup-dts.sh

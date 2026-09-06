@@ -17,10 +17,8 @@ make package/kernel/mac80211/prepare V=s -j$(nproc) 2>&1 || true
 make package/network/services/hostapd/prepare V=s -j$(nproc) 2>&1 || true
 
 echo "======================================="
-echo "Step 1.5: PSGMII verify + kernel re-prepare..."
+echo "Step 1.5: PSGMII calibration verification..."
 echo "======================================="
-bash ../scripts/08-patch-psgmii.sh
-make target/linux/prepare V=s -j$(nproc)
 bash ../scripts/08-patch-psgmii.sh
 
 echo "======================================="

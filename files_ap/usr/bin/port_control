@@ -43,6 +43,68 @@ port_status() {
     echo ""
     echo '  },'
 
+get_wifi_temp() {
+    local radio="$1"
+    local phy="phy0"
+    local soc_addr="a000000.wifi"
+    [ "$radio" = "radio1" ] && { phy="phy1"; soc_addr="a800000.wifi"; }
+
+    # 1. Direct device hwmon on platform soc or ieee80211
+    for p in "/sys/devices/platform/soc/$soc_addr/hwmon/hwmon"*/temp1_input \
+             "/sys/class/ieee80211/$phy/device/hwmon/hwmon"*/temp1_input; do
+        if [ -f "$p" ]; then
+            val=$(cat "$p" 2>/dev/null)
+            if [ -n "$val" ] && [ "$val" -gt 0 ]; then
+                echo $(( val / 1000 ))
+                return 0
+            fi
+        fi
+    done
+
+    # 2. Search hwmon by driver/chipset name
+    for h in /sys/class/hwmon/hwmon*; do
+        [ -d "$h" ] || continue
+        hname=$(cat "$h/name" 2>/dev/null)
+        case "$hname" in
+            *ath10k*|*qcom*|*wifi*)
+                if [ -f "$h/temp1_input" ]; then
+                    val=$(cat "$h/temp1_input" 2>/dev/null)
+                    if [ -n "$val" ] && [ "$val" -gt 0 ]; then
+                        echo $(( val / 1000 ))
+                        return 0
+                    fi
+                fi
+                ;;
+        esac
+    done
+
+    # 3. Thermal zones
+    for tz in /sys/class/thermal/thermal_zone*; do
+        [ -d "$tz" ] || continue
+        ttype=$(cat "$tz/type" 2>/dev/null)
+        case "$ttype" in
+            *$phy*|*$soc_addr*|*wifi*)
+                val=$(cat "$tz/temp" 2>/dev/null)
+                if [ -n "$val" ] && [ "$val" -gt 0 ]; then
+                    echo $(( val / 1000 ))
+                    return 0
+                fi
+                ;;
+        esac
+    done
+
+    # 4. Fallback to SoC thermal zone 0 if individual radio sensor is unavailable
+    if [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+        val=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        if [ -n "$val" ] && [ "$val" -gt 0 ]; then
+            echo $(( val / 1000 ))
+            return 0
+        fi
+    fi
+
+    echo 0
+}
+
     # Wireless status
     echo '  "wireless": {'
     first_w=1
@@ -83,8 +145,10 @@ port_status() {
             clients=$(iw dev "$iface_name" station dump 2>/dev/null | grep -c "^Station" || echo 0)
         fi
 
-        printf '    "%s": {"disabled": %s, "channel": "%s", "htmode": "%s", "ssid": "%s", "mode": "%s", "ifname": "%s", "clients": %d}' \
-            "$r" "$r_disabled" "$r_channel" "$r_htmode" "$ssid" "$mode" "$iface_name" "$clients"
+        r_temp=$(get_wifi_temp "$r")
+
+        printf '    "%s": {"disabled": %s, "channel": "%s", "htmode": "%s", "ssid": "%s", "mode": "%s", "ifname": "%s", "clients": %d, "temp": %d}' \
+            "$r" "$r_disabled" "$r_channel" "$r_htmode" "$ssid" "$mode" "$iface_name" "$clients" "$r_temp"
     done
     echo ""
     echo '  }'

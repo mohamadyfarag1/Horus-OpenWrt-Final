@@ -215,6 +215,9 @@ fi
 echo "OK: ath10k driver + firmware packages selected:"
 grep -E "^CONFIG_PACKAGE_(kmod-)?ath10k[a-z0-9-]*=y" .config
 
+# Enable ccache for fast incremental builds
+echo "CONFIG_CCACHE=y" >> .config
+
 # Remove samba (force)
 sed -i '/samba/d' .config
 echo "# CONFIG_PACKAGE_luci-app-samba is not set" >> .config
@@ -240,6 +243,7 @@ sed -i 's/https/http/g' /etc/opkg/distfeeds.conf 2>/dev/null
 
 # === Fix permissions ===
 chmod +x /etc/rc.local 2>/dev/null
+chmod +x /etc/init.d/smp_tuning 2>/dev/null
 chmod +x /usr/bin/horus-wifi-check 2>/dev/null
 chmod +x /usr/bin/auto-extroot.sh 2>/dev/null
 chmod +x /usr/bin/safe-eject-usb.sh 2>/dev/null
@@ -254,16 +258,8 @@ cat << 'RCEOF' > files/etc/rc.local
 # Put your custom commands here that should be executed once
 # the system init finished. By default this file does nothing.
 
-# === CPU Governor: scale with load instead of pinning max clock 24/7 ===
-for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-    echo "ondemand" > $cpu 2>/dev/null
-done
-
-# === Wi-Fi SMP Optimization (Pin 2.4G to CPU1, 5G to CPU2) ===
-IRQ0=$(grep -m1 -i ath10k /proc/interrupts | awk '{print $1}' | tr -d ':')
-IRQ1=$(grep -m2 -i ath10k /proc/interrupts | tail -n1 | awk '{print $1}' | tr -d ':')
-[ -n "$IRQ0" ] && echo 2 > /proc/irq/$IRQ0/smp_affinity
-[ -n "$IRQ1" ] && echo 4 > /proc/irq/$IRQ1/smp_affinity
+# === Apply Multi-Core SMP & Network Steering ===
+/etc/init.d/smp_tuning start >/dev/null 2>&1 || true
 
 # === Restore Disabled Ethernet Ports (Horus LAN Control) ===
 for f in /etc/horus/disabled_port_*; do
