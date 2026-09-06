@@ -73,6 +73,11 @@ hamax_ap_links_json() {
 
         iw dev "$ifname" station dump 2>/dev/null | awk -v iface="$ifname" '
             BEGIN {
+                while ((getline line < "/tmp/mac_ip_cache") > 0) {
+                    split(line, f)
+                    if (f[1] != "" && f[2] != "") ip_by_mac[tolower(f[1])] = f[2]
+                }
+                close("/tmp/mac_ip_cache")
                 while ((getline line < "/proc/net/arp") > 0) {
                     split(line, f)
                     if (f[4] ~ /^[0-9a-fA-F:]+$/) {
@@ -94,13 +99,29 @@ hamax_ap_links_json() {
                 lmac = tolower(mac)
                 ip = ip_by_mac[lmac]
                 hname = name_by_mac[lmac]
-                if (hname == "") hname = "Station-" substr(mac, 13, 2) substr(mac, 16, 2)
-                printf("{\"iface\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"name\":\"%s\",\"signal\":\"%s\",\"signal_avg\":\"%s\",\"chain0\":\"%s\",\"chain1\":\"%s\",\"chain_diff\":\"%s\",\"tx_bytes\":\"%s\",\"rx_bytes\":\"%s\",\"tx_packets\":\"%s\",\"tx_rate\":\"%s\",\"rx_rate\":\"%s\",\"tx_bitrate_full\":\"%s\",\"rx_bitrate_full\":\"%s\",\"expected\":\"%s\",\"weight\":\"%s\",\"inactive\":\"%s\",\"connected\":\"%s\",\"tx_retries\":\"%s\",\"tx_failed\":\"%s\"}\n",
-                       iface, mac, ip, hname, sig, sigavg, ch0, ch1, chdiff, txb, rxb, txp, txr, rxr, tx_full, rx_full, ethr, wt, inact, conn, retries, failed)
+                if (hname == "") {
+                    c = substr(mac, 2, 1)
+                    if (c ~ /[26aAeE]/) {
+                        hname = "Smartphone (Private MAC)"
+                    } else {
+                        hname = "Station-" substr(mac, 13, 2) substr(mac, 16, 2)
+                    }
+                }
+
+                s = (sig != "") ? sig + 0 : -60
+                if (s > -15) s = -15
+                pl = -40 - s
+                if (pl <= 0) dist_m = 1.0; else dist_m = 10 ^ (pl / 24.0);
+                if (dist_m < 1.0) dist_m = 1.0;
+                dist_str = sprintf("%.1f", dist_m);
+
+                printf("{\"iface\":\"%s\",\"mac\":\"%s\",\"ip\":\"%s\",\"name\":\"%s\",\"signal\":\"%s\",\"signal_avg\":\"%s\",\"chain0\":\"%s\",\"chain1\":\"%s\",\"chain_diff\":\"%s\",\"tx_bytes\":\"%s\",\"rx_bytes\":\"%s\",\"tx_packets\":\"%s\",\"tx_rate\":\"%s\",\"rx_rate\":\"%s\",\"tx_bitrate_full\":\"%s\",\"rx_bitrate_full\":\"%s\",\"expected\":\"%s\",\"weight\":\"%s\",\"inactive\":\"%s\",\"connected\":\"%s\",\"tx_retries\":\"%s\",\"tx_failed\":\"%s\",\"wds\":\"%s\",\"distance_m\":\"%s\"}\n",
+                       iface, mac, ip, hname, sig, sigavg, ch0, ch1, chdiff, txb, rxb, txp, txr, rxr, tx_full, rx_full, ethr, wt, inact, conn, retries, failed, is_wds, dist_str)
                 mac = ""; sig = ""; sigavg = ""; ch0 = ""; ch1 = ""; chdiff = ""; txb = ""; rxb = ""; txp = ""; txr = ""; rxr = ""
-                tx_full = ""; rx_full = ""; ethr = ""; wt = ""; inact = ""; conn = ""; retries = ""; failed = ""
+                tx_full = ""; rx_full = ""; ethr = ""; wt = ""; inact = ""; conn = ""; retries = ""; failed = ""; is_wds = "0"; dist_str = "1.0"
             }
-            /^Station/              { emit(); mac = $2; next }
+            /^Station/              { emit(); mac = $2; is_wds = "0"; next }
+            /4addr:\s*on/           { is_wds = "1" }
             /inactive time:/        { inact   = $3 }
             /rx bytes:/             { rxb     = $3 }
             /tx bytes:/             { txb     = $3 }

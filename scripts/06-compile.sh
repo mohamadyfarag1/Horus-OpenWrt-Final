@@ -132,11 +132,14 @@ if [ ${PIPESTATUS[0]} -ne 0 ]; then
                 echo "----- $L (last 80 lines) -----"
                 tail -n 80 "$L"
             done
+            find build_dir -path "*$pkg*" -name '*.log' -o -name 'compile.txt' 2>/dev/null | while read -r L; do
+                echo "----- $L (last 80 lines) -----"
+                tail -n 80 "$L"
+            done
         done
-    else
-        echo "(no 'ERROR: <pkg> failed to build' line; tail of build.log:)"
-        tail -n 60 build.log
     fi
+    echo "----- Tail of build.log (last 100 lines) -----"
+    tail -n 100 build.log
     echo "======================================="
     exit 1
 fi

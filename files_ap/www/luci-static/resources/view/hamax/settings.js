@@ -65,6 +65,68 @@ function parseModulation(rateStr) {
 	};
 }
 
+
+/* Helper: decode UTF-8 escaped SSID (such as Arabic characters) */
+function decodeSSID(s) {
+	if (!s) return '';
+	try {
+		return s.replace(/\\x([0-9a-fA-F]{2})/g, function(m, p) {
+			return '%' + p;
+		}).replace(/(%[0-9a-fA-F]{2})+/g, function(m) {
+			try { return decodeURIComponent(m); } catch (e) { return m; }
+		});
+	} catch (e) {
+		return s;
+	}
+}
+
+/* Helper: calculate realistic RF distance from signal & frequency (Log-Distance model) */
+function estimateDistanceMeters(sig, freq) {
+	var s = parseInt(sig, 10);
+	if (isNaN(s)) return 1000;
+	var f = freq ? parseInt(freq, 10) : 2462;
+	var ref = (f > 4000) ? 47 : 40;
+	var pl = 24 - s;
+	if (pl <= ref) return 1.0;
+	var dist = Math.pow(10, (pl - ref) / 24.0);
+	return Math.max(1.0, Math.round(dist * 10) / 10);
+}
+
+/* Helper: format distance string nicely */
+function formatDistance(distMeters) {
+	if (distMeters <= 2.5) {
+		return distMeters.toFixed(1) + ' m (' + (distMeters * 3.28).toFixed(1) + ' ft) — Near Field';
+	} else if (distMeters < 100) {
+		return Math.round(distMeters) + ' m (' + Math.round(distMeters * 3.28) + ' ft)';
+	} else if (distMeters < 1000) {
+		return Math.round(distMeters) + ' m';
+	} else {
+		return (distMeters / 1000).toFixed(2) + ' km (' + (distMeters / 1609.34).toFixed(2) + ' mi)';
+	}
+}
+
+/* Helper: resolve device label and brand from MAC / Hostname */
+function getDeviceLabel(link) {
+	if (!link) return 'Remote Station';
+	if (link.name && link.name !== '' && !link.name.startsWith('Station-')) {
+		return link.name;
+	}
+	var mac = (link.mac || '').toLowerCase();
+	if (mac.length >= 17) {
+		var c2 = mac.charAt(1);
+		if (c2 === '2' || c2 === '6' || c2 === 'a' || c2 === 'e') {
+			return 'Smartphone (Private MAC)';
+		}
+		var oui = mac.substring(0, 8).toUpperCase();
+		if (/^(00:27:22|04:18:D6|24:5A:4C|68:D7:9A|70:A7:41|DC:9F:DB|F4:92:BF)/.test(oui)) return 'Ubiquiti airMAX';
+		if (/^(00:0C:42|48:8F:5A|64:D1:54|B8:69:F4|CC:2D:E0)/.test(oui)) return 'MikroTik Router';
+		if (/^(AC:BC:32|F0:18:98|BC:D0:74|00:1A:11|3C:07:54)/.test(oui)) return 'Apple Device';
+		if (/^(00:12:FB|00:26:37|34:23:87|50:01:D9|88:32:9B)/.test(oui)) return 'Samsung Device';
+		if (/^(00:07:89)/.test(oui)) return 'Horus Device';
+	}
+	return link.name || ('Station-' + (link.mac ? link.mac.substring(12, 17) : ''));
+}
+
 /* Calculate AMC (airMAX Capacity %) and AMQ (airMAX Quality %) */
 function calcAirmaxMetrics(link, survey) {
 	var metrics = { amq: null, amc: null, snr: null, retry: 0 };
@@ -242,7 +304,7 @@ return view.extend({
 						E('span', {}, [ 'Mode: ', E('strong', { 'style': 'color:#38bdf8;' }, [ roleTitle ]) ]),
 						E('span', {}, [ 'Frequency: ', E('strong', { 'style': 'color:#38bdf8;' }, [ freqStr ]) ]),
 						E('span', {}, [ 'Width: ', E('strong', { 'style': 'color:#38bdf8;' }, [ widthStr ]) ]),
-						st.ssid ? E('span', {}, [ 'SSID: ', E('strong', { 'style': 'color:#38bdf8;' }, [ st.ssid ]) ]) : E('span', {})
+						st.ssid ? E('span', {}, [ 'SSID: ', E('strong', { 'style': 'color:#38bdf8;' }, [ decodeSSID(st.ssid) ]) ]) : E('span', {})
 					])
 				])
 			]),
@@ -376,13 +438,14 @@ return view.extend({
 		var txMod = parseModulation(link ? (link.tx_bitrate_full || (link.tx_rate + ' Mbps')) : '866.7 Mbps VHT-MCS 9 80MHz');
 		var rxMod = parseModulation(link ? (link.rx_bitrate_full || (link.rx_rate + ' Mbps')) : '866.7 Mbps VHT-MCS 9 80MHz');
 
-		var distMeters = parseInt(st.distance, 10) || 5000;
-		var distKm = (distMeters / 1000).toFixed(1);
-		var distMiles = (distMeters / 1609.34).toFixed(1);
+		var distMeters = link ? (link.distance_m ? parseFloat(link.distance_m) : estimateDistanceMeters(link.signal, st.freq)) : (parseInt(st.distance, 10) || 5000);
+		var distFormatted = formatDistance(distMeters);
 
-		var remoteName = link ? (link.name || link.mac || 'Remote Station') : 'Remote Station';
+		var remoteName = getDeviceLabel(link);
 		var remoteIp = link ? (link.ip || '\u2014') : '\u2014';
 		var remoteSig = link ? (link.signal || '\u2014') : '\u2014';
+		var isWds = link && (link.wds === '1' || link.wds === true);
+		var linkModeLabel = isWds ? '4-Address WDS Bridge' : 'Standard Wi-Fi Client';
 
 		return E('div', {
 			'style': 'background:' + T.bgCard + '; border:1px solid ' + T.border + '; border-radius:12px; padding:16px; margin-bottom:16px;'
@@ -391,7 +454,7 @@ return view.extend({
 				'style': 'font-size:13px; font-weight:800; color:' + T.textMuted + '; text-transform:uppercase; letter-spacing:1px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;'
 			}, [
 				E('span', {}, [ '\uD83D\uDCE1 RF Link Performance & Signal Metrics' ]),
-				E('span', { 'style': 'font-size:11px; color:#38bdf8;' }, [ 'Distance: ' + distKm + ' km (' + distMiles + ' miles)' ])
+				E('span', { 'style': 'font-size:11px; color:#38bdf8;' }, [ 'Distance: ' + distFormatted ])
 			]),
 
 			E('div', {
@@ -460,8 +523,8 @@ return view.extend({
 					E('div', { 'style': 'font-size:22px; color:#38bdf8; animation:pulse 2s infinite;' }, [ '\u21C4' ]),
 					E('div', {
 						'style': 'background:#0369a1; color:#fff; font-size:10px; font-weight:800; padding:2px 8px; border-radius:10px; white-space:nowrap; margin:4px 0;'
-					}, [ distKm + ' km' ]),
-					E('div', { 'style': 'font-size:10px; color:' + T.textMuted + ';' }, [ 'WDS Transparent' ])
+					}, [ distMeters <= 2.5 ? (distMeters.toFixed(1) + ' m') : (distMeters < 1000 ? (Math.round(distMeters) + ' m') : ((distMeters / 1000).toFixed(1) + ' km')) ]),
+					E('div', { 'style': 'font-size:10px; color:' + T.textMuted + ';' }, [ linkModeLabel ])
 				]),
 
 				/* Right: REMOTE PEER / STATION */
@@ -652,7 +715,7 @@ return view.extend({
 			return E('div', {
 				'style': 'padding:24px; text-align:center; color:' + T.textMuted + '; font-size:13px;'
 			}, [
-				isClient ? 'Searching for Remote airMAX Tower...' : 'No active stations connected on 5 GHz radio.'
+				isClient ? 'Searching for Remote airMAX Tower...' : 'No active stations connected.'
 			]);
 		}
 
@@ -690,7 +753,7 @@ return view.extend({
 				return E('tr', { 'style': 'border-bottom:1px solid #1e293b; font-size:12px;' }, [
 					/* Device & MAC */
 					E('td', { 'style': 'padding:8px 10px;' }, [
-						E('div', { 'style': 'font-weight:700; color:' + T.textMain + ';' }, [ s.name || 'Station' ]),
+						E('div', { 'style': 'font-weight:700; color:' + T.textMain + ';' }, [ getDeviceLabel(s) ]),
 						E('div', { 'style': 'font-family:' + T.fontMono + '; font-size:10px; color:' + T.textMuted + ';' }, [ s.mac || s.bssid || '\u2014' ])
 					]),
 
@@ -733,7 +796,7 @@ return view.extend({
 
 					/* Distance */
 					E('td', { 'style': 'padding:8px 10px; color:' + T.textMain + ';' }, [
-						((parseInt(st.distance, 10) || 5000) / 1000).toFixed(1) + ' km'
+						formatDistance(s.distance_m ? parseFloat(s.distance_m) : estimateDistanceMeters(s.signal, st.freq))
 					]),
 
 					/* Retries */

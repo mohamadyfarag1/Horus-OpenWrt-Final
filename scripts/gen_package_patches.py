@@ -42,21 +42,19 @@ import os
 import re
 import sys
 
-# 5 GHz channel plan: expanded 197-channel spectrum plan (5120 MHz - 6100 MHz, 5 MHz step)
-# Channels 24..220 inclusive. All 197 channels are calibrated and supported by IPQ4019 radio.
+# 5 GHz channel plan: expanded 162-channel spectrum plan (5120 MHz - 5925 MHz, 5 MHz step)
+# Channels 24..185 inclusive. All 162 channels are calibrated and supported by IPQ4019 radio.
 # Target DMA Copy Engine buffer protection is handled in ath10k_update_channel_list().
-CHANS = list(range(24, 221))
-MAX_5G = max(CHANS)             # 220
+CHANS = list(range(24, 186))
+MAX_5G = max(CHANS)             # 185
 
-# 2.4 GHz channel plan: 58-channel expanded spectrum (2312 MHz - 2592 MHz)
+# 2.4 GHz channel plan: 86-channel expanded spectrum (2312 MHz - 2732 MHz)
 # Matches Ubiquiti NanoStation M2 spectrum + standard 802.11 channels:
 # - 2.3 GHz band: Channels 237-255 (2312-2402 MHz, 5 MHz step) + Ch 256 (2407 MHz)
 # - Standard 2.4 GHz: Channels 1-13 (2412-2472 MHz)
 # - Standard 802.11b Japan: Channel 14 (2484 MHz)
 # - Transition band: Channels 74-80 (2477-2507 MHz, 5 MHz step)
-# - Upper 2.5-2.592 GHz band: Channels 15-31 (2512-2592 MHz, 5 MHz step)
-# Sized so combined channels (197 5GHz + 58 2.4GHz = 255) fit strictly within
-# the u8 limit (<= 255) in ath10k-ct survey structs and driver arrays.
+# - Upper 2.5-2.732 GHz band: Channels 15-59 (2512-2732 MHz, 5 MHz step)
 CHANS_2G = [
     # 2.3 GHz Sub-band: 2312 - 2407 MHz
     (237, 2312), (238, 2317), (239, 2322), (240, 2327), (241, 2332),
@@ -73,8 +71,8 @@ CHANS_2G = [
     (74, 2477), (75, 2482), (76, 2487), (77, 2492), (78, 2497),
     (79, 2502), (80, 2507),
 ] + [
-    # Upper 2.5 - 2.592 GHz Band: 2512 - 2592 MHz (Channels 15..31)
-    (ch, 2437 + ch * 5) for ch in range(15, 32)
+    # Upper 2.5 - 2.732 GHz Band: 2512 - 2732 MHz (Channels 15..59)
+    (ch, 2437 + ch * 5) for ch in range(15, 60)
 ]
 
 
@@ -198,7 +196,7 @@ def patch_ath10k(build_dir, pkg_dir):
     lines_2g = "".join("\tCHAN2G(%d, %d, 0),\n" % (ch, freq) for ch, freq in CHANS_2G)
     new_array_2g = ("static const struct ieee80211_channel ath10k_2ghz_channels[] = {\n"
                     + lines_2g
-                    + "\t/* Horus: 76-channel 2.4 GHz superchannel plan (2312-2682 MHz), "
+                    + "\t/* Horus: 86-channel 2.4 GHz superchannel plan (2312-2732 MHz), "
                       "matches NanoStation M2 (%d channels) */\n" % len(CHANS_2G)
                     + "};\n")
     array_2g_re = re.compile(
@@ -251,23 +249,21 @@ def patch_ath10k(build_dir, pkg_dir):
         "\n"
         "\t\t\t/* Horus: limit scan channels to prevent Copy Engine DMA buffer overflow (CE3 limit 2048 bytes).\n"
         "\t\t\t * Total scan channels capped <= 60 (~1680 bytes < 2048 bytes).\n"
-        "\t\t\t * All 58 2.4GHz + 197 5GHz channels remain fully registered in ath10k channel arrays for AP/STA use.\n"
+        "\t\t\t * All 86 2.4GHz + 162 5GHz channels remain fully registered in ath10k channel arrays for AP/STA use.\n"
         "\t\t\t */\n"
         "\t\t\tif (channel->band == NL80211_BAND_2GHZ) {\n"
         "\t\t\t\tif (channel->hw_value != 1 && channel->hw_value != 6 &&\n"
         "\t\t\t\t    channel->hw_value != 11 && channel->hw_value != 14 &&\n"
         "\t\t\t\t    channel->hw_value != 237 && channel->hw_value != 247 &&\n"
         "\t\t\t\t    channel->hw_value != 256 && channel->hw_value != 76 &&\n"
-        "\t\t\t\t    channel->hw_value != 20 && channel->hw_value != 25 &&\n"
-        "\t\t\t\t    channel->hw_value != 31)\n"
+        "\t\t\t\t    channel->hw_value != 25 && channel->hw_value != 45 &&\n"
+        "\t\t\t\t    channel->hw_value != 59)\n"
         "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tif ((channel->center_freq % 20 != 0) &&\n"
         "\t\t\t\t    channel->center_freq != 5445 && channel->center_freq != 5455 &&\n"
         "\t\t\t\t    channel->center_freq != 5465 && channel->center_freq != 5870 &&\n"
-        "\t\t\t\t    channel->center_freq != 5885 && channel->center_freq != 5895 &&\n"
-        "\t\t\t\t    channel->center_freq != 6000 && channel->center_freq != 6100 &&\n"
         "\t\t\t\t    channel->center_freq != 5125)\n"
         "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
@@ -307,16 +303,14 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\t\t    channel->hw_value != 11 && channel->hw_value != 14 &&\n"
         "\t\t\t\t    channel->hw_value != 237 && channel->hw_value != 247 &&\n"
         "\t\t\t\t    channel->hw_value != 256 && channel->hw_value != 76 &&\n"
-        "\t\t\t\t    channel->hw_value != 20 && channel->hw_value != 25 &&\n"
-        "\t\t\t\t    channel->hw_value != 31)\n"
+        "\t\t\t\t    channel->hw_value != 25 && channel->hw_value != 45 &&\n"
+        "\t\t\t\t    channel->hw_value != 59)\n"
         "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tif ((channel->center_freq % 20 != 0) &&\n"
         "\t\t\t\t    channel->center_freq != 5445 && channel->center_freq != 5455 &&\n"
         "\t\t\t\t    channel->center_freq != 5465 && channel->center_freq != 5870 &&\n"
-        "\t\t\t\t    channel->center_freq != 5885 && channel->center_freq != 5895 &&\n"
-        "\t\t\t\t    channel->center_freq != 6000 && channel->center_freq != 6100 &&\n"
         "\t\t\t\t    channel->center_freq != 5125)\n"
         "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
@@ -389,13 +383,13 @@ def patch_ath10k(build_dir, pkg_dir):
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
     header = (
-        "Horus: register the 58-channel 2.4 GHz and 197-channel 5 GHz plans with CE DMA buffer protection.\n"
+        "Horus: register the 86-channel 2.4 GHz and 162-channel 5 GHz plans with CE DMA buffer protection.\n"
         "\n"
         "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
-        "- 2.4 GHz: %d channels (2312-2592 MHz, continuous 5 MHz steps + Ch 14 2484 MHz).\n"
+        "- 2.4 GHz: %d channels (2312-2732 MHz, continuous 5 MHz steps + Ch 14 2484 MHz).\n"
         "  Matches Ubiquiti NanoStation M2 full spectrum.\n"
-        "- 5 GHz: %d channels (5120-6100 MHz, channels 24..220, 5 MHz steps).\n"
-        "  Matches Ubiquiti Rocket AC / airMAX spectrum up to Channel 220.\n"
+        "- 5 GHz: %d channels (5120-5925 MHz, channels 24..185, 5 MHz steps).\n"
+        "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
         "All channels operate at full calibrated 30 dBm power.\n"
         "\n"
         "ath10k_update_channel_list protects against Copy Engine DMA buffer overflow\n"
@@ -504,8 +498,8 @@ def patch_hostapd(build_dir, pkg_dir):
         "\t\t*op_class = 81;\n"
         "\t\treturn HOSTAPD_MODE_IEEE80211G;\n"
         "\t}\n\n"
-        "\t/* Horus: Upper 2.5 - 2.592 GHz SuperChannels (2512 - 2592 MHz) -> channels 15..31 */\n"
-        "\tif (freq >= 2512 && freq <= 2592) {\n"
+        "\t/* Horus: Upper 2.5 - 2.732 GHz SuperChannels (2512 - 2732 MHz) -> channels 15..59 */\n"
+        "\tif (freq >= 2512 && freq <= 2732) {\n"
         "\t\tif ((freq - 2437) % 5)\n"
         "\t\t\treturn NUM_HOSTAPD_MODES;\n"
         "\t\t*channel = (freq - 2437) / 5;\n"
@@ -518,11 +512,11 @@ def patch_hostapd(build_dir, pkg_dir):
         fail("anchor 'if (freq >= 2412 && freq <= 2472) {' not found in %s" % common)
     new_common = old_common.replace(target_2g, inject_2g, 1)
 
-    # 2. 5 GHz SuperChannels (expand ceiling from 5900 MHz to 6100 MHz)
+    # 2. 5 GHz SuperChannels (expand ceiling from 5900 MHz to 6000 MHz)
     target_5g = "\tif (freq >= 5000 && freq < 5900) {"
     replace_5g = (
-        "\t/* Horus: 5 GHz SuperChannels expanded to 6100 MHz (channels 24..220) */\n"
-        "\tif (freq >= 5000 && freq <= 6100 && freq != 5935) {"
+        "\t/* Horus: 5 GHz SuperChannels expanded to 6000 MHz (channels 24..200) */\n"
+        "\tif (freq >= 5000 && freq <= 6000 && freq != 5935) {"
     )
     if target_5g not in new_common:
         fail("anchor 'if (freq >= 5000 && freq < 5900) {' not found in %s" % common)
@@ -539,7 +533,7 @@ def patch_hostapd(build_dir, pkg_dir):
         "     (5900..5925 MHz) to fail with 'Could not determine operating frequency'\n"
         "     and drop Tx-Power to 0 dBm. Expanded to 6000 MHz.\n"
         "   - 2.4 GHz plan includes 2.3 GHz (channels 237..256), transition channels\n"
-        "     (74..80), and upper band (15..49, up to 2682 MHz), matching NanoStation M2.\n")
+        "     (74..80), and upper band (15..59, up to 2732 MHz), matching NanoStation M2.\n")
 
     entries = [
         (rel, old, new),

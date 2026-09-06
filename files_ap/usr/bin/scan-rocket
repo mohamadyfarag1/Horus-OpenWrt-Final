@@ -1,27 +1,58 @@
 #!/bin/sh
-# scan-rocket: Specifically scan for Ubiquiti Rocket AC on 5445 MHz
-FREQ="${1:-5445}"
+# scan-rocket: Deep scan for Ubiquiti Rocket AC / airMAX APs on 5 GHz
+# Usage:
+#   scan-rocket            -> scans default 5885 MHz (Channel 177)
+#   scan-rocket [FREQ]     -> scans specific frequency (e.g. scan-rocket 5885)
+#   scan-rocket all        -> scans all standard and airMAX 5 GHz frequencies
+
+TARGET="${1:-5885}"
 
 echo "=========================================================="
-echo "  Horus Deep Scanner -> Frequency $FREQ MHz (Channel 89)"
+echo "  Horus Deep Scanner -> Searching for Ubiquiti Rocket AC"
 echo "=========================================================="
 
-found=0
-for iface in $(iw dev 2>/dev/null | grep Interface | awk '{print $2}'); do
-    case "$iface" in
-        phy1*|*5g*|*radio1*)
-            echo "[*] Scanning on interface: $iface at $FREQ MHz..."
-            res=$(iw dev "$iface" scan freq "$FREQ" 2>/dev/null)
-            if [ -n "$res" ]; then
-                echo "$res" | grep -E '(BSS|SSID|freq:|signal:|capability:|WPA:)'
-                found=1
-            fi
-        ;;
+# Find active 5 GHz interface
+IFACE=""
+for dev in $(iw dev 2>/dev/null | grep Interface | awk '{print $2}'); do
+    case "$dev" in
+        phy1*|*5g*|*radio1*) IFACE="$dev"; break ;;
     esac
 done
+[ -z "$IFACE" ] && IFACE="phy1-ap0"
 
-if [ "$found" = "0" ]; then
-    echo "[*] Trying direct phy1 scan..."
-    iw phy phy1 scan freq "$FREQ" 2>/dev/null | grep -E '(BSS|SSID|freq:|signal:|capability:|WPA:)' || echo "No AP detected on $FREQ MHz yet. Ensure 5 GHz radio is ON."
+# Make sure 5GHz radio is UP
+iw dev "$IFACE" info >/dev/null 2>&1 || {
+    echo "[!] 5 GHz interface ($IFACE) is down or not found. Trying phy1..."
+    IFACE="phy1"
+}
+
+scan_freq() {
+    local f="$1"
+    echo "[*] Scanning frequency: $f MHz..."
+    res=$(iw dev "$IFACE" scan freq "$f" 2>/dev/null || iw phy phy1 scan freq "$f" 2>/dev/null)
+    if [ -n "$res" ]; then
+        echo "$res" | awk '
+            /^BSS / { bss=$2; sub(/\(.*/, "", bss); print "  --------------------------------------------------"; print "  [+] BSSID    : " bss }
+            /SSID:/ { print "      SSID     : " substr($0, index($0, "SSID:") + 6) }
+            /freq:/ { print "      Freq     : " $2 " MHz" }
+            /signal:/ { print "      Signal   : " $2 " dBm" }
+            /Vendor specific:.*00:27:22/ { print "      Protocol : *** Ubiquiti airMAX Detected ***" }
+            /WPA:|RSN:/ { print "      Security : WPA/WPA2 Protected" }
+        '
+    else
+        echo "    (No signal detected on $f MHz)"
+    fi
+}
+
+if [ "$TARGET" = "all" ]; then
+    echo "[*] Scanning all common 5 GHz channels..."
+    for f in 5180 5200 5240 5280 5320 5500 5700 5745 5785 5805 5825 5885; do
+        scan_freq "$f"
+    done
+else
+    scan_freq "$TARGET"
 fi
+
+echo "=========================================================="
+echo "  Scan Complete."
 echo "=========================================================="

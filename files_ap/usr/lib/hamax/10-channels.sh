@@ -6,11 +6,12 @@
 # 5 GHz channel plan
 #
 # The superchannel patches register a 5 MHz-spaced table (197 channels) in
-# ath10k_5ghz_channels[]; this list must stay in step with CHANS in
-# scripts/gen_package_patches.py. freq = 5000 + 5 * channel, so the plan
-# spans 5120 - 6100 MHz (channels 24..220).
+# ath10k_5ghz_channels[]. Channels 24..35 (< 5180 MHz) are excluded because
+# Qualcomm IPQ4019 BDF calibration data starts at 5180 MHz (Ch 36); selecting
+# anything below 36 causes ath10k to drop TX power to 0 dBm.
+# Usable spectrum spans 5180 - 5925 MHz (channels 36..185).
 # ---------------------------------------------------------------------
-HAMAX_CHANS="$(seq 24 220)"
+HAMAX_CHANS="$(seq 36 185)"
 
 # The 20 MHz centres a stock 802.11 client actually tunes to when it
 # scans. Anything outside this set is off-grid: a phone or laptop never

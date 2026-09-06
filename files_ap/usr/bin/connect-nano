@@ -1,11 +1,16 @@
 #!/bin/sh
 # connect-nano: Connect Horus IPQ4019 (2.4 GHz) to Ubiquiti NanoStation M2
-# Usage: connect-nano [SSID] [KEY] [FREQ] [CHAN]
+# Usage: connect-nano [SSID] [KEY] [FREQ] [CHAN] [BSSID]
+#
+# Examples:
+#   connect-nano MyNanoStation MyPassword 2412
+#   connect-nano OpenNano "" 2462 11
 
-SSID="${1:-RedaNet LG}"
+SSID="${1:-NanoStation-M2}"
 KEY="${2:-}"
 FREQ="${3:-2412}"
 CHAN="${4:-}"
+TARGET_BSSID="${5:-}"
 
 # Auto-calculate channel from frequency if not explicitly passed
 if [ -z "$CHAN" ] && [ -n "$FREQ" ]; then
@@ -29,12 +34,31 @@ if [ -z "$CHAN" ] && [ -n "$FREQ" ]; then
         CHAN=1
     fi
 fi
+[ -z "$FREQ" ] && FREQ=2412
+
+# Derive a globally unique Ubiquiti OUI MAC (00:27:22:xx:yy:zz)
+# Each physical Horus board keeps its own unique hardware suffix (xx:yy:zz)
+BASE_MAC=$(uci -q get wireless.radio0.macaddr)
+[ -z "$BASE_MAC" ] && BASE_MAC=$(uci -q get network.lan.macaddr)
+[ -z "$BASE_MAC" ] && BASE_MAC=$(cat /sys/class/net/br-lan/address 2>/dev/null)
+
+if [ -n "$BASE_MAC" ]; then
+    MAC_SUFFIX=$(echo "$BASE_MAC" | awk -F: '{print $(NF-2)":"$(NF-1)":"$NF}')
+    UBNT_STATION_MAC="00:27:22:$MAC_SUFFIX"
+else
+    UBNT_STATION_MAC="00:27:22:92:00:02"
+fi
 
 echo "=========================================================="
 echo "  Horus IPQ4019 (2.4 GHz) -> Ubiquiti NanoStation M2 Setup"
 echo "  Target SSID : $SSID"
-echo "  Target BSSID: 00:27:22:4E:62:E2"
+if [ -n "$TARGET_BSSID" ]; then
+    echo "  Target BSSID: $TARGET_BSSID (Locked)"
+else
+    echo "  Target BSSID: Auto (Any NanoStation broadcasting $SSID)"
+fi
 echo "  Frequency   : $FREQ MHz (Channel $CHAN, HT20)"
+echo "  Station MAC : $UBNT_STATION_MAC (Unique Ubiquiti OUI)"
 echo "  airMAX Mode : Enabled (Ubiquiti Vendor Elements OUI 00:27:22)"
 echo "  WDS Mode    : Enabled (4-Address mode for airOS)"
 echo "=========================================================="
@@ -52,13 +76,21 @@ uci set wireless.sta_nano.device='radio0'
 uci set wireless.sta_nano.network='wwan'
 uci set wireless.sta_nano.mode='sta'
 uci set wireless.sta_nano.ssid="$SSID"
-uci set wireless.sta_nano.bssid='00:27:22:4E:62:E2'
+uci set wireless.sta_nano.macaddr="$UBNT_STATION_MAC"
+
+if [ -n "$TARGET_BSSID" ]; then
+    uci set wireless.sta_nano.bssid="$TARGET_BSSID"
+else
+    uci -q delete wireless.sta_nano.bssid
+fi
+
 if [ -n "$KEY" ]; then
     uci set wireless.sta_nano.encryption='psk2'
     uci set wireless.sta_nano.key="$KEY"
 else
     uci set wireless.sta_nano.encryption='none'
 fi
+
 uci set wireless.sta_nano.wds='1'
 uci set wireless.sta_nano.airmax_compat='1'
 
@@ -92,7 +124,6 @@ echo "[*] Injecting Ubiquiti airMAX Vendor Elements for 2.4 GHz..."
 ) &
 
 echo "=========================================================="
-echo "  Status Check (waiting for association):"
-sleep 5
-iw dev 2>/dev/null | grep -A 10 "Interface.*sta" || true
+echo "  Setup Complete! Waiting for association..."
+echo "  To verify: iw dev | grep -A 10 'type managed'"
 echo "=========================================================="
