@@ -87,99 +87,67 @@ if os.path.exists(path):
     # frequency listed here but absent from the driver table would read
     # 0 dBm; one in the driver but not here still works, just not shown.
     injection = """
-            /* === HORUS SUPERCHANNEL INJECTION START === */
+            /* === HORUS SUPERCHANNEL ORDERED INJECTION START === */
+            /* 5 GHz SuperChannel Plan: 5120 - 5925 MHz (Strictly sorted by MHz ascending) */
             if (this.channels && this.channels['5g'] && this.channels['5g'].length > 0) {
+                var has_auto_5g = (this.channels['5g'][0] === 'auto');
                 var existing_5g = this.channels['5g'];
-                var horus_freqs = [5120,5125,5130,5135,5140,5145,5150,5155,
-                                   5160,5165,5170,5175,5180,5185,5190,5195,
-                                   5200,5205,5210,5215,5220,5225,5230,5235,
-                                   5240,5245,5250,5255,5260,5265,5270,5275,
-                                   5280,5285,5290,5295,5300,5305,5310,5315,
-                                   5320,5325,5330,5335,5340,5345,5350,5355,
-                                   5360,5365,5370,5375,5380,5385,5390,5395,
-                                   5400,5405,5410,5415,5420,5425,5430,5435,
-                                   5440,5445,5450,5455,5460,5465,5470,5475,
-                                   5480,5485,5490,5495,5500,5505,5510,5515,
-                                   5520,5525,5530,5535,5540,5545,5550,5555,
-                                   5560,5565,5570,5575,5580,5585,5590,5595,
-                                   5600,5605,5610,5615,5620,5625,5630,5635,
-                                   5640,5645,5650,5655,5660,5665,5670,5675,
-                                   5680,5685,5690,5695,5700,5705,5710,5715,
-                                   5720,5725,5730,5735,5740,5745,5750,5755,
-                                   5760,5765,5770,5775,5780,5785,5790,5795,
-                                   5800,5805,5810,5815,5820,5825,5830,5835,
-                                   5840,5845,5850,5855,5860,5865,5870,5875,
-                                   5880,5885,5890,5895,5900,5905,5910,5915,
-                                   5920,5925];
-                for (var hi = 0; hi < horus_freqs.length; hi++) {
-                    var f_mhz = horus_freqs[hi];
-                    var ch = (f_mhz >= 5000) ? Math.round((f_mhz - 5000) / 5) : Math.round((f_mhz - 4000) / 5);
-                    var label = ch + ' (' + f_mhz + ' Mhz)';
-                    var found = false;
-                    for (var j = 0; j < existing_5g.length; j += 3) {
-                        if (existing_5g[j] == ch || existing_5g[j] == f_mhz) { found = true; break; }
-                    }
-                    if (!found) {
-                        this.channels['5g'].push(ch, label, {available: true});
-                    }
+                var map_5g = {};
+                for (var j = has_auto_5g ? 3 : 0; j < existing_5g.length; j += 3) {
+                    var ch = existing_5g[j];
+                    var f = (ch >= 180) ? (4000 + ch * 5) : (5000 + ch * 5);
+                    map_5g[f] = ch;
                 }
+                for (var f = 5120; f <= 5925; f += 5) {
+                    var ch = (f >= 5000) ? Math.round((f - 5000) / 5) : Math.round((f - 4000) / 5);
+                    map_5g[f] = ch;
+                }
+                var sorted_5g = Object.keys(map_5g).map(Number).sort(function(a, b) { return a - b; });
+                var new_5g = has_auto_5g ? ['auto', 'auto', {available: true}] : [];
+                for (var si = 0; si < sorted_5g.length; si++) {
+                    var f_mhz = sorted_5g[si];
+                    var ch_num = map_5g[f_mhz];
+                    new_5g.push(ch_num, f_mhz + ' MHz (Ch ' + ch_num + ')', {available: true});
+                }
+                this.channels['5g'] = new_5g;
             }
 
-            /* === HORUS 2.4 GHz SUPERCHANNEL INJECTION (86 Channels: 2312 - 2732 MHz) === */
+            /* 2.4 GHz SuperChannel Plan: 86 Channels (2312 - 2732 MHz, Strictly sorted by MHz ascending like NanoStation M2) */
             if (this.channels && this.channels['2g'] && this.channels['2g'].length > 0) {
-                var existing_2g = this.channels['2g'];
-                var horus_2g_list = [
+                var has_auto_2g = (this.channels['2g'][0] === 'auto');
+                var horus_2g_plan = [
                     /* 2.3 GHz Sub-band: 2312 - 2407 MHz */
-                    [237, '237 (2312 MHz)'], [238, '238 (2317 MHz)'], [239, '239 (2322 MHz)'],
-                    [240, '240 (2327 MHz)'], [241, '241 (2332 MHz)'], [242, '242 (2337 MHz)'],
-                    [243, '243 (2342 MHz)'], [244, '244 (2347 MHz)'], [245, '245 (2352 MHz)'],
-                    [246, '246 (2357 MHz)'], [247, '247 (2362 MHz)'], [248, '248 (2367 MHz)'],
-                    [249, '249 (2372 MHz)'], [250, '250 (2377 MHz)'], [251, '251 (2382 MHz)'],
-                    [252, '252 (2387 MHz)'], [253, '253 (2392 MHz)'], [254, '254 (2397 MHz)'],
-                    [255, '255 (2402 MHz)'], [256, '256 (2407 MHz)'],
-                    /* Standard 2.4 GHz Channels: 1-13 */
-                    [1, '1 (2412 MHz)'], [2, '2 (2417 MHz)'], [3, '3 (2422 MHz)'],
-                    [4, '4 (2427 MHz)'], [5, '5 (2432 MHz)'], [6, '6 (2437 MHz)'],
-                    [7, '7 (2442 MHz)'], [8, '8 (2447 MHz)'], [9, '9 (2452 MHz)'],
-                    [10, '10 (2457 MHz)'], [11, '11 (2462 MHz)'], [12, '12 (2467 MHz)'],
-                    [13, '13 (2472 MHz)'],
-                    /* Standard Channel 14 Japan */
-                    [14, '14 (2484 MHz)'],
-                    /* Transition Channels: 74-80 (2477 - 2507 MHz) */
-                    [74, '74 (2477 MHz)'], [75, '75 (2482 MHz)'], [76, '76 (2487 MHz)'],
-                    [77, '77 (2492 MHz)'], [78, '78 (2497 MHz)'], [79, '79 (2502 MHz)'],
-                    [80, '80 (2507 MHz)'],
-                    /* Upper Band: 15-59 (2512 - 2732 MHz) */
-                    [15, '15 (2512 MHz)'], [16, '16 (2517 MHz)'], [17, '17 (2522 MHz)'],
-                    [18, '18 (2527 MHz)'], [19, '19 (2532 MHz)'], [20, '20 (2537 MHz)'],
-                    [21, '21 (2542 MHz)'], [22, '22 (2547 MHz)'], [23, '23 (2552 MHz)'],
-                    [24, '24 (2557 MHz)'], [25, '25 (2562 MHz)'], [26, '26 (2567 MHz)'],
-                    [27, '27 (2572 MHz)'], [28, '28 (2577 MHz)'], [29, '29 (2582 MHz)'],
-                    [30, '30 (2587 MHz)'], [31, '31 (2592 MHz)'], [32, '32 (2597 MHz)'],
-                    [33, '33 (2602 MHz)'], [34, '34 (2607 MHz)'], [35, '35 (2612 MHz)'],
-                    [36, '36 (2617 MHz)'], [37, '37 (2622 MHz)'], [38, '38 (2627 MHz)'],
-                    [39, '39 (2632 MHz)'], [40, '40 (2637 MHz)'], [41, '41 (2642 MHz)'],
-                    [42, '42 (2647 MHz)'], [43, '43 (2652 MHz)'], [44, '44 (2657 MHz)'],
-                    [45, '45 (2662 MHz)'], [46, '46 (2667 MHz)'], [47, '47 (2672 MHz)'],
-                    [48, '48 (2677 MHz)'], [49, '49 (2682 MHz)'], [50, '50 (2687 MHz)'],
-                    [51, '51 (2692 MHz)'], [52, '52 (2697 MHz)'], [53, '53 (2702 MHz)'],
-                    [54, '54 (2707 MHz)'], [55, '55 (2712 MHz)'], [56, '56 (2717 MHz)'],
-                    [57, '57 (2722 MHz)'], [58, '58 (2727 MHz)'], [59, '59 (2732 MHz)']
+                    [237, 2312], [238, 2317], [239, 2322], [240, 2327], [241, 2332],
+                    [242, 2337], [243, 2342], [244, 2347], [245, 2352], [246, 2357],
+                    [247, 2362], [248, 2367], [249, 2372], [250, 2377], [251, 2382],
+                    [252, 2387], [253, 2392], [254, 2397], [255, 2402], [256, 2407],
+                    /* Standard 2.4 GHz ISM: 2412 - 2472 MHz */
+                    [1, 2412], [2, 2417], [3, 2422], [4, 2427], [5, 2432],
+                    [6, 2437], [7, 2442], [8, 2447], [9, 2452], [10, 2457],
+                    [11, 2462], [12, 2467], [13, 2472],
+                    /* Transition & Japan: 2477 - 2507 MHz */
+                    [74, 2477], [75, 2482], [14, 2484], [76, 2487], [77, 2492],
+                    [78, 2497], [79, 2502], [80, 2507],
+                    /* Upper Band: 2512 - 2732 MHz (Channels 15..59) */
+                    [15, 2512], [16, 2517], [17, 2522], [18, 2527], [19, 2532],
+                    [20, 2537], [21, 2542], [22, 2547], [23, 2552], [24, 2557],
+                    [25, 2562], [26, 2567], [27, 2572], [28, 2577], [29, 2582],
+                    [30, 2587], [31, 2592], [32, 2597], [33, 2602], [34, 2607],
+                    [35, 2612], [36, 2617], [37, 2622], [38, 2627], [39, 2632],
+                    [40, 2637], [41, 2642], [42, 2647], [43, 2652], [44, 2657],
+                    [45, 2662], [46, 2667], [47, 2672], [48, 2677], [49, 2682],
+                    [50, 2687], [51, 2692], [52, 2697], [53, 2702], [54, 2707],
+                    [55, 2712], [56, 2717], [57, 2722], [58, 2727], [59, 2732]
                 ];
-                for (var hi = 0; hi < horus_2g_list.length; hi++) {
-                    var ch = horus_2g_list[hi][0];
-                    var label = horus_2g_list[hi][1];
-                    var found = false;
-                    for (var j = 0; j < existing_2g.length; j += 3) {
-                        if (existing_2g[j] == ch) { found = true; break; }
-                    }
-                    if (!found) {
-                        this.channels['2g'].push(ch, label, {available: true});
-                    }
+                var new_2g = has_auto_2g ? ['auto', 'auto', {available: true}] : [];
+                for (var i = 0; i < horus_2g_plan.length; i++) {
+                    var ch = horus_2g_plan[i][0];
+                    var mhz = horus_2g_plan[i][1];
+                    new_2g.push(ch, mhz + ' MHz (Ch ' + ch + ')', {available: true});
                 }
+                this.channels['2g'] = new_2g;
             }
-
-            /* === HORUS SUPERCHANNEL INJECTION END === */
+            /* === HORUS SUPERCHANNEL ORDERED INJECTION END === */
 """
 
     # Find the anchor: the hwmodelist const line, inject BEFORE it
