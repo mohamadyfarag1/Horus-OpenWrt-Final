@@ -13,6 +13,7 @@ Welcome to the **Horus-OpenWrt-Final Skills Repository**. This knowledge base co
 | [03. DSA Switch & Networking](03-switch-dsa-and-networking.md) | Distributed Switch Architecture | `qca8k-ipq4019`, PSGMII VCO Calibration, Consecutive MAC Calculation, SMP IRQ Affinity |
 | [04. Storage, Ubuntu & Containers](04-usb-extroot-containers-ubuntu.md) | Extroot & Containerization | USB 3.0 Extroot, ZRAM Swap, Native Ubuntu 22.04 LTS Chroot (`armhf`), Docker & `luci-app-dockerman` |
 | [05. Cloud Tunneling & Security](05-cloud-tunneling-and-security.md) | Remote Management & Monitoring | Cloudflare Zero-Trust Tunnels, Subdomain Reverse Proxy, Ingress Routing, Passive ARP/DHCP Sniffer |
+| [06. 2.3 GHz SuperChannel & NanoStation M2](06-superchannel-2.3ghz-nanostation-m2.md) | 2.3 GHz Full Spectrum & Ubiquiti Interoperability | Atheros AR7240/AR9287, 85 Channels (2312-2732MHz), AirOS Compliance Test, OUI `00:27:22`, WDS Bridging |
 
 ---
 
