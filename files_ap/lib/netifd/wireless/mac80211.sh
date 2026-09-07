@@ -183,6 +183,26 @@ mac80211_hostapd_setup_base() {
 							1) ht_capab="[HT40+]";;
 							0) ht_capab="[HT40-]";;
 						esac
+						# Horus SuperChannel: same edge problem as the VHT40/VHT80
+						# centre below - the formula above assumes a standard 20 MHz
+						# grid where the HT40 secondary channel never falls outside
+						# the band. On the 5 MHz-spaced plan it can (e.g. channel 25
+						# picks HT40- and asks for a secondary at channel 21, below
+						# HORUS_5G_MIN_CHAN). hostapd does not fall back to 20 MHz in
+						# that case - it rejects the whole channel with "not found
+						# from the channel list of the current mode" and the AP never
+						# comes up (Tx-Power 0 dBm). Flip direction when the picked
+						# secondary would fall outside the registered plan.
+						[ "$band" = "5g" ] && {
+							case "$ht_capab" in
+								"[HT40-]")
+									[ "$(($channel - 4))" -lt "$HORUS_5G_MIN_CHAN" ] && ht_capab="[HT40+]"
+								;;
+								"[HT40+]")
+									[ "$(($channel + 4))" -gt "$HORUS_5G_MAX_CHAN" ] && ht_capab="[HT40-]"
+								;;
+							esac
+						}
 					;;
 					*)
 						case "$htmode" in
@@ -795,6 +815,25 @@ mac80211_prepare_iw_htmode() {
 					case "$(( ($channel / 4) % 2 ))" in
 						1) iw_htmode="HT40+" ;;
 						0) iw_htmode="HT40-";;
+					esac
+					# Horus SuperChannel: same edge problem fixed in
+					# mac80211_hostapd_setup_base() - this function runs even
+					# for STA-only radios (no AP, so that fix never ran), and
+					# it is what actually sets the phy's channel width via
+					# `iw ... set channel` before hostapd/wpa_supplicant
+					# starts. Flip direction rather than pick a secondary
+					# channel outside the registered plan.
+					local iw_5g_min=24 iw_5g_max=200
+					[ -r /lib/netifd/horus-5g-bounds ] && . /lib/netifd/horus-5g-bounds
+					[ -n "$HORUS_5G_MIN_CHAN" ] && iw_5g_min="$HORUS_5G_MIN_CHAN"
+					[ -n "$HORUS_5G_MAX_CHAN" ] && iw_5g_max="$HORUS_5G_MAX_CHAN"
+					case "$iw_htmode" in
+						"HT40-")
+							[ "$(($channel - 4))" -lt "$iw_5g_min" ] && iw_htmode="HT40+"
+						;;
+						"HT40+")
+							[ "$(($channel + 4))" -gt "$iw_5g_max" ] && iw_htmode="HT40-"
+						;;
 					esac
 				;;
 			esac
