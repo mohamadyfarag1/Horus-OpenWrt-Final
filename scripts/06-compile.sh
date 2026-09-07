@@ -155,7 +155,7 @@ fi
 # image, and "any ath10k-ct directory will do" is precisely what let the
 # previous bug through.
 CTPATCH=package/kernel/ath10k-ct/patches/999-horus-superchannels.patch
-CTSUB=$(grep -m1 '^--- a/' "$CTPATCH" | sed 's|^--- a/||; s|/mac\.c$||')
+CTSUB=$(grep -m1 '^--- a/.*mac\.c$' "$CTPATCH" | sed 's|^--- a/||; s|/mac\.c$||')
 if [ -z "$CTSUB" ]; then
     echo "!!!! could not read the driver subdirectory out of $CTPATCH"
     exit 1
