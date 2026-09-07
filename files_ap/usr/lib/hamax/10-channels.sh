@@ -3,15 +3,22 @@
 # =====================================================================
 
 # ---------------------------------------------------------------------
-# 5 GHz channel plan
+# 5 GHz channel plan: channels 24..200 = 5120 - 6000 MHz in 5 MHz steps,
+# matching ath10k_5ghz_channels[] (see scripts/gen_package_patches.py).
 #
-# The superchannel patches register a 5 MHz-spaced table (197 channels) in
-# ath10k_5ghz_channels[]. Channels 24..35 (< 5180 MHz) are excluded because
-# Qualcomm IPQ4019 BDF calibration data starts at 5180 MHz (Ch 36); selecting
-# anything below 36 causes ath10k to drop TX power to 0 dBm.
-# Usable spectrum spans 5180 - 5925 MHz (channels 36..185).
+# This used to start at 36, on the theory that IPQ4019 BDF calibration data
+# begins at 5180 MHz and anything below drops TX power to 0 dBm. That is not
+# what the hardware reports: `iw phy phy1 info` lists 30.0 dBm from 5120 MHz
+# up, and the firmware's own TPC table has real calibration at 5150 MHz
+# (power limit 20 dBm, regulatory max 33 dBm). The channels below 36 were
+# fine; what actually failed was the 80 MHz centre calculation in
+# mac80211.sh, which asked for sub-channels below the bottom of the band.
+#
+# 5120 MHz (ch 24) needs the regulatory floor at or below 5110 MHz - see
+# scripts/09-generate-regdb.sh - or cfg80211 disables it for not fitting a
+# 20 MHz slot.
 # ---------------------------------------------------------------------
-HAMAX_CHANS="$(seq 36 185)"
+HAMAX_CHANS="$(seq 24 200)"
 
 # The 20 MHz centres a stock 802.11 client actually tunes to when it
 # scans. Anything outside this set is off-grid: a phone or laptop never

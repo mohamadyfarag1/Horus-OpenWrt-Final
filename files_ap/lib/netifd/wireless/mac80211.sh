@@ -161,6 +161,16 @@ mac80211_hostapd_setup_base() {
 	chan_ofs=0
 	[ "$band" = "6g" ] && chan_ofs=1
 
+	# Bounds of the registered 5 GHz SuperChannel table. These MUST match
+	# ath10k_5ghz_channels[], which is generated from CHANS in
+	# scripts/gen_package_patches.py. They are read below when placing the
+	# centre of a 40/80 MHz block so it cannot run off either end of the
+	# band. Read from the driver when possible so a plan change cannot
+	# leave this stale; fall back to the compiled-in plan.
+	HORUS_5G_MIN_CHAN=24
+	HORUS_5G_MAX_CHAN=200
+	[ -r /lib/netifd/horus-5g-bounds ] && . /lib/netifd/horus-5g-bounds
+
 	if [ "$band" != "6g" ]; then
 		ieee80211n=1
 		ht_capab=
@@ -248,6 +258,11 @@ mac80211_hostapd_setup_base() {
 				1) idx=$(($channel + 2));;
 				0) idx=$(($channel - 2));;
 			esac
+			# Same edge problem as VHT80 below, two sub-channels wide.
+			[ "$band" = "5g" ] && {
+				[ "$((idx - 2))" -lt "$HORUS_5G_MIN_CHAN" ] && idx=$(($channel + 2))
+				[ "$((idx + 2))" -gt "$HORUS_5G_MAX_CHAN" ] && idx=$(($channel - 2))
+			}
 			enable_ac=1
 			vht_center_seg0=$idx
 		;;
@@ -258,14 +273,21 @@ mac80211_hostapd_setup_base() {
 				3) idx=$(($channel - 2));;
 				0) idx=$(($channel - 6));;
 			esac
-			# Horus: for SuperChannels below ch36 (5180 MHz) the standard
-			# formula above places the 80 MHz block to the LEFT of the
-			# primary, requiring sub-channels (e.g. ch22 = 5110 MHz) that
-			# are not registered. Fix: if the lowest sub-channel of the
-			# computed block (idx - 6) would be below ch25 (first enabled
-			# channel = 5125 MHz), make the primary the FIRST sub-channel
-			# instead by using idx = channel + 6.
-			[ "$band" = "5g" ] && [ "$((idx - 6))" -lt 25 ] && idx=$((channel + 6))
+			# Horus SuperChannel: the formula above assumes the standard
+			# 20 MHz grid, where an 80 MHz block is always aligned and can
+			# never fall off the end of the band. On the 5 MHz-spaced plan
+			# it can, at BOTH ends, and it then asks for sub-channels the
+			# driver never registered (e.g. ch 22 = 5110 MHz). cfg80211
+			# rejects that chandef and the radio silently drops to 20 MHz.
+			#
+			# The primary has to stay one of the block's four sub-channels,
+			# so do not clamp idx - pick a different one of the four legal
+			# centres (channel +/- 6, +/- 2). At the bottom the highest
+			# centre works, at the top the lowest one does.
+			[ "$band" = "5g" ] && {
+				[ "$((idx - 6))" -lt "$HORUS_5G_MIN_CHAN" ] && idx=$(($channel + 6))
+				[ "$((idx + 6))" -gt "$HORUS_5G_MAX_CHAN" ] && idx=$(($channel - 6))
+			}
 			enable_ac=1
 			vht_oper_chwidth=1
 			vht_center_seg0=$idx

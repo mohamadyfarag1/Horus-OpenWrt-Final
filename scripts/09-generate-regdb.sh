@@ -50,9 +50,21 @@ with open('db.txt', 'w') as f:
             f.write('country 00:\n')
         else:
             f.write(f'country {c}:\n')
-        # Safely bounded frequencies covering 2.3 GHz - 2.732 GHz and 5.115 - 5.980 GHz SuperChannel
+        # The range has to clear the OUTERMOST 20 MHz sub-channel of the
+        # widest block we allow, not just the channel centres. cfg80211
+        # (cfg80211_does_bw_fit_range) disables a channel unless
+        # centre +/- 10 MHz fits inside a rule, and an 80 MHz block is only
+        # accepted when every one of its four 20 MHz sub-channels passes.
+        #
+        # 5 GHz plan is ch 24..200 = 5120..6000 MHz:
+        #   lowest  sub-channel centre 5120 -> needs the rule to start <= 5110
+        #   highest sub-channel centre 6000 -> needs the rule to end   >= 6010
+        # The old 5115 floor is why 5120 MHz (ch 24) was the single disabled
+        # channel and why no 80 MHz block could be built at the bottom.
+        #
+        # 2.4 GHz plan is 2312..2682 MHz, so 2292..2702 with the same margin.
         f.write('\t(2182 - 2750 @ 40), (33)\n')
-        f.write('\t(5115 - 5980 @ 160), (33)\n')
+        f.write('\t(5100 - 6020 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')
 "

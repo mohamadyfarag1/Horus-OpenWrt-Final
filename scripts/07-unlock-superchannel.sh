@@ -156,9 +156,118 @@ print("  -> ieee80211_handle_pwr_constr() now returns 0")
 PYEOF
 done
 
+#############################################
+# PATCH 3: cfg80211 frequency <-> channel-number mapping
+#
+# This is the one that made every extended 2.4 GHz channel useless.
+#
+# ieee80211_freq_khz_to_channel() only knows 2.4 GHz up to 2484 MHz. Anything
+# above that falls through to the 5 GHz arm and comes back as
+# (freq - 5000) / 5, i.e. a large negative number: 2487 MHz registered as
+# channel -502, 2512 MHz as -497, 2732 MHz as -453. Below 2412 MHz the 2.4 GHz
+# arm itself goes negative: 2312 MHz became -19. The old one-line workaround
+# here (`chan = (int)(char)chan`) truncated those to a signed char, which only
+# produced a different set of wrong numbers and silently dropped 2407 MHz
+# (channel 256 -> 0).
+#
+# Meanwhile hostapd was patched (gen_package_patches.py) with the CORRECT
+# mapping. So cfg80211 registered channel -19 for 2312 MHz while hostapd asked
+# for channel 201, they never agreed, and the radio could beacon but no client
+# could ever associate. Both sides are now generated from the same table.
+#
+# The reverse direction matters just as much: ieee80211_channel_to_freq_khz()
+# maps 5 GHz channels 182..196 to the 4.9 GHz public-safety band
+# (4000 + chan * 5). Our plan uses those numbers for 5910..5980 MHz, so that
+# branch has to go or the top of the 5 GHz SuperChannel range lands 1 GHz low.
+#############################################
+HORUS_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 for UTIL in $(find . -path "*/net/wireless/util.c" 2>/dev/null); do
-  echo "[PATCH 3] Patching: $UTIL"
-  sed -i '/case NL80211_BAND_2GHZ:/a\t\tchan = (int)(char)chan;' "$UTIL"
+  echo "[PATCH 3] Patching freq<->channel mapping in: $UTIL"
+  HORUS_SCRIPT_DIR="$HORUS_SCRIPT_DIR" python3 - "$UTIL" <<'PYEOF'
+import os
+import re
+import sys
+
+sys.path.insert(0, os.environ["HORUS_SCRIPT_DIR"])
+from gen_package_patches import (CHANS_2G, MAX_5G, c_chan_to_freq_2g,
+                                 c_freq_to_chan_2g)
+
+path = sys.argv[1]
+with open(path, encoding="utf-8", errors="ignore") as fh:
+    src = fh.read()
+
+MARK = "Horus: SuperChannel frequency map"
+if MARK in src:
+    print("  -> already patched, skipping")
+    sys.exit(0)
+
+max_5g_freq = 5000 + 5 * MAX_5G
+lo = min(f for _, f in CHANS_2G)
+hi = max(f for _, f in CHANS_2G)
+
+# --- forward: frequency -> channel number ---------------------------------
+anchor = re.search(r"\n(\t*)if \(freq == 2484\)\n\t+return 14;\n", src)
+if not anchor:
+    print("!!!! ieee80211_freq_khz_to_channel(): 'if (freq == 2484) return 14;'"
+          " anchor not found - refusing to ship an unmapped util.c")
+    sys.exit(1)
+ind = anchor.group(1)
+block = ("\n%s/* %s: 2.4 GHz %d - %d MHz. Generated from _BLOCKS_2G in\n"
+         "%s * scripts/gen_package_patches.py - hostapd is generated from the\n"
+         "%s * same table, and the two MUST agree. */\n"
+         % (ind, MARK, lo, hi, ind, ind)
+         + c_freq_to_chan_2g(ind, assign="return %s;", ok="", bad="return 0;"))
+block = "\n".join(l for l in block.split("\n") if l.strip() != "") + "\n"
+src = src[:anchor.start()] + "\n" + block + anchor.group(0).lstrip("\n") + src[anchor.end():]
+
+# 5 GHz ceiling: upstream stops the 5 GHz arm at 5945 MHz and hands anything
+# above to the 6 GHz formula. This radio has no 6 GHz band, and our plan
+# reaches %d MHz, so extend the 5 GHz arm instead.
+# The ceiling moved between kernel releases (5925 in 6.6, 5945 in later trees),
+# so match whatever is there rather than pinning one number.
+old5 = re.search(r"(\t*)else if \(freq < 59\d\d\)\n\t+return \(freq - 5000\) / 5;", src)
+if not old5:
+    print("!!!! 5 GHz arm 'else if (freq < 59xx)' not found in %s" % path)
+    sys.exit(1)
+i5 = old5.group(1)
+src = src[:old5.start()] + (
+    "%selse if (freq <= %d) /* %s: 5 GHz reaches %d MHz, no 6 GHz radio here */\n"
+    "%s\treturn (freq - 5000) / 5;" % (i5, max_5g_freq, MARK, max_5g_freq, i5)
+) + src[old5.end():]
+
+# --- reverse: channel number -> frequency ---------------------------------
+rev = re.search(r"(\t*)if \(chan == 14\)\n\t+return MHZ_TO_KHZ\(2484\);\n"
+                r"\t*else if \(chan < 14\)\n\t+return MHZ_TO_KHZ\(2407 \+ chan \* 5\);\n",
+                src)
+if not rev:
+    print("!!!! ieee80211_channel_to_freq_khz(): 2.4 GHz arm not found in %s" % path)
+    sys.exit(1)
+ri = rev.group(1)
+rblock = ("%s/* %s: reverse map, same table as above. */\n" % (ri, MARK)
+          + c_chan_to_freq_2g(ri, ret="return MHZ_TO_KHZ(%s);"))
+src = src[:rev.start()] + rblock + src[rev.end():]
+
+# 5 GHz channels 182..196 are 5910..5980 MHz in our plan, not 4.9 GHz.
+r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
+               r"\t+return MHZ_TO_KHZ\(4000 \+ chan \* 5\);\n"
+               r"\t*else\n"
+               r"\t+return MHZ_TO_KHZ\(5000 \+ chan \* 5\);\n"
+               r"\t*break;\n", src)
+if r4:
+    r4i = r4.group(1)
+    src = src[:r4.start()] + (
+        "%s/* %s: 182..196 are 5910..5980 MHz here, not the 4.9 GHz band. */\n"
+        "%sreturn MHZ_TO_KHZ(5000 + chan * 5);\n" % (r4i, MARK, r4i)
+    ) + src[r4.end():]
+    print("  -> 5 GHz 182..196 no longer aliased to the 4.9 GHz band")
+else:
+    print("  -> 4.9 GHz alias branch not present, nothing to undo")
+
+with open(path, "w", encoding="utf-8", newline="\n") as fh:
+    fh.write(src)
+print("  -> freq<->channel mapping now covers %d - %d MHz and 5120 - %d MHz"
+      % (lo, hi, max_5g_freq))
+PYEOF
   echo "  -> net/wireless/util.c patched OK"
 done
 

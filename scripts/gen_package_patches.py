@@ -42,43 +42,169 @@ import os
 import re
 import sys
 
-# 5 GHz channel plan: expanded 162-channel spectrum plan (5120 MHz - 5925 MHz, 5 MHz step)
-# Channels 24..185 inclusive. All 162 channels are calibrated and supported by IPQ4019 radio.
-# Target DMA Copy Engine buffer protection is handled in ath10k_update_channel_list().
-CHANS = list(range(24, 186))
-MAX_5G = max(CHANS)             # 185
+# 5 GHz channel plan: 5120 MHz - 6000 MHz in 5 MHz steps, channels 24..200.
+CHANS = list(range(24, 201))
+MIN_5G = min(CHANS)             # 24
+MAX_5G = max(CHANS)             # 200
 
-# 2.4 GHz channel plan: 86-channel expanded spectrum (2312 MHz - 2732 MHz)
-# Matches Ubiquiti NanoStation M2 spectrum + standard 802.11 channels:
-# - 2.3 GHz band: Channels 237-255 (2312-2402 MHz, 5 MHz step) + Ch 256 (2407 MHz)
-# - Standard 2.4 GHz: Channels 1-13 (2412-2472 MHz)
-# - Standard 802.11b Japan: Channel 14 (2484 MHz)
-# - Transition band: Channels 74-80 (2477-2507 MHz, 5 MHz step)
-# - Upper 2.5-2.732 GHz band: Channels 15-59 (2512-2732 MHz, 5 MHz step)
-CHANS_2G = [
-    # 2.3 GHz Sub-band: 2312 - 2407 MHz
-    (237, 2312), (238, 2317), (239, 2322), (240, 2327), (241, 2332),
-    (242, 2337), (243, 2342), (244, 2347), (245, 2352), (246, 2357),
-    (247, 2362), (248, 2367), (249, 2372), (250, 2377), (251, 2382),
-    (252, 2387), (253, 2392), (254, 2397), (255, 2402), (256, 2407),
-    # Standard 2.4 GHz ISM: 2412 - 2472 MHz
-    (1, 2412), (2, 2417), (3, 2422), (4, 2427), (5, 2432),
-    (6, 2437), (7, 2442), (8, 2447), (9, 2452), (10, 2457),
-    (11, 2462), (12, 2467), (13, 2472),
-    # Standard 802.11b Japan: 2484 MHz
-    (14, 2484),
-    # Transition 5 MHz step: 2477 - 2507 MHz
-    (74, 2477), (75, 2482), (76, 2487), (77, 2492), (78, 2497),
-    (79, 2502), (80, 2507),
-] + [
-    # Upper 2.5 - 2.732 GHz Band: 2512 - 2732 MHz (Channels 15..59)
-    (ch, 2437 + ch * 5) for ch in range(15, 60)
+# 2.4 GHz channel plan: 2312 MHz - 2682 MHz in 5 MHz steps, plus 2484 MHz.
+#
+# The channel NUMBERS matter as much as the frequencies. ath10k decides which
+# band a received management frame belongs to from the channel number alone
+# (ath10k_wmi_event_mgmt_rx: <= 14 is 2 GHz, 24..ATH10K_MAX_5G_CHAN is 5 GHz,
+# anything else is dropped with a WARN). The previous plan numbered the extended
+# 2.4 GHz channels 15..59 and 74..80, which collide head-on with the 5 GHz
+# numbers, so beacons and assoc frames on those channels were either tagged as
+# 5 GHz or thrown away and no client could ever associate.
+#
+# So 2.4 GHz is confined to numbers OUTSIDE the 5 GHz range: 1..23 and 201..255.
+# Each block below is a plain linear map, because the identical arithmetic has to
+# be reproduced in the kernel (net/wireless/util.c) and in hostapd
+# (ieee80211_freq_to_channel_ext) - see build_2g_plan() for the single source.
+_BLOCKS_2G = [
+    # (first_channel, first_freq, count)  -- ascending in frequency
+    (201, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 201..220
+    (1,   2412, 13),   # standard ISM          2412 - 2472 -> ch 1..13
+    (221, 2477, 2),    # transition            2477 - 2482 -> ch 221..222
+    (14,  2484, 1),    # 802.11b Japan         2484        -> ch 14
+    (15,  2487, 9),    # upper band, part A    2487 - 2527 -> ch 15..23
+    (223, 2532, 31),   # upper band, part B    2532 - 2682 -> ch 223..253
 ]
+
+
+def build_2g_plan():
+    plan = []
+    for first_ch, first_freq, count in _BLOCKS_2G:
+        for i in range(count):
+            plan.append((first_ch + i, first_freq + 5 * i))
+    return sorted(plan, key=lambda cf: cf[1])
+
+
+CHANS_2G = build_2g_plan()
+
+# Background-scan anchors for the 2.4 GHz band. The full table cannot be handed
+# to the firmware (CE3 DMA limit, see patch_ath10k), so the offload scan only
+# gets these. Selected by FREQUENCY rather than channel number so that
+# renumbering the plan can never silently empty the list.
+SCAN_ANCHORS_2G = [2312, 2352, 2412, 2437, 2462, 2484,
+                   2512, 2552, 2592, 2632, 2682]
+
+
+def c_freq_to_chan_2g(indent, assign, ok, bad, skip_freqs=()):
+    """Emit C that maps a 2.4 GHz `freq` to our channel number.
+
+    Both the kernel (net/wireless/util.c, ieee80211_freq_khz_to_channel) and
+    hostapd (ieee80211_freq_to_channel_ext) have to agree on this mapping, and
+    when they disagreed nothing worked: the kernel registered channel -19 for
+    2312 MHz while hostapd asked for 237. Generating both from _BLOCKS_2G is
+    the only way to keep them identical.
+
+    `assign` is a format string taking the channel expression, `ok` and `bad`
+    are the statements to emit on a hit and on a misaligned frequency.
+    """
+    i = indent
+    out = []
+    for first_ch, first_freq, count in _BLOCKS_2G:
+        if first_freq in skip_freqs:
+            continue
+        last_freq = first_freq + 5 * (count - 1)
+        if count == 1:
+            out.append("%sif (freq == %d) {\n" % (i, first_freq))
+            out.append("%s\t%s\n" % (i, assign % str(first_ch)))
+            out.append("%s\t%s\n" % (i, ok))
+            out.append("%s}\n" % i)
+            continue
+        out.append("%sif (freq >= %d && freq <= %d) {\n" % (i, first_freq, last_freq))
+        out.append("%s\tif ((freq - %d) %% 5)\n" % (i, first_freq))
+        out.append("%s\t\t%s\n" % (i, bad))
+        out.append("%s\t%s\n" % (i, assign % ("%d + (freq - %d) / 5"
+                                              % (first_ch, first_freq))))
+        out.append("%s\t%s\n" % (i, ok))
+        out.append("%s}\n" % i)
+    return "".join(out)
+
+
+def c_chan_to_freq_2g(indent, ret):
+    """Emit C that maps one of our 2.4 GHz channel numbers back to a frequency.
+
+    The inverse of c_freq_to_chan_2g(). cfg80211 needs both directions;
+    ieee80211_channel_to_freq_khz() is what turns a UCI `option channel` into
+    the frequency the radio is actually told to tune.
+    """
+    i = indent
+    out = []
+    for first_ch, first_freq, count in _BLOCKS_2G:
+        last_ch = first_ch + count - 1
+        if count == 1:
+            out.append("%sif (chan == %d)\n" % (i, first_ch))
+            out.append("%s\t%s\n" % (i, ret % str(first_freq)))
+            continue
+        out.append("%sif (chan >= %d && chan <= %d)\n" % (i, first_ch, last_ch))
+        out.append("%s\t%s\n" % (i, ret % ("%d + (chan - %d) * 5"
+                                           % (first_freq, first_ch))))
+    return "".join(out)
+
+
+def c_scan_filter_2g():
+    """The 2.4 GHz half of the ath10k_update_channel_list scan filter."""
+    known = {f for _, f in CHANS_2G}
+    missing = [f for f in SCAN_ANCHORS_2G if f not in known]
+    if missing:
+        fail("scan anchors %s are not in the 2.4 GHz plan" % missing)
+    tests = ["f != %d" % f for f in SCAN_ANCHORS_2G]
+    lines = []
+    for i in range(0, len(tests), 2):
+        lines.append(" && ".join(tests[i:i + 2]))
+    body = " &&\n\t\t\t\t    ".join(lines)
+    return ("\t\t\tif (channel->band == NL80211_BAND_2GHZ) {\n"
+            "\t\t\t\tint f = channel->center_freq;\n"
+            "\t\t\t\tif (" + body + ")\n"
+            "\t\t\t\t\tcontinue;\n"
+            "\t\t\t}\n")
 
 
 def fail(msg):
     print("!!!! %s" % msg)
     sys.exit(1)
+
+
+def validate_plans():
+    """Refuse to generate a plan the driver cannot represent.
+
+    Every one of these has already shipped as a silent runtime failure at least
+    once, so they are hard errors at generation time rather than review notes.
+    """
+    nums_2g = [ch for ch, _ in CHANS_2G]
+    freqs_2g = [f for _, f in CHANS_2G]
+
+    dupes = {n for n in nums_2g if nums_2g.count(n) > 1}
+    if dupes:
+        fail("duplicate 2.4 GHz channel numbers: %s" % sorted(dupes))
+    dupes = {f for f in freqs_2g if freqs_2g.count(f) > 1}
+    if dupes:
+        fail("duplicate 2.4 GHz frequencies: %s" % sorted(dupes))
+
+    # The collision that broke every extended 2.4 GHz channel: ath10k reads the
+    # band off the channel number, so the two tables must not share numbers.
+    clash = sorted(set(nums_2g) & set(CHANS))
+    if clash:
+        fail("2.4 GHz channel numbers %s collide with the 5 GHz range %d..%d - "
+             "ath10k_wmi_event_mgmt_rx would tag those frames as 5 GHz and drop "
+             "the association" % (clash, MIN_5G, MAX_5G))
+
+    if max(nums_2g) > 255 or min(nums_2g) < 1:
+        fail("2.4 GHz channel numbers must stay in 1..255, got %d..%d"
+             % (min(nums_2g), max(nums_2g)))
+
+    total = len(CHANS) + len(CHANS_2G)
+    if total > 253:
+        fail("combined channel count %d exceeds the 253 that ath10k-ct is known "
+             "to build with (ATH10K_NUM_CHANS)" % total)
+
+    print("  plan validated      : %d (5G, ch %d..%d) + %d (2.4G) = %d channels"
+          % (len(CHANS), MIN_5G, MAX_5G, len(CHANS_2G), total))
+    print("  5 GHz span          : %d - %d MHz" % (5000 + 5 * MIN_5G, 5000 + 5 * MAX_5G))
+    print("  2.4 GHz span        : %d - %d MHz" % (min(freqs_2g), max(freqs_2g)))
 
 
 def find_file(root, name, must_contain):
@@ -165,16 +291,20 @@ def patch_ath10k(build_dir, pkg_dir):
     subname = os.path.basename(sub)
     core = os.path.join(sub, "core.h")
     wmi = os.path.join(sub, "wmi.h")
+    wmic = os.path.join(sub, "wmi.c")
     if not os.path.isfile(core):
         fail("core.h not next to %s" % mac)
     if not os.path.isfile(wmi):
         fail("wmi.h not next to %s" % mac)
+    if not os.path.isfile(wmic):
+        fail("wmi.c not next to %s" % mac)
     print("  ath10k-ct build dir : %s" % pkg_build_dir)
     print("  driver subdirectory : %s" % subname)
 
     old_mac = open(mac, encoding="utf-8", errors="ignore").read()
     old_core = open(core, encoding="utf-8", errors="ignore").read()
     old_wmi = open(wmi, encoding="utf-8", errors="ignore").read()
+    old_wmic = open(wmic, encoding="utf-8", errors="ignore").read()
 
     # --- 5 GHz table -------------------------------------------------
     lines = "".join("\tCHAN5G(%d, %d, 0),\n" % (c, 5000 + 5 * c) for c in CHANS)
@@ -196,8 +326,10 @@ def patch_ath10k(build_dir, pkg_dir):
     lines_2g = "".join("\tCHAN2G(%d, %d, 0),\n" % (ch, freq) for ch, freq in CHANS_2G)
     new_array_2g = ("static const struct ieee80211_channel ath10k_2ghz_channels[] = {\n"
                     + lines_2g
-                    + "\t/* Horus: 86-channel 2.4 GHz superchannel plan (2312-2732 MHz), "
-                      "matches NanoStation M2 (%d channels) */\n" % len(CHANS_2G)
+                    + "\t/* Horus: 2.4 GHz SuperChannel plan, %d channels, %d - %d MHz. "
+                      "Numbers stay outside the 5 GHz range on purpose. */\n"
+                      % (len(CHANS_2G), min(f for _, f in CHANS_2G),
+                         max(f for _, f in CHANS_2G))
                     + "};\n")
     array_2g_re = re.compile(
         r"static const struct ieee80211_channel ath10k_2ghz_channels\[\]\s*=\s*\{.*?\};",
@@ -211,14 +343,14 @@ def patch_ath10k(build_dir, pkg_dir):
     # --- CE buffer overflow protection in ath10k_update_channel_list ---
     # The IPQ4019 firmware Copy Engine CE3 (Host->Target WMI) has a maximum buffer
     # size of 2048 bytes (src_sz_max = 2048). In TLV firmware, each scan channel
-    # descriptor takes 28 bytes. Packing all 162+86 = 248 channels into a single
+    # descriptor takes 28 bytes. Packing every registered channel into a single
     # wmi_scan_chan_list_cmd requires 6944 bytes, which overruns target SRAM and
     # crashes the firmware with -108, causing a watchdog reboot loop.
     # We filter the scan channel list in ath10k_update_channel_list:
-    # 2.4 GHz: 11 grid anchors (Ch 1, 6, 11, 14, 237, 247, 256, 76, 25, 45, 59)
+    # 2.4 GHz: anchors picked by frequency, see SCAN_ANCHORS_2G
     # 5 GHz: 20 MHz grid anchors + priority airMAX channels (~40 channels)
     # Total scan channels <= 60 (~1680 bytes), ensuring packet size <= 1700 < 2048 bytes.
-    # All 86 2.4GHz + 162 5GHz channels remain fully registered in ath10k channel
+    # All registered channels remain fully registered in ath10k channel
     # arrays for normal AP and STA operation.
     scan_t1 = (
         "\tbands = hw->wiphy->bands;\n"
@@ -249,22 +381,15 @@ def patch_ath10k(build_dir, pkg_dir):
         "\n"
         "\t\t\t/* Horus: limit scan channels to prevent Copy Engine DMA buffer overflow (CE3 limit 2048 bytes).\n"
         "\t\t\t * Total scan channels capped <= 60 (~1680 bytes < 2048 bytes).\n"
-        "\t\t\t * All 86 2.4GHz + 162 5GHz channels remain fully registered in ath10k channel arrays for AP/STA use.\n"
+        "\t\t\t * All registered channels remain fully registered in ath10k channel arrays for AP/STA use.\n"
         "\t\t\t */\n"
-        "\t\t\tif (channel->band == NL80211_BAND_2GHZ) {\n"
-        "\t\t\t\tif (channel->hw_value != 1 && channel->hw_value != 6 &&\n"
-        "\t\t\t\t    channel->hw_value != 11 && channel->hw_value != 14 &&\n"
-        "\t\t\t\t    channel->hw_value != 237 && channel->hw_value != 247 &&\n"
-        "\t\t\t\t    channel->hw_value != 256 && channel->hw_value != 76 &&\n"
-        "\t\t\t\t    channel->hw_value != 25 && channel->hw_value != 45 &&\n"
-        "\t\t\t\t    channel->hw_value != 59)\n"
-        "\t\t\t\t\tcontinue;\n"
-        "\t\t\t}\n"
+        + c_scan_filter_2g() +
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tint f = channel->center_freq;\n"
         "\t\t\t\tif (!((f >= 5180 && f <= 5700 && f % 20 == 0) ||\n"
         "\t\t\t\t      (f >= 5725 && f <= 5885 && (f - 5725) % 20 == 0) ||\n"
-        "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 || f == 5905 || f == 5925))\n"
+        "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 ||\n"
+        "\t\t\t\t      f == 5905 || f == 5925 || f == 5945 || f == 5965 || f == 6000))\n"
         "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
         "\t\t\tif (arg.n_channels >= 60)\n"
@@ -298,20 +423,13 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\tif (channel->flags & IEEE80211_CHAN_DISABLED)\n"
         "\t\t\t\tcontinue;\n"
         "\n"
-        "\t\t\tif (channel->band == NL80211_BAND_2GHZ) {\n"
-        "\t\t\t\tif (channel->hw_value != 1 && channel->hw_value != 6 &&\n"
-        "\t\t\t\t    channel->hw_value != 11 && channel->hw_value != 14 &&\n"
-        "\t\t\t\t    channel->hw_value != 237 && channel->hw_value != 247 &&\n"
-        "\t\t\t\t    channel->hw_value != 256 && channel->hw_value != 76 &&\n"
-        "\t\t\t\t    channel->hw_value != 25 && channel->hw_value != 45 &&\n"
-        "\t\t\t\t    channel->hw_value != 59)\n"
-        "\t\t\t\t\tcontinue;\n"
-        "\t\t\t}\n"
+        + c_scan_filter_2g() +
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tint f = channel->center_freq;\n"
         "\t\t\t\tif (!((f >= 5180 && f <= 5700 && f % 20 == 0) ||\n"
         "\t\t\t\t      (f >= 5725 && f <= 5885 && (f - 5725) % 20 == 0) ||\n"
-        "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 || f == 5905 || f == 5925))\n"
+        "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 ||\n"
+        "\t\t\t\t      f == 5905 || f == 5925 || f == 5945 || f == 5965 || f == 6000))\n"
         "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
         "\t\t\tif (ch - arg.channels >= arg.n_channels)\n"
@@ -380,17 +498,65 @@ def patch_ath10k(build_dir, pkg_dir):
                          r"\g<1>%d\g<2>" % num_chans, old_wmi)
     if not c:
         fail("u16 channels[64] not found in %s" % wmi)
+
+    # --- wmi.c: which band a received management frame belongs to -----
+    # ath10k_wmi_event_mgmt_rx() decides the band from the channel NUMBER:
+    #
+    #     if (channel >= 1 && channel <= 14)          -> 2 GHz
+    #     else if (channel >= 36 && channel <= ATH10K_MAX_5G_CHAN) -> 5 GHz
+    #     else { WARN_ON_ONCE(1); drop the frame; }
+    #
+    # Management frames are the beacons, probe responses, auth and assoc
+    # frames - so any channel this misclassifies can transmit but can never
+    # complete an association. Every 2.4 GHz channel above 14 fell into the
+    # 5 GHz arm or into the drop path, which is why the extended 2.4 GHz
+    # spectrum looked alive (hostapd said AP-ENABLED, power was present) but
+    # nothing could ever connect to it.
+    #
+    # The plan keeps the two number ranges disjoint (validate_plans enforces
+    # it), so the test can simply be "outside the 5 GHz range means 2 GHz".
+    band_old = re.search(
+        r"(\t*)if \(channel >= 1 && channel <= 14\) \{\n"
+        r"\t+status->band = NL80211_BAND_2GHZ;\n"
+        r"\t*\} else if \(channel >= \d+ && channel <= ATH10K_MAX_5G_CHAN\) \{\n"
+        r"\t+status->band = NL80211_BAND_5GHZ;\n"
+        r"\t*\} else \{", old_wmic)
+    if not band_old:
+        fail("ath10k_wmi_event_mgmt_rx() band selection not found in %s - "
+             "without this patch every extended 2.4 GHz channel silently "
+             "drops its management frames" % wmic)
+    bi = band_old.group(1)
+    band_new = (
+        "%s/* Horus: the 2.4 GHz plan uses channel numbers outside the 5 GHz\n"
+        "%s * range (1..%d and %d..255), so anything that is not a 5 GHz\n"
+        "%s * channel number is 2.4 GHz. The stock test only accepted 1..14\n"
+        "%s * here and dropped the management frames of every extended\n"
+        "%s * 2.4 GHz channel, so no client could associate on them. */\n"
+        "%sif (channel >= %d && channel <= ATH10K_MAX_5G_CHAN) {\n"
+        "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
+        "%s} else if (channel >= 1 && channel <= 255) {\n"
+        "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
+        "%s} else {"
+        % (bi, bi, MIN_5G - 1, MAX_5G + 1, bi, bi, bi,
+           bi, MIN_5G, bi, bi, bi, bi))
+    new_wmic = old_wmic[:band_old.start()] + band_new + old_wmic[band_old.end():]
+    print("  wmi.c               : mgmt-rx band now 5G=%d..%d, 2.4G=everything else"
+          % (MIN_5G, MAX_5G))
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
     header = (
-        "Horus: register the 86-channel 2.4 GHz and 162-channel 5 GHz plans with CE DMA buffer protection.\n"
+        "Horus: register the SuperChannel 2.4 GHz and 5 GHz plans, keep the two\n"
+        "channel-number ranges disjoint, and protect the CE DMA scan buffer.\n"
         "\n"
         "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
-        "- 2.4 GHz: %d channels (2312-2732 MHz, continuous 5 MHz steps + Ch 14 2484 MHz).\n"
-        "  Matches Ubiquiti NanoStation M2 full spectrum.\n"
-        "- 5 GHz: %d channels (5120-5925 MHz, channels 24..185, 5 MHz steps).\n"
+        "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..23 and 201..255.\n"
+        "- 5 GHz: %d channels (5120-6000 MHz, channels 24..200, 5 MHz steps).\n"
         "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
-        "All channels operate at full calibrated 30 dBm power.\n"
+        "\n"
+        "ath10k_wmi_event_mgmt_rx() derives the band from the channel number, so\n"
+        "the two ranges must not overlap: when they did, every extended 2.4 GHz\n"
+        "channel had its beacons and assoc frames tagged 5 GHz or dropped, and no\n"
+        "client could associate even though the radio was transmitting.\n"
         "\n"
         "ath10k_update_channel_list protects against Copy Engine DMA buffer overflow\n"
         "(CE3 2048-byte limit) by filtering background scan entries across both bands\n"
@@ -415,7 +581,8 @@ def patch_ath10k(build_dir, pkg_dir):
             fh.write("%d\n" % (5000 + 5 * c))
     print("  wrote %s (%d frequencies)" % (freq_list, len(CHANS)))
 
-    entries = [(os.path.join(subname, "mac.c").replace(os.sep, "/"), old_mac, new_mac),
+    entries = [(os.path.join(subname, "wmi.c").replace(os.sep, "/"), old_wmic, new_wmic),
+               (os.path.join(subname, "mac.c").replace(os.sep, "/"), old_mac, new_mac),
                (os.path.join(subname, "core.h").replace(os.sep, "/"), old_core, new_core),
                (os.path.join(subname, "wmi.h").replace(os.sep, "/"), old_wmi, new_wmi)]
     emit_patch(os.path.join(pkg_dir, "patches", "999-horus-superchannels.patch"),
@@ -481,31 +648,21 @@ def patch_hostapd(build_dir, pkg_dir):
 
     # 1. 2.4 GHz SuperChannels (2.3 GHz - 2.732 GHz)
     target_2g = "\tif (freq >= 2412 && freq <= 2472) {"
+    # The standard 2412-2472 block below the anchor already handles channels
+    # 1..13, so skip that block here and let upstream keep it.
     inject_2g = (
-        "\t/* Horus: 2.3 GHz SuperChannels (2312 - 2407 MHz) -> channels 237..256 */\n"
-        "\tif (freq >= 2312 && freq <= 2407) {\n"
-        "\t\tif ((freq - 2312) % 5)\n"
-        "\t\t\treturn NUM_HOSTAPD_MODES;\n"
-        "\t\t*channel = 237 + (freq - 2312) / 5;\n"
-        "\t\t*op_class = 81;\n"
-        "\t\treturn HOSTAPD_MODE_IEEE80211G;\n"
-        "\t}\n\n"
-        "\t/* Horus: 2.4 GHz transition channels (2477 - 2507 MHz) -> channels 74..80 */\n"
-        "\tif (freq >= 2477 && freq <= 2507 && freq != 2484) {\n"
-        "\t\tif ((freq - 2477) % 5)\n"
-        "\t\t\treturn NUM_HOSTAPD_MODES;\n"
-        "\t\t*channel = 74 + (freq - 2477) / 5;\n"
-        "\t\t*op_class = 81;\n"
-        "\t\treturn HOSTAPD_MODE_IEEE80211G;\n"
-        "\t}\n\n"
-        "\t/* Horus: Upper 2.5 - 2.732 GHz SuperChannels (2512 - 2732 MHz) -> channels 15..59 */\n"
-        "\tif (freq >= 2512 && freq <= 2732) {\n"
-        "\t\tif ((freq - 2437) % 5)\n"
-        "\t\t\treturn NUM_HOSTAPD_MODES;\n"
-        "\t\t*channel = (freq - 2437) / 5;\n"
-        "\t\t*op_class = 81;\n"
-        "\t\treturn HOSTAPD_MODE_IEEE80211G;\n"
-        "\t}\n\n"
+        "\t/* Horus SuperChannel 2.4 GHz plan (%d - %d MHz).\n"
+        "\t * Must stay identical to ieee80211_freq_khz_to_channel() in the\n"
+        "\t * kernel, otherwise cfg80211 registers one channel number and\n"
+        "\t * hostapd asks for another and the radio never comes up. */\n"
+        % (min(f for _, f in CHANS_2G), max(f for _, f in CHANS_2G))
+        + c_freq_to_chan_2g(
+            "\t",
+            assign="*channel = %s;",
+            ok="*op_class = 81;\n\t\treturn HOSTAPD_MODE_IEEE80211G;",
+            bad="return NUM_HOSTAPD_MODES;",
+            skip_freqs=(2412,))
+        + "\n"
         + target_2g
     )
     if target_2g not in old_common:
@@ -529,11 +686,12 @@ def patch_hostapd(build_dir, pkg_dir):
         "   because Japan forbids OFDM at 2484 MHz. Drop the block so the channel\n"
         "   runs with whatever hw_mode/htmode the UCI config asked for.\n"
         "2. ieee80211_freq_to_channel_ext() maps frequency to channel numbers.\n"
-        "   - Standard 5 GHz stopped strictly at < 5900 MHz, causing channels 180..185\n"
-        "     (5900..5925 MHz) to fail with 'Could not determine operating frequency'\n"
+        "   - Standard 5 GHz stopped strictly at < 5900 MHz, causing the channels\n"
+        "     above it to fail with 'Could not determine operating frequency'\n"
         "     and drop Tx-Power to 0 dBm. Expanded to 6000 MHz.\n"
-        "   - 2.4 GHz plan includes 2.3 GHz (channels 237..256), transition channels\n"
-        "     (74..80), and upper band (15..59, up to 2732 MHz), matching NanoStation M2.\n")
+        "   - The 2.4 GHz mapping is generated from the same table as the kernel\n"
+        "     side (net/wireless/util.c), so cfg80211 and hostapd agree on every\n"
+        "     channel number. They did not before, and nothing could associate.\n")
 
     entries = [
         (rel, old, new),
@@ -543,11 +701,32 @@ def patch_hostapd(build_dir, pkg_dir):
                entries, header)
 
 
+def write_5g_bounds():
+    """Hand the plan's 5 GHz limits to mac80211.sh.
+
+    mac80211.sh has to know where the band ends so it can place the centre of
+    a 40/80 MHz block without running off it. Hardcoding the numbers in two
+    places is how they go stale, so emit them from the plan instead.
+    """
+    out = os.path.join("files", "lib", "netifd", "horus-5g-bounds")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Generated by scripts/gen_package_patches.py - do not edit.\n"
+                 "# Bounds of ath10k_5ghz_channels[], read by mac80211.sh.\n"
+                 "HORUS_5G_MIN_CHAN=%d\n"
+                 "HORUS_5G_MAX_CHAN=%d\n" % (MIN_5G, MAX_5G))
+    print("  wrote %s (ch %d..%d)" % (out, MIN_5G, MAX_5G))
+
+
 def main():
     if not os.path.isdir("build_dir") or not os.path.isdir("package"):
         fail("run this from the openwrt/ directory")
 
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
+
+    print("[channel plan]")
+    validate_plans()
+    write_5g_bounds()
 
     if target in ("all", "ath10k"):
         print("[ath10k-ct]")
