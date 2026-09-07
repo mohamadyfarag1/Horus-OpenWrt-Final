@@ -329,6 +329,8 @@ hostapd_common_add_bss_config() {
 	config_add_string vendor_elements
 	config_add_boolean airmax airmax_compat
 	config_add_array wpa_supplicant_options supplicant_options
+	config_add_array scan_list freq_list channels
+	config_add_string scan_freq fixed_freq
 
 	config_add_boolean ieee80211k rrm_neighbor_report rrm_beacon_report
 
@@ -1306,7 +1308,10 @@ wpa_supplicant_prepare_interface() {
 
 	_wpa_supplicant_common "$1"
 
-	json_get_vars mode wds multi_ap
+	json_get_vars mode wds multi_ap scan_list freq_list scan_freq
+	local all_scan_list="$scan_list"
+	[ -z "$all_scan_list" ] && all_scan_list="$freq_list"
+	[ -z "$all_scan_list" ] && all_scan_list="$scan_freq"
 
 	[ -n "$network_bridge" ] && {
 		fail=
@@ -1321,6 +1326,7 @@ wpa_supplicant_prepare_interface() {
 				if [ "$wds" != 1 -a "$multi_ap" != 1 ]; then
 					wds=1
 				fi
+				iw dev "$ifname" set 4addr on 2>/dev/null || true
 			;;
 		esac
 
@@ -1361,7 +1367,7 @@ wpa_supplicant_prepare_interface() {
 	fi
 	wpa_supplicant_teardown_interface "$ifname"
 	cat > "$_config" <<EOF
-${scan_list:+freq_list=$scan_list}
+${all_scan_list:+freq_list=$all_scan_list}
 $ap_scan
 $country_str
 EOF
@@ -1453,6 +1459,21 @@ wpa_supplicant_add_network() {
 	[ "$_w_mode" = "sta" ] && {
 		[ "$multi_ap" = 1 ] && append network_data "multi_ap_backhaul_sta=1" "$N$T"
 		[ "$default_disabled" = 1 ] && append network_data "disabled=1" "$N$T"
+
+		# Horus: Lock station scan immediately onto configured frequency or scan list
+		json_get_vars scan_freq fixed_freq
+		json_get_values sl_list scan_list
+		[ -z "$sl_list" ] && json_get_values sl_list freq_list
+		local net_freqs=""
+		if [ -n "$sl_list" ]; then
+			net_freqs="$sl_list"
+		elif [ -n "$scan_freq" ]; then
+			net_freqs="$scan_freq"
+		elif [ -n "$freq" ] && [ "$freq" != "0" ]; then
+			net_freqs="$freq"
+		fi
+		[ -n "$net_freqs" ] && append network_data "freq_list=$net_freqs" "$N$T"
+		[ -n "$scan_freq" ] && append network_data "scan_freq=$scan_freq" "$N$T"
 	}
 
 	[ -n "$ocv" ] && append network_data "ocv=$ocv" "$N$T"
