@@ -1,0 +1,10 @@
+config thermal 'main'
+	# SoC temperature thresholds in degrees Celsius
+	# warn: reduce txpower to 20 dBm
+	# hot:  reduce txpower to 15 dBm
+	# cool: restore configured txpower (hysteresis — must be below warn)
+	option warn_temp '75'
+	option hot_temp  '82'
+	option cool_temp '65'
+	# Check interval in seconds
+	option interval  '30'

@@ -1,0 +1,124 @@
+#!/bin/sh /etc/rc.common
+# thermal-protect — reduce TX power when SoC temperature is high
+# IPQ4019 thermal sensor: /sys/class/thermal/thermal_zone0/temp (millidegrees C)
+#
+# Thresholds (configurable via UCI thermal.main.*):
+#   warn  = 75°C → txpower → 20 dBm
+#   hot   = 82°C → txpower → 15 dBm
+#   cool  = 65°C → restore configured txpower
+#
+# The configured UCI txpower is treated as the ceiling — this script
+# never raises power above what the user set.
+
+START=95
+STOP=10
+USE_PROCD=1
+
+THERMAL_FILE="/sys/class/thermal/thermal_zone0/temp"
+STATE_FILE="/tmp/thermal-protect.state"
+LOG_TAG="thermal-protect"
+
+read_cfg() {
+    THRESH_WARN=$(uci -q get thermal.main.warn_temp || echo 75)
+    THRESH_HOT=$(uci -q get thermal.main.hot_temp   || echo 82)
+    THRESH_COOL=$(uci -q get thermal.main.cool_temp  || echo 65)
+    INTERVAL=$(uci -q get thermal.main.interval      || echo 30)
+}
+
+get_temp_c() {
+    local raw
+    raw=$(cat "$THERMAL_FILE" 2>/dev/null)
+    [ -z "$raw" ] && { echo 0; return; }
+    echo $((raw / 1000))
+}
+
+configured_power() {
+    local radio="$1"
+    uci -q get "wireless.${radio}.txpower" || echo 30
+}
+
+set_power() {
+    local radio="$1" pwr="$2" phy reason="$3"
+    phy=$(iwinfo 2>/dev/null | awk -v r="$radio" '$0 ~ r { print $1; exit }')
+    [ -z "$phy" ] && {
+        # fallback: radio0→phy0, radio1→phy1
+        case "$radio" in radio0) phy="phy0";; radio1) phy="phy1";; *) return;; esac
+    }
+    iw phy "$phy" set txpower fixed $((pwr * 100)) 2>/dev/null
+    logger -t "$LOG_TAG" "$reason: set $radio ($phy) txpower=${pwr} dBm"
+}
+
+check_thermal() {
+    read_cfg
+    local temp state prev_state radio pwr
+    temp=$(get_temp_c)
+    prev_state=$(cat "$STATE_FILE" 2>/dev/null || echo "normal")
+
+    if [ "$temp" -ge "$THRESH_HOT" ] 2>/dev/null; then
+        state="hot"
+    elif [ "$temp" -ge "$THRESH_WARN" ] 2>/dev/null; then
+        state="warn"
+    elif [ "$temp" -le "$THRESH_COOL" ] 2>/dev/null; then
+        state="normal"
+    else
+        state="$prev_state"
+    fi
+
+    [ "$state" = "$prev_state" ] && return 0
+
+    echo "$state" > "$STATE_FILE"
+    logger -t "$LOG_TAG" "temp=${temp}°C state=${prev_state}→${state}"
+
+    for radio in radio0 radio1; do
+        uci -q show "wireless.${radio}" >/dev/null 2>&1 || continue
+        local cfg_pwr
+        cfg_pwr=$(configured_power "$radio")
+        case "$state" in
+            normal) pwr="$cfg_pwr" ;;
+            warn)   pwr=$(( cfg_pwr < 20 ? cfg_pwr : 20 )) ;;
+            hot)    pwr=$(( cfg_pwr < 15 ? cfg_pwr : 15 )) ;;
+        esac
+        set_power "$radio" "$pwr" "thermal-$state(${temp}C)"
+    done
+}
+
+thermal_loop() {
+    read_cfg
+    while true; do
+        check_thermal
+        sleep "$INTERVAL"
+    done
+}
+
+start_service() {
+    [ -f "$THERMAL_FILE" ] || {
+        logger -t "$LOG_TAG" "no thermal sensor at $THERMAL_FILE — service inactive"
+        return 0
+    }
+
+    procd_open_instance
+    procd_set_param command /bin/sh -c "
+        . /etc/rc.common
+        $(declare -f read_cfg get_temp_c configured_power set_power check_thermal 2>/dev/null || true)
+        THERMAL_FILE='$THERMAL_FILE'
+        STATE_FILE='$STATE_FILE'
+        LOG_TAG='$LOG_TAG'
+        read_cfg
+        while true; do check_thermal; sleep \$INTERVAL; done
+    "
+    procd_set_param respawn 3600 5 0
+    procd_set_param stdout 0
+    procd_set_param stderr 0
+    procd_close_instance
+}
+
+stop_service() {
+    # Restore configured power on stop
+    for radio in radio0 radio1; do
+        uci -q show "wireless.${radio}" >/dev/null 2>&1 || continue
+        local pwr
+        pwr=$(configured_power "$radio")
+        set_power "$radio" "$pwr" "service-stop"
+    done
+    rm -f "$STATE_FILE"
+}

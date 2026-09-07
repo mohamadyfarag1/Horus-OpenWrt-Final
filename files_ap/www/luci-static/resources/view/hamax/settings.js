@@ -166,76 +166,56 @@ function readState() {
 	});
 }
 
-var HAMAX_STATIC_CHANNELS = [
-	{ channel: 36,  freq: 5180, standard: true  },
-	{ channel: 38,  freq: 5190, standard: false },
-	{ channel: 40,  freq: 5200, standard: true  },
-	{ channel: 42,  freq: 5210, standard: false },
-	{ channel: 44,  freq: 5220, standard: true  },
-	{ channel: 46,  freq: 5230, standard: false },
-	{ channel: 48,  freq: 5240, standard: true  },
-	{ channel: 50,  freq: 5250, standard: false },
-	{ channel: 52,  freq: 5260, standard: true  },
-	{ channel: 54,  freq: 5270, standard: false },
-	{ channel: 56,  freq: 5280, standard: true  },
-	{ channel: 58,  freq: 5290, standard: false },
-	{ channel: 60,  freq: 5300, standard: true  },
-	{ channel: 62,  freq: 5310, standard: false },
-	{ channel: 64,  freq: 5320, standard: true  },
-	{ channel: 66,  freq: 5330, standard: false },
-	{ channel: 68,  freq: 5340, standard: false },
-	{ channel: 70,  freq: 5350, standard: false },
-	{ channel: 72,  freq: 5360, standard: false },
-	{ channel: 74,  freq: 5370, standard: false },
-	{ channel: 76,  freq: 5380, standard: false },
-	{ channel: 78,  freq: 5390, standard: false },
-	{ channel: 80,  freq: 5400, standard: false },
-	{ channel: 82,  freq: 5410, standard: false },
-	{ channel: 84,  freq: 5420, standard: false },
-	{ channel: 86,  freq: 5430, standard: false },
-	{ channel: 88,  freq: 5440, standard: false },
-	{ channel: 90,  freq: 5450, standard: false },
-	{ channel: 92,  freq: 5460, standard: false },
-	{ channel: 94,  freq: 5470, standard: false },
-	{ channel: 96,  freq: 5480, standard: false },
-	{ channel: 98,  freq: 5490, standard: false },
-	{ channel: 100, freq: 5500, standard: true  },
-	{ channel: 102, freq: 5510, standard: false },
-	{ channel: 104, freq: 5520, standard: true  },
-	{ channel: 106, freq: 5530, standard: false },
-	{ channel: 108, freq: 5540, standard: true  },
-	{ channel: 110, freq: 5550, standard: false },
-	{ channel: 112, freq: 5560, standard: true  },
-	{ channel: 114, freq: 5570, standard: false },
-	{ channel: 116, freq: 5580, standard: true  },
-	{ channel: 118, freq: 5590, standard: false },
-	{ channel: 120, freq: 5600, standard: true  },
-	{ channel: 122, freq: 5610, standard: false },
-	{ channel: 124, freq: 5620, standard: true  },
-	{ channel: 126, freq: 5630, standard: false },
-	{ channel: 128, freq: 5640, standard: true  },
-	{ channel: 130, freq: 5650, standard: false },
-	{ channel: 132, freq: 5660, standard: true  },
-	{ channel: 134, freq: 5670, standard: false },
-	{ channel: 136, freq: 5680, standard: true  },
-	{ channel: 138, freq: 5690, standard: false },
-	{ channel: 140, freq: 5700, standard: true  },
-	{ channel: 142, freq: 5710, standard: false },
-	{ channel: 144, freq: 5720, standard: true  },
-	{ channel: 146, freq: 5730, standard: false },
-	{ channel: 149, freq: 5745, standard: true  },
-	{ channel: 151, freq: 5755, standard: false },
-	{ channel: 153, freq: 5765, standard: true  },
-	{ channel: 155, freq: 5775, standard: false },
-	{ channel: 157, freq: 5785, standard: true  },
-	{ channel: 159, freq: 5795, standard: false },
-	{ channel: 161, freq: 5805, standard: true  },
-	{ channel: 163, freq: 5815, standard: false },
-	{ channel: 165, freq: 5825, standard: true  },
-	{ channel: 169, freq: 5845, standard: false },
-	{ channel: 173, freq: 5865, standard: false },
-	{ channel: 177, freq: 5885, standard: false }
-];
+/* Standard IEEE 802.11a/n/ac channel numbers (20 MHz grid, stock clients tune here) */
+var STD_5G = { 36:1,40:1,44:1,48:1,52:1,56:1,60:1,64:1,
+               100:1,104:1,108:1,112:1,116:1,120:1,124:1,128:1,132:1,136:1,140:1,144:1,
+               149:1,153:1,157:1,161:1,165:1 };
+
+/* Full 5 GHz plan: ch 24..200 = 5120..6000 MHz in 5 MHz steps.
+ * Matches ath10k_5ghz_channels[] — see scripts/gen_package_patches.py.
+ * ch 24..35 (5120-5175): extended lower band (off-grid for stock clients)
+ * ch 36..177: standard + inter-channel range
+ * ch 178..200 (5890-6000): extended upper band / UNII-4
+ */
+var HAMAX_STATIC_CHANNELS = (function() {
+	var out = [];
+	for (var ch = 24; ch <= 200; ch++) {
+		out.push({ channel: ch, freq: 5000 + 5 * ch, standard: !!STD_5G[ch], band: '5g' });
+	}
+	return out;
+}());
+
+/* 2.4 GHz extended plan — non-colliding channel numbers (see gen_package_patches.py).
+ * Blocks:
+ *   ch 201..220 = 2312..2407 MHz (2.3 GHz band)
+ *   ch 1..13    = 2412..2472 MHz (standard ISM)
+ *   ch 221..222 = 2477..2482 MHz (transition)
+ *   ch 14       = 2484 MHz       (Japan 802.11b)
+ *   ch 15..23   = 2487..2527 MHz (upper band A)
+ *   ch 223..253 = 2532..2682 MHz (upper band B)
+ */
+var STD_2G = { 1:1,6:1,11:1,13:1,14:1 };
+var HAMAX_2G_CHANNELS = (function() {
+	var blocks = [
+		[201, 2312, 20],
+		[1,   2412, 13],
+		[221, 2477,  2],
+		[14,  2484,  1],
+		[15,  2487,  9],
+		[223, 2532, 31]
+	];
+	var out = [];
+	blocks.forEach(function(b) {
+		var startCh = b[0], startFreq = b[1], count = b[2];
+		for (var i = 0; i < count; i++) {
+			var ch = startCh + i;
+			var freq = startFreq + i * 5;
+			out.push({ channel: ch, freq: freq, standard: !!STD_2G[ch], band: '2g' });
+		}
+	});
+	out.sort(function(a, b) { return a.freq - b.freq; });
+	return out;
+}());
 
 return view.extend({
 
