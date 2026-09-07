@@ -10,6 +10,10 @@
 files_ap/** text eol=lf
 scripts/**  text eol=lf
 
+# tools/ holds scripts that get copied onto the router by hand, so the same
+# CRLF-shebang trap applies to them.
+tools/**    text eol=lf
+
 # Never line-ending-normalise calibration / firmware blobs. "text=auto"
 # only avoids mangling these because git's heuristic spots the NUL bytes;
 # make it explicit so a single corrupted byte in board-2.bin can never be
