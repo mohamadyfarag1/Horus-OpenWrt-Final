@@ -24,3 +24,4 @@ tools/**    text eol=lf
 *.bin -text !eol
 *.db  -text !eol
 *.dtb -text !eol
+files_ap/lib/netifd/wireless/**    text eol=lf
