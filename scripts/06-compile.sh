@@ -124,23 +124,23 @@ if [ ${PIPESTATUS[0]} -ne 0 ]; then
     echo "======================================="
     echo "BUILD FAILED - real compiler output follows"
     echo "======================================="
+    echo "----- Tail of build.log (last 120 lines) -----"
+    tail -n 120 build.log
+    echo "======================================="
     FAILED=$(sed -n 's/^ *ERROR: \([^ ]*\) failed to build.*/\1/p' build.log | sort -u)
     if [ -n "$FAILED" ]; then
         for pkg in $FAILED; do
-            echo "##### $pkg #####"
-            find "logs/$pkg" -name '*.txt' 2>/dev/null | while read -r L; do
+            echo "##### Package Failure Details: $pkg #####"
+            find "logs/$pkg" -name '*.txt' 2>/dev/null | head -n 5 | while read -r L; do
                 echo "----- $L (last 80 lines) -----"
                 tail -n 80 "$L"
             done
-            find build_dir -path "*$pkg*" -name '*.log' -o -name 'compile.txt' 2>/dev/null | while read -r L; do
+            find build_dir -path "*$pkg*" \( -name '*.log' -o -name 'compile.txt' \) 2>/dev/null | head -n 5 | while read -r L; do
                 echo "----- $L (last 80 lines) -----"
                 tail -n 80 "$L"
             done
         done
     fi
-    echo "----- Tail of build.log (last 100 lines) -----"
-    tail -n 100 build.log
-    echo "======================================="
     exit 1
 fi
 

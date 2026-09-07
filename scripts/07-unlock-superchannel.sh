@@ -35,8 +35,10 @@ for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
   sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2182-10, 2750+10, 40, 6, 33,/g' "$REG"
   sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2182-10, 2750+10, 40, 6, 33,/g' "$REG"
   
-  sed -i '/if (!is_valid_rd(rd)) {/{N;N;N;N;d}' "$REG"
-  sed -i '/if (WARN(!is_valid_rd(rd)/{N;N;N;d}' "$REG"
+  # Bypass regulatory checks safely without corrupting C syntax or deleting curly braces
+  sed -i 's/static bool is_valid_rd(const struct ieee80211_regdomain \*rd)/static bool is_valid_rd(const struct ieee80211_regdomain *rd) { return true; }\nstatic bool _orig_is_valid_rd(const struct ieee80211_regdomain *rd)/g' "$REG"
+  sed -i 's/if (!is_valid_rd(rd))/if (0 \&\& !is_valid_rd(rd))/g' "$REG"
+  sed -i 's/if (WARN(!is_valid_rd(rd)/if (0 \&\& WARN(!is_valid_rd(rd)/g' "$REG"
   
   sed -i 's/NL80211_RRF_NO_IR | NL80211_RRF_AUTO_BW/0/g' "$REG"
   sed -i 's/NL80211_RRF_NO_IR/0/g' "$REG"

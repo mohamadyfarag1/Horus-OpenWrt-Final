@@ -177,20 +177,6 @@ if [ -f "../files_ap/www/luci-static/resources/view/status/include/29_ports.js" 
 fi
 
 # ============================================
-# SECTION B4: Inject Ubiquiti airMAX Interoperability into hostapd.sh
-# ============================================
-if [ -f "../files_ap/lib/netifd/hostapd.sh" ]; then
-    mkdir -p package/network/config/wifi-scripts/files/lib/netifd 2>/dev/null || true
-    cp -f ../files_ap/lib/netifd/hostapd.sh package/network/config/wifi-scripts/files/lib/netifd/hostapd.sh 2>/dev/null || true
-    echo "OK: Injected Ubiquiti airMAX vendor element support into hostapd.sh"
-fi
-if [ -f "../files_ap/lib/netifd/wireless/mac80211.sh" ]; then
-    mkdir -p package/network/config/wifi-scripts/files/lib/netifd/wireless 2>/dev/null || true
-    cp -f ../files_ap/lib/netifd/wireless/mac80211.sh package/network/config/wifi-scripts/files/lib/netifd/wireless/mac80211.sh 2>/dev/null || true
-    echo "OK: Injected Client mode auto-WDS bridge fix into mac80211.sh"
-fi
-
-# ============================================
 # SECTION C: Write .config from standalone file
 # ============================================
 cp ../config/horus.config .config
