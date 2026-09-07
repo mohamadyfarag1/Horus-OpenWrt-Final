@@ -679,8 +679,78 @@ def patch_hostapd(build_dir, pkg_dir):
         fail("anchor 'if (freq >= 5000 && freq < 5900) {' not found in %s" % common)
     new_common = new_common.replace(target_5g, replace_5g, 1)
 
+    # --- src/common/hw_features_common.c (Annex J HT40 pair whitelist) ---
+    #
+    # allowed_ht40_channel_pair() rejects any 40 MHz pair whose lower
+    # channel number is not one of a hardcoded list of 16 standard 20 MHz
+    # grid starting points (36, 44, 52, ... 192). This is IEEE 802.11n
+    # Annex J - it exists to keep 40 MHz bonding on the standard channel
+    # grid, and it runs AFTER mac80211.sh has already picked a primary and
+    # a driver-registered, in-plan secondary channel. On the SuperChannel
+    # 5 MHz-spaced plan almost no pair's lower channel matches one of
+    # those 16 numbers, so hostapd rejects the pair outright and falls
+    # back to plain 20 MHz - this is why even the in-range default
+    # (channel 185, secondary 181) silently downgraded from VHT80 to
+    # HT20 with "HT40 channel pair (185, 181) not allowed" in the log,
+    # even though both channels are registered, in bounds, and legal
+    # under the custom regulatory rule.
+    hwc = find_file(build_dir, "hw_features_common.c", "HT40 channel pair")
+    if not hwc:
+        fail("hostapd hw_features_common.c with allowed_ht40_channel_pair() "
+             "not found under " + build_dir)
+    rel_hwc = os.path.relpath(hwc, pkg_build_dir).replace(os.sep, "/")
+    old_hwc = open(hwc, encoding="utf-8", errors="ignore").read()
+
+    target_annexj = (
+        "\t/*\n"
+        "\t * Verify that HT40 primary,secondary channel pair is allowed per\n"
+        "\t * IEEE 802.11n Annex J. This is only needed for 5 GHz band since\n"
+        "\t * 2.4 GHz rules allow all cases where the secondary channel fits into\n"
+        "\t * the list of allowed channels (already checked above).\n"
+        "\t */\n"
+        "\tif (mode != HOSTAPD_MODE_IEEE80211A)\n"
+        "\t\treturn 1;\n"
+        "\n"
+        "\tfirst = pri_chan < sec_chan ? pri_chan : sec_chan;\n"
+        "\n"
+        "\tok = 0;\n"
+        "\tfor (k = 0; k < ARRAY_SIZE(allowed); k++) {\n"
+        "\t\tif (first == allowed[k]) {\n"
+        "\t\t\tok = 1;\n"
+        "\t\t\tbreak;\n"
+        "\t\t}\n"
+        "\t}\n"
+        "\tif (!ok) {\n"
+        "\t\twpa_printf(MSG_ERROR, \"HT40 channel pair (%d, %d) not allowed\",\n"
+        "\t\t\t   pri_chan, sec_chan);\n"
+        "\t\treturn 0;\n"
+        "\t}\n"
+        "\n"
+        "\treturn 1;\n"
+    )
+    replace_annexj = (
+        "\t/* Horus: Annex J only permits 40 MHz bonding on the standard 20 MHz\n"
+        "\t * grid (36, 44, 52, ...). The SuperChannel plan is a continuous 5 MHz\n"
+        "\t * grid instead, so this whitelist would reject almost every pair we\n"
+        "\t * hand it even though the secondary channel was already verified\n"
+        "\t * driver-registered and in-plan above. (void) the now-unused locals\n"
+        "\t * to keep this building clean with -Werror. */\n"
+        "\t(void)mode;\n"
+        "\t(void)first;\n"
+        "\t(void)ok;\n"
+        "\t(void)k;\n"
+        "\t(void)allowed;\n"
+        "\n"
+        "\treturn 1;\n"
+    )
+    if target_annexj not in old_hwc:
+        fail("Annex J whitelist block not found verbatim in %s - "
+             "upstream hostapd source changed, patch needs updating" % hwc)
+    new_hwc = old_hwc.replace(target_annexj, replace_annexj, 1)
+
     header = (
-        "Horus: let channel 14 keep OFDM/HT and unlock SuperChannel frequencies in hostapd.\n"
+        "Horus: let channel 14 keep OFDM/HT, unlock SuperChannel frequencies in\n"
+        "hostapd, and drop the Annex J standard-grid whitelist for HT40/VHT pairs.\n"
         "\n"
         "1. hostapd_select_hw_mode() force-downgrades channel 14 to bare 802.11b\n"
         "   because Japan forbids OFDM at 2484 MHz. Drop the block so the channel\n"
@@ -691,11 +761,20 @@ def patch_hostapd(build_dir, pkg_dir):
         "     and drop Tx-Power to 0 dBm. Expanded to 6000 MHz.\n"
         "   - The 2.4 GHz mapping is generated from the same table as the kernel\n"
         "     side (net/wireless/util.c), so cfg80211 and hostapd agree on every\n"
-        "     channel number. They did not before, and nothing could associate.\n")
+        "     channel number. They did not before, and nothing could associate.\n"
+        "3. allowed_ht40_channel_pair() rejected any 40 MHz pair whose lower\n"
+        "   channel wasn't one of 16 hardcoded standard grid points (Annex J).\n"
+        "   Almost no SuperChannel pair matches, so 40/80 MHz silently fell back\n"
+        "   to 20 MHz even for in-bounds, driver-registered, regulatory-legal\n"
+        "   pairs (observed live: 'HT40 channel pair (185, 181) not allowed').\n"
+        "   The secondary channel's own legality (driver-registered, in-plan,\n"
+        "   not DISABLED) is already verified earlier in the same function;\n"
+        "   this only removed the extra standard-grid-position requirement.\n")
 
     entries = [
         (rel, old, new),
         (rel_common, old_common, new_common),
+        (rel_hwc, old_hwc, new_hwc),
     ]
     emit_patch(os.path.join(pkg_dir, "patches", "999-horus-channel14.patch"),
                entries, header)
