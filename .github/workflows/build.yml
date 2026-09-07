@@ -79,7 +79,6 @@ jobs:
           make download -j8
 
       - name: Compile Firmware
-        id: compile
         run: bash scripts/06-compile.sh
 
       # What actually shipped, on the run page instead of buried in a 40k-line
@@ -123,7 +122,7 @@ jobs:
       # but are known-bad, so they must NOT be offered for download - that is
       # how a rejected image ends up flashed. Ship the log alone.
       - name: Upload build log only (build or verification failed)
-        if: failure() || (always() && steps.compile.outcome == 'failure')
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: FAILED-BUILD-LOG-DO-NOT-FLASH
