@@ -211,11 +211,7 @@ hamax_apply_radio() {
     # country_ie=0 disables ieee80211d; if doth (802.11h) is 1, hostapd aborts with
     # "Cannot enable IEEE 802.11h without IEEE 802.11d enabled".
     # Ensure doth=0 on radio to prevent this fatal abort:
-    local cur_cie cur_ct
-    cur_ct=$(uci -q get "wireless.${radio}.country")
-    if [ "$cur_ct" != "511" ] && [ "$cur_ct" != "00" ]; then
-        hamax_set "wireless.${radio}.country" "511"
-    fi
+    local cur_cie
     cur_cie=$(uci -q get "wireless.${radio}.country_ie")
     if [ "$cur_cie" = "0" ]; then
         hamax_set "wireless.${radio}.doth" "0"
