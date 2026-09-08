@@ -12,7 +12,7 @@ echo "============================================"
 # PATCH 1: ath/regd.c (Kernel Regulatory)
 # We expand frequencies ONLY to what board-2.bin EEPROM supports!
 # 2GHz: 2182-2750 MHz (Full 2.3 GHz - 2.732 GHz SuperChannel)
-# 5GHz: 5115-5930 MHz
+# 5GHz: 5090-5930 MHz
 #############################################
 for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
   echo "[PATCH 1] Patching: $REGD"
@@ -20,9 +20,9 @@ for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
   sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
   sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
   
-  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(5115-10, 5980+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5115-10, 5980+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5115-10, 5980+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(5090-10, 6110+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5090-10, 6110+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5090-10, 6110+10, 160, 0, 33,/g' "$REGD"
   
   sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
   sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
@@ -177,7 +177,7 @@ done
 #
 # The reverse direction matters just as much: ieee80211_channel_to_freq_khz()
 # maps 5 GHz channels 182..196 to the 4.9 GHz public-safety band
-# (4000 + chan * 5). Our plan uses those numbers for 5910..5980 MHz, so that
+# (4000 + chan * 5). Our plan uses those numbers for 5910..6110 MHz, so that
 # branch has to go or the top of the 5 GHz SuperChannel range lands 1 GHz low.
 #############################################
 HORUS_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -247,7 +247,7 @@ rblock = ("%s/* %s: reverse map, same table as above. */\n" % (ri, MARK)
           + c_chan_to_freq_2g(ri, ret="return MHZ_TO_KHZ(%s);"))
 src = src[:rev.start()] + rblock + src[rev.end():]
 
-# 5 GHz channels 182..196 are 5910..5980 MHz in our plan, not 4.9 GHz.
+# 5 GHz channels 182..196 are 5910..6110 MHz in our plan, not 4.9 GHz.
 r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
                r"\t+return MHZ_TO_KHZ\(4000 \+ chan \* 5\);\n"
                r"\t*else\n"
@@ -256,7 +256,7 @@ r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
 if r4:
     r4i = r4.group(1)
     src = src[:r4.start()] + (
-        "%s/* %s: 182..196 are 5910..5980 MHz here, not the 4.9 GHz band. */\n"
+        "%s/* %s: 182..196 are 5910..6110 MHz here, not the 4.9 GHz band. */\n"
         "%sreturn MHZ_TO_KHZ(5000 + chan * 5);\n" % (r4i, MARK, r4i)
     ) + src[r4.end():]
     print("  -> 5 GHz 182..196 no longer aliased to the 4.9 GHz band")
