@@ -468,6 +468,37 @@ if command -v node >/dev/null 2>&1; then
         fi
         echo "OK: rootfs hamax/settings.js passes node --check."
     fi
+
+    # hamax/settings.js was split: the theme palette and the pure display
+    # helpers moved to resources/hamax/format.js, required as 'hamax.format'.
+    # A missing module file is not a syntax error in either file - LuCI just
+    # fails the require at page load, so assert the module ships and that the
+    # view still declares the require.
+    ROOTFS_HAMAX_FMT=$(find build_dir -type f -path '*/root-*/www/luci-static/resources/hamax/format.js' 2>/dev/null | head -n1)
+    if [ -z "$ROOTFS_HAMAX_FMT" ] || [ ! -f "$ROOTFS_HAMAX_FMT" ]; then
+        fail_assertion "hamax/format.js missing from rootfs" \
+            "/www/luci-static/resources/hamax/format.js present in rootfs" \
+            "File not found in rootfs" \
+            "LuCI cannot resolve 'require hamax.format'. The HAMax settings page fails to load entirely - blank panel, 'Uncaught (in promise)' in the console." \
+            "Ensure files_ap/www/luci-static/resources/hamax/format.js is copied into rootfs by scripts/05-configure.sh."
+    fi
+    if ! node --check "$ROOTFS_HAMAX_FMT" 2>/dev/null; then
+        fail_assertion "hamax/format.js has JavaScript syntax errors" \
+            "Valid, clean JavaScript syntax" \
+            "Syntax error detected by node --check" \
+            "HAMax settings page fails to render: the required module throws while being evaluated." \
+            "Fix JavaScript syntax in files_ap/www/luci-static/resources/hamax/format.js."
+    fi
+    echo "OK: rootfs hamax/format.js is present and passes node --check."
+
+    if [ -n "$ROOTFS_HAMAX" ] && ! grep -q "require hamax.format" "$ROOTFS_HAMAX"; then
+        fail_assertion "hamax/settings.js does not require hamax.format" \
+            "'require hamax.format as fmt' declared in settings.js" \
+            "require line not found" \
+            "The view references fmt.* helpers that were never bound. Every panel that formats a rate, distance or device label throws at render time." \
+            "Restore the \"'require hamax.format as fmt';\" line at the top of files_ap/www/luci-static/resources/view/hamax/settings.js."
+    fi
+    echo "OK: hamax/settings.js declares the hamax.format require."
 fi
 
 # Assert port_control and port_action exist in rootfs

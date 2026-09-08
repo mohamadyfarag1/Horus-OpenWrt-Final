@@ -5,161 +5,18 @@
 'require fs';
 'require ui';
 'require poll';
+'require hamax.format as fmt';
 
 /*
  * Horus AirMax (HAMax) - High-Performance Wireless Bridge Engine
  * Scope: 5 GHz Radio ONLY.
+ *
+ * Theme palette and the pure display helpers (parseModulation, decodeSSID,
+ * estimateDistanceMeters, formatDistance, getDeviceLabel, calcAirmaxMetrics)
+ * live in resources/hamax/format.js. This file is the view body only.
  */
 
-/* Theme Palette (Ubiquiti airOS 8 Dark-Slate Aesthetics) */
-var T = {
-	bgDark:      '#0f172a',
-	bgCard:      '#1e293b',
-	bgCardSub:   '#0f172a',
-	border:      '#334155',
-	borderLight: '#475569',
-	textMain:    '#f8fafc',
-	textMuted:   '#94a3b8',
-	accentBlue:  '#0090ff',
-	accentCyan:  '#06b6d4',
-	accentGreen: '#10b981',
-	accentAmber: '#f59e0b',
-	accentRed:   '#ef4444',
-	fontMono:    'Consolas, "SF Mono", Monaco, Menlo, monospace'
-};
-
-/* Throughput state tracking */
-var trafficHistory = [];
-var MAX_HISTORY = 30;
-var lastBytes = { tx: null, rx: null, time: null };
-var peakRates = { tx: 0, rx: 0 };
-
-/* Helper: parse modulation string into UBNT airOS notation */
-function parseModulation(rateStr) {
-	if (!rateStr) return { label: '\u2014', tier: '', mcs: '', width: '', nss: '2x2' };
-
-	var mcsMatch = rateStr.match(/(?:VHT-MCS|MCS)\s*(\d+)/i);
-	var mcs = mcsMatch ? parseInt(mcsMatch[1], 10) : null;
-	var nssMatch = rateStr.match(/NSS\s*(\d+)/i);
-	var nss = nssMatch ? (nssMatch[1] + 'x' + nssMatch[1]) : '2x2';
-	var widthMatch = rateStr.match(/(\d+)\s*MHz/i);
-	var width = widthMatch ? (widthMatch[1] + 'MHz') : '';
-
-	var tier = '8x', qam = '256QAM', color = T.accentBlue;
-	if (mcs !== null) {
-		if (mcs >= 8)      { tier = '8x'; qam = '256QAM'; color = T.accentBlue; }
-		else if (mcs >= 5) { tier = '6x'; qam = '64QAM';  color = T.accentGreen; }
-		else if (mcs >= 3) { tier = '4x'; qam = '16QAM';  color = T.accentAmber; }
-		else if (mcs >= 1) { tier = '2x'; qam = 'QPSK';   color = '#f97316'; }
-		else               { tier = '1x'; qam = 'BPSK';   color = T.accentRed; }
-	}
-
-	return {
-		label: tier + ' (' + qam + ')',
-		tier: tier,
-		qam: qam,
-		color: color,
-		mcs: mcs,
-		width: width,
-		nss: nss
-	};
-}
-
-
-/* Helper: decode UTF-8 escaped SSID (such as Arabic characters) */
-function decodeSSID(s) {
-	if (!s) return '';
-	try {
-		return s.replace(/\\x([0-9a-fA-F]{2})/g, function(m, p) {
-			return '%' + p;
-		}).replace(/(%[0-9a-fA-F]{2})+/g, function(m) {
-			try { return decodeURIComponent(m); } catch (e) { return m; }
-		});
-	} catch (e) {
-		return s;
-	}
-}
-
-/* Helper: calculate realistic RF distance from signal & frequency (Log-Distance model) */
-function estimateDistanceMeters(sig, freq) {
-	var s = parseInt(sig, 10);
-	if (isNaN(s)) return 1000;
-	var f = freq ? parseInt(freq, 10) : 2462;
-	var ref = (f > 4000) ? 47 : 40;
-	var pl = 24 - s;
-	if (pl <= ref) return 1.0;
-	var dist = Math.pow(10, (pl - ref) / 24.0);
-	return Math.max(1.0, Math.round(dist * 10) / 10);
-}
-
-/* Helper: format distance string nicely */
-function formatDistance(distMeters) {
-	if (distMeters <= 2.5) {
-		return distMeters.toFixed(1) + ' m (' + (distMeters * 3.28).toFixed(1) + ' ft) — Near Field';
-	} else if (distMeters < 100) {
-		return Math.round(distMeters) + ' m (' + Math.round(distMeters * 3.28) + ' ft)';
-	} else if (distMeters < 1000) {
-		return Math.round(distMeters) + ' m';
-	} else {
-		return (distMeters / 1000).toFixed(2) + ' km (' + (distMeters / 1609.34).toFixed(2) + ' mi)';
-	}
-}
-
-/* Helper: resolve device label and brand from MAC / Hostname */
-function getDeviceLabel(link) {
-	if (!link) return 'Remote Station';
-	if (link.name && link.name !== '' && !link.name.startsWith('Station-')) {
-		return link.name;
-	}
-	var mac = (link.mac || '').toLowerCase();
-	if (mac.length >= 17) {
-		var c2 = mac.charAt(1);
-		if (c2 === '2' || c2 === '6' || c2 === 'a' || c2 === 'e') {
-			return 'Smartphone (Private MAC)';
-		}
-		var oui = mac.substring(0, 8).toUpperCase();
-		if (/^(00:27:22|04:18:D6|24:5A:4C|68:D7:9A|70:A7:41|DC:9F:DB|F4:92:BF)/.test(oui)) return 'Ubiquiti airMAX';
-		if (/^(00:0C:42|48:8F:5A|64:D1:54|B8:69:F4|CC:2D:E0)/.test(oui)) return 'MikroTik Router';
-		if (/^(AC:BC:32|F0:18:98|BC:D0:74|00:1A:11|3C:07:54)/.test(oui)) return 'Apple Device';
-		if (/^(00:12:FB|00:26:37|34:23:87|50:01:D9|88:32:9B)/.test(oui)) return 'Samsung Device';
-		if (/^(00:07:89)/.test(oui)) return 'Horus Device';
-	}
-	return link.name || ('Station-' + (link.mac ? link.mac.substring(12, 17) : ''));
-}
-
-/* Calculate AMC (airMAX Capacity %) and AMQ (airMAX Quality %) */
-function calcAirmaxMetrics(link, survey) {
-	var metrics = { amq: null, amc: null, snr: null, retry: 0 };
-	if (!link) return metrics;
-
-	var sig = parseInt(link.signal, 10);
-	var noise = survey ? parseInt(survey.noise, 10) : -92;
-	if (!isNaN(sig) && !isNaN(noise)) {
-		metrics.snr = sig - noise;
-	}
-
-	var retries = parseInt(link.tx_retries, 10) || 0;
-	var packets = parseInt(link.tx_packets, 10) || 0;
-	if ((retries + packets) > 0) {
-		metrics.retry = (100 * retries) / (retries + packets);
-	}
-
-	/* AMQ calculation based on SNR (ideal >= 35 dB) and retry loss */
-	if (metrics.snr !== null) {
-		var snrNorm = Math.max(0, Math.min(100, ((metrics.snr - 12) / 26) * 100));
-		var penalty = Math.min(60, metrics.retry * 2.2);
-		metrics.amq = Math.round(Math.max(5, Math.min(100, snrNorm - penalty)));
-	}
-
-	/* AMC calculation based on current PHY rate vs max 866.7 Mbps */
-	var txNum = parseFloat(link.tx_rate) || 0;
-	if (txNum > 0) {
-		metrics.amc = Math.round(Math.max(5, Math.min(100, (txNum / 866.7) * 100)));
-	}
-
-	return metrics;
-}
-
+var T = fmt.T;
 function readState() {
 	return L.resolveDefault(fs.read('/tmp/hamax.json'), '').then(function(raw) {
 		try { return JSON.parse(raw); } catch (e) { return {}; }
@@ -236,7 +93,7 @@ return view.extend({
 		var survey = st.survey || {};
 		var links = st.links || [];
 		var primaryLink = links[0] || null;
-		var metrics = calcAirmaxMetrics(primaryLink, survey);
+		var metrics = fmt.calcAirmaxMetrics(primaryLink, survey);
 
 		var wrapper = E('div', {
 			'id': 'hamax-airos-dashboard',
@@ -284,7 +141,7 @@ return view.extend({
 						E('span', {}, [ 'Mode: ', E('strong', { 'style': 'color:#38bdf8;' }, [ roleTitle ]) ]),
 						E('span', {}, [ 'Frequency: ', E('strong', { 'style': 'color:#38bdf8;' }, [ freqStr ]) ]),
 						E('span', {}, [ 'Width: ', E('strong', { 'style': 'color:#38bdf8;' }, [ widthStr ]) ]),
-						st.ssid ? E('span', {}, [ 'SSID: ', E('strong', { 'style': 'color:#38bdf8;' }, [ decodeSSID(st.ssid) ]) ]) : E('span', {})
+						st.ssid ? E('span', {}, [ 'SSID: ', E('strong', { 'style': 'color:#38bdf8;' }, [ fmt.decodeSSID(st.ssid) ]) ]) : E('span', {})
 					])
 				])
 			]),
@@ -415,13 +272,13 @@ return view.extend({
 		var ch1 = link && link.chain1 ? link.chain1 : (localSig ? (localSig - 2) : '-62');
 		var chDiff = link && link.chain_diff ? link.chain_diff : Math.abs(parseInt(ch0, 10) - parseInt(ch1, 10));
 
-		var txMod = parseModulation(link ? (link.tx_bitrate_full || (link.tx_rate + ' Mbps')) : '866.7 Mbps VHT-MCS 9 80MHz');
-		var rxMod = parseModulation(link ? (link.rx_bitrate_full || (link.rx_rate + ' Mbps')) : '866.7 Mbps VHT-MCS 9 80MHz');
+		var txMod = fmt.parseModulation(link ? (link.tx_bitrate_full || (link.tx_rate + ' Mbps')) : '866.7 Mbps VHT-MCS 9 80MHz');
+		var rxMod = fmt.parseModulation(link ? (link.rx_bitrate_full || (link.rx_rate + ' Mbps')) : '866.7 Mbps VHT-MCS 9 80MHz');
 
-		var distMeters = link ? (link.distance_m ? parseFloat(link.distance_m) : estimateDistanceMeters(link.signal, st.freq)) : (parseInt(st.distance, 10) || 5000);
-		var distFormatted = formatDistance(distMeters);
+		var distMeters = link ? (link.distance_m ? parseFloat(link.distance_m) : fmt.estimateDistanceMeters(link.signal, st.freq)) : (parseInt(st.distance, 10) || 5000);
+		var distFormatted = fmt.formatDistance(distMeters);
 
-		var remoteName = getDeviceLabel(link);
+		var remoteName = fmt.getDeviceLabel(link);
 		var remoteIp = link ? (link.ip || '\u2014') : '\u2014';
 		var remoteSig = link ? (link.signal || '\u2014') : '\u2014';
 		var isWds = link && (link.wds === '1' || link.wds === true);
@@ -721,8 +578,8 @@ return view.extend({
 				])
 			]),
 			E('tbody', {}, links.map(function(s) {
-				var txMod = parseModulation(s.tx_bitrate_full || (s.tx_rate + ' Mbps'));
-				var rxMod = parseModulation(s.rx_bitrate_full || (s.rx_rate + ' Mbps'));
+				var txMod = fmt.parseModulation(s.tx_bitrate_full || (s.tx_rate + ' Mbps'));
+				var rxMod = fmt.parseModulation(s.rx_bitrate_full || (s.rx_rate + ' Mbps'));
 				var airtimePct = s.weight ? Math.round(parseInt(s.weight, 10) / 5.12) : 10;
 				var sigNum = parseInt(s.signal, 10) || -60;
 				var sigColor = sigNum >= -65 ? T.accentGreen : (sigNum >= -75 ? T.accentAmber : T.accentRed);
@@ -733,7 +590,7 @@ return view.extend({
 				return E('tr', { 'style': 'border-bottom:1px solid #1e293b; font-size:12px;' }, [
 					/* Device & MAC */
 					E('td', { 'style': 'padding:8px 10px;' }, [
-						E('div', { 'style': 'font-weight:700; color:' + T.textMain + ';' }, [ getDeviceLabel(s) ]),
+						E('div', { 'style': 'font-weight:700; color:' + T.textMain + ';' }, [ fmt.getDeviceLabel(s) ]),
 						E('div', { 'style': 'font-family:' + T.fontMono + '; font-size:10px; color:' + T.textMuted + ';' }, [ s.mac || s.bssid || '\u2014' ])
 					]),
 
@@ -776,7 +633,7 @@ return view.extend({
 
 					/* Distance */
 					E('td', { 'style': 'padding:8px 10px; color:' + T.textMain + ';' }, [
-						formatDistance(s.distance_m ? parseFloat(s.distance_m) : estimateDistanceMeters(s.signal, st.freq))
+						fmt.formatDistance(s.distance_m ? parseFloat(s.distance_m) : fmt.estimateDistanceMeters(s.signal, st.freq))
 					]),
 
 					/* Retries */
