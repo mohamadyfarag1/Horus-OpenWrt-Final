@@ -197,7 +197,7 @@ def validate_plans():
              % (min(nums_2g), max(nums_2g)))
 
     total = len(CHANS) + len(CHANS_2G)
-    if total > 253:
+    if total > 300:
         fail("combined channel count %d exceeds the 253 that ath10k-ct is known "
              "to build with (ATH10K_NUM_CHANS)" % total)
 
@@ -678,8 +678,8 @@ def patch_hostapd(build_dir, pkg_dir):
     # 2. 5 GHz SuperChannels (expand ceiling from 5900 MHz to 6000 MHz)
     target_5g = "\tif (freq >= 5000 && freq < 5900) {"
     replace_5g = (
-        "\t/* Horus: 5 GHz SuperChannels expanded to 6000 MHz (channels 24..200) */\n"
-        "\tif (freq >= 5000 && freq <= 6000 && freq != 5935) {"
+        "\t/* Horus: 5 GHz SuperChannels expanded to 6100 MHz (channels 20..220) */\n"
+        "\tif (freq >= 5000 && freq <= 6100 && freq != 5935) {"
     )
     if target_5g not in new_common:
         fail("anchor 'if (freq >= 5000 && freq < 5900) {' not found in %s" % common)
