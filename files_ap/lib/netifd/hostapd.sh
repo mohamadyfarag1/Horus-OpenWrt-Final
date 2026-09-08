@@ -1462,6 +1462,8 @@ wpa_supplicant_add_network() {
 	local freq="$2"
 	local htmode="$3"
 	local noscan="$4"
+	local band="$5"
+	local _net_mode="${6:-${_w_mode:-$mode}}"
 
 	_wpa_supplicant_common "$1"
 	wireless_vif_parse_encryption
@@ -1494,7 +1496,7 @@ wpa_supplicant_add_network() {
 	local scan_ssid="scan_ssid=1"
 	local wpa_key_mgmt
 
-	[ "$_w_mode" = "adhoc" ] && {
+	[ "$_net_mode" = "adhoc" ] && {
 		append network_data "mode=1" "$N$T"
 		[ -n "$freq" ] && wpa_supplicant_set_fixed_freq "$freq" "$htmode"
 		[ "$noscan" = "1" ] && append network_data "noscan=1" "$N$T"
@@ -1504,7 +1506,7 @@ wpa_supplicant_add_network() {
 		[ "$_w_driver" = "nl80211" ] ||	append wpa_key_mgmt "WPA-NONE"
 	}
 
-	[ "$_w_mode" = "mesh" ] && {
+	[ "$_net_mode" = "mesh" ] && {
 		json_get_vars mesh_id mesh_fwding mesh_rssi_threshold encryption
 		[ -n "$mesh_id" ] && ssid="${mesh_id}"
 
@@ -1517,17 +1519,28 @@ wpa_supplicant_add_network() {
 		scan_ssid=""
 	}
 
-	[ "$_w_mode" = "sta" ] && {
+	[ "$_net_mode" = "sta" ] && {
 		[ "$multi_ap" = 1 ] && append network_data "multi_ap_backhaul_sta=1" "$N$T"
 		[ "$default_disabled" = 1 ] && append network_data "disabled=1" "$N$T"
 
 		# Horus: pin the station scan to the frequencies the link is
 		# supposed to use. If scan_list/freq_list is not specified,
-		# fall back to the radio's configured operating frequency ($freq).
+		# provide the full spectrum of Horus SuperChannels so the station
+		# can discover and connect to any SuperChannel or standard AP.
 		local sl_list= sf_list= net_freqs=
 		horus_json_get_list sl_list scan_list
 		[ -z "$sl_list" ] && horus_json_get_list sl_list freq_list
-		[ -z "$sl_list" ] && [ -n "$freq" ] && sl_list="$freq"
+		if [ -z "$sl_list" ]; then
+			if [ "$band" = "5g" ] || [ -z "$band" -a -n "$freq" -a "$freq" -ge 5000 ]; then
+				sl_list="$(seq 5120 5 5925)"
+			elif [ "$band" = "2g" ] || [ -z "$band" -a -n "$freq" -a "$freq" -lt 3000 ]; then
+				sl_list="$(seq 2312 5 2732)"
+			elif [ -n "$freq" ]; then
+				sl_list="$freq"
+			else
+				sl_list="$(seq 5120 5 5925)"
+			fi
+		fi
 		horus_json_get_list sf_list scan_freq
 
 		horus_freq_list_sanitize sf_list $sf_list
