@@ -386,7 +386,7 @@ def patch_ath10k(build_dir, pkg_dir):
         + c_scan_filter_2g() +
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tint f = channel->center_freq;\n"
-        "\t\t\t\tif (!((f >= 5180 && f <= 5700 && f % 20 == 0) ||\n"
+        "\t\t\t\tif (!((f >= 5120 && f <= 5700 && f % 20 == 0) ||\n"
         "\t\t\t\t      (f >= 5725 && f <= 5885 && (f - 5725) % 20 == 0) ||\n"
         "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 ||\n"
         "\t\t\t\t      f == 5905 || f == 5925 || f == 5945 || f == 5965 || f == 6000))\n"
@@ -426,7 +426,7 @@ def patch_ath10k(build_dir, pkg_dir):
         + c_scan_filter_2g() +
         "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
         "\t\t\t\tint f = channel->center_freq;\n"
-        "\t\t\t\tif (!((f >= 5180 && f <= 5700 && f % 20 == 0) ||\n"
+        "\t\t\t\tif (!((f >= 5120 && f <= 5700 && f % 20 == 0) ||\n"
         "\t\t\t\t      (f >= 5725 && f <= 5885 && (f - 5725) % 20 == 0) ||\n"
         "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 ||\n"
         "\t\t\t\t      f == 5905 || f == 5925 || f == 5945 || f == 5965 || f == 6000))\n"
@@ -438,7 +438,7 @@ def patch_ath10k(build_dir, pkg_dir):
     if scan_t1 not in new_mac or scan_t2 not in new_mac:
         fail("could not find ath10k_update_channel_list scan loop anchor in %s" % mac)
     new_mac = new_mac.replace(scan_t1, scan_r1, 1).replace(scan_t2, scan_r2, 1)
-    print("  scan buffer overflow: protected (capped <= 60 channels in WMI scan list)")
+    print("  scan buffer overflow: protected (capped <= 60 channels in WMI scan list, 5G >= 5120 MHz)")
 
     # --- core.h bounds -----------------------------------------------
     # ATH10K_NUM_CHANS must equal the COMBINED length of the two channel
