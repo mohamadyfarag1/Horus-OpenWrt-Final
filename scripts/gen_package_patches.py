@@ -43,7 +43,7 @@ import re
 import sys
 
 # 5 GHz channel plan: 5120 MHz - 6000 MHz in 5 MHz steps, channels 24..200.
-CHANS = list(range(20, 221))
+CHANS = list(range(20, 223))
 MIN_5G = min(CHANS)             # 24
 MAX_5G = max(CHANS)             # 200
 
@@ -57,18 +57,18 @@ MAX_5G = max(CHANS)             # 200
 # numbers, so beacons and assoc frames on those channels were either tagged as
 # 5 GHz or thrown away and no client could ever associate.
 #
-# So 2.4 GHz is confined to numbers OUTSIDE the 5 GHz range: 1..23 and 201..255.
+# So 2.4 GHz is confined to numbers OUTSIDE the 5 GHz range: 1..19 and 223..255.
 # Each block below is a plain linear map, because the identical arithmetic has to
 # be reproduced in the kernel (net/wireless/util.c) and in hostapd
 # (ieee80211_freq_to_channel_ext) - see build_2g_plan() for the single source.
 _BLOCKS_2G = [
     # (first_channel, first_freq, count)  -- ascending in frequency
-    (201, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 201..220
+    (234, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 234..253
     (1,   2412, 13),   # standard ISM          2412 - 2472 -> ch 1..13
-    (221, 2477, 2),    # transition            2477 - 2482 -> ch 221..222
+    (223, 2477, 2),    # transition            2477 - 2482 -> ch 223..224
     (14,  2484, 1),    # 802.11b Japan         2484        -> ch 14
-    (15,  2487, 9),    # upper band, part A    2487 - 2527 -> ch 15..23
-    (223, 2532, 31),   # upper band, part B    2532 - 2682 -> ch 223..253
+    (15,  2487, 5),    # upper band, part A    2487 - 2507 -> ch 15..19
+    (225, 2512, 9),    # upper band, part B    2512 - 2552 -> ch 225..233
 ]
 
 
@@ -555,7 +555,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "channel-number ranges disjoint, and protect the CE DMA scan buffer.\n"
         "\n"
         "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
-        "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..23 and 201..255.\n"
+        "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..19 and 223..255.\n"
         "- 5 GHz: %d channels (5120-6000 MHz, channels 24..200, 5 MHz steps).\n"
         "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
         "\n"
@@ -678,8 +678,8 @@ def patch_hostapd(build_dir, pkg_dir):
     # 2. 5 GHz SuperChannels (expand ceiling from 5900 MHz to 6000 MHz)
     target_5g = "\tif (freq >= 5000 && freq < 5900) {"
     replace_5g = (
-        "\t/* Horus: 5 GHz SuperChannels expanded to 6100 MHz (channels 20..220) */\n"
-        "\tif (freq >= 5000 && freq <= 6100 && freq != 5935) {"
+        "\t/* Horus: 5 GHz SuperChannels expanded to 6110 MHz (channels 20..222) */\n"
+        "\tif (freq >= 5000 && freq <= 6110 && freq != 5935) {"
     )
     if target_5g not in new_common:
         fail("anchor 'if (freq >= 5000 && freq < 5900) {' not found in %s" % common)
