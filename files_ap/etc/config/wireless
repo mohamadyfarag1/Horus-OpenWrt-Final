@@ -43,3 +43,7 @@ config wifi-iface 'default_radio1'
 	option ssid 'Horus-SEND'
 	option encryption 'none'
 	option wds '1'
+	# Prevents netifd reload cascade when WDS station disconnects.
+	# Without this, phy1-ap0.sta1 removal triggers bridge STP reconfiguration
+	# → phy1-ap0 disabled state → netifd wifi reload → hostapd HT_SCAN → auth timeouts.
+	option wds_bridge 'br-lan'
