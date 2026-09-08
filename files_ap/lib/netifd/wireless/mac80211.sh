@@ -3,6 +3,11 @@
 . /lib/netifd/hostapd.sh
 . /lib/functions/system.sh
 
+# Horus: all Horus-specific wireless logic lives here, so this file stays
+# diffable against stock OpenWrt. Guarded, so the source via hostapd.sh
+# above does not double-load it.
+. /lib/netifd/horus_wireless.sh
+
 init_wireless_driver "$@"
 
 MP_CONFIG_INT="mesh_retry_timeout mesh_confirm_timeout mesh_holding_timeout mesh_max_peer_links
@@ -161,15 +166,9 @@ mac80211_hostapd_setup_base() {
 	chan_ofs=0
 	[ "$band" = "6g" ] && chan_ofs=1
 
-	# Bounds of the registered 5 GHz SuperChannel table. These MUST match
-	# ath10k_5ghz_channels[], which is generated from CHANS in
-	# scripts/gen_package_patches.py. They are read below when placing the
-	# centre of a 40/80 MHz block so it cannot run off either end of the
-	# band. Read from the driver when possible so a plan change cannot
-	# leave this stale; fall back to the compiled-in plan.
-	HORUS_5G_MIN_CHAN=24
-	HORUS_5G_MAX_CHAN=200
-	[ -r /lib/netifd/horus-5g-bounds ] && . /lib/netifd/horus-5g-bounds
+	# Horus: SuperChannel plan bounds come from /lib/netifd/horus-5g-bounds,
+	# sourced by horus_wireless.sh. Used below when placing the centre of a
+	# 40/80 MHz block so it cannot run off either end of the band.
 
 	if [ "$band" != "6g" ]; then
 		ieee80211n=1
@@ -183,26 +182,8 @@ mac80211_hostapd_setup_base() {
 							1) ht_capab="[HT40+]";;
 							0) ht_capab="[HT40-]";;
 						esac
-						# Horus SuperChannel: same edge problem as the VHT40/VHT80
-						# centre below - the formula above assumes a standard 20 MHz
-						# grid where the HT40 secondary channel never falls outside
-						# the band. On the 5 MHz-spaced plan it can (e.g. channel 25
-						# picks HT40- and asks for a secondary at channel 21, below
-						# HORUS_5G_MIN_CHAN). hostapd does not fall back to 20 MHz in
-						# that case - it rejects the whole channel with "not found
-						# from the channel list of the current mode" and the AP never
-						# comes up (Tx-Power 0 dBm). Flip direction when the picked
-						# secondary would fall outside the registered plan.
-						[ "$band" = "5g" ] && {
-							case "$ht_capab" in
-								"[HT40-]")
-									[ "$(($channel - 4))" -lt "$HORUS_5G_MIN_CHAN" ] && ht_capab="[HT40+]"
-								;;
-								"[HT40+]")
-									[ "$(($channel + 4))" -gt "$HORUS_5G_MAX_CHAN" ] && ht_capab="[HT40-]"
-								;;
-							esac
-						}
+						# Horus: keep the HT40 secondary inside the plan.
+						horus_clamp_ht40 ht_capab "$ht_capab" "$channel" "$band"
 					;;
 					*)
 						case "$htmode" in
@@ -278,11 +259,8 @@ mac80211_hostapd_setup_base() {
 				1) idx=$(($channel + 2));;
 				0) idx=$(($channel - 2));;
 			esac
-			# Same edge problem as VHT80 below, two sub-channels wide.
-			[ "$band" = "5g" ] && {
-				[ "$((idx - 2))" -lt "$HORUS_5G_MIN_CHAN" ] && idx=$(($channel + 2))
-				[ "$((idx + 2))" -gt "$HORUS_5G_MAX_CHAN" ] && idx=$(($channel - 2))
-			}
+			# Horus: keep the 40 MHz centre inside the plan.
+			horus_clamp_center idx "$idx" "$channel" "$band" 2
 			enable_ac=1
 			vht_center_seg0=$idx
 		;;
@@ -293,21 +271,8 @@ mac80211_hostapd_setup_base() {
 				3) idx=$(($channel - 2));;
 				0) idx=$(($channel - 6));;
 			esac
-			# Horus SuperChannel: the formula above assumes the standard
-			# 20 MHz grid, where an 80 MHz block is always aligned and can
-			# never fall off the end of the band. On the 5 MHz-spaced plan
-			# it can, at BOTH ends, and it then asks for sub-channels the
-			# driver never registered (e.g. ch 22 = 5110 MHz). cfg80211
-			# rejects that chandef and the radio silently drops to 20 MHz.
-			#
-			# The primary has to stay one of the block's four sub-channels,
-			# so do not clamp idx - pick a different one of the four legal
-			# centres (channel +/- 6, +/- 2). At the bottom the highest
-			# centre works, at the top the lowest one does.
-			[ "$band" = "5g" ] && {
-				[ "$((idx - 6))" -lt "$HORUS_5G_MIN_CHAN" ] && idx=$(($channel + 6))
-				[ "$((idx + 6))" -gt "$HORUS_5G_MAX_CHAN" ] && idx=$(($channel - 6))
-			}
+			# Horus: keep the 80 MHz centre inside the plan.
+			horus_clamp_center idx "$idx" "$channel" "$band" 6
 			enable_ac=1
 			vht_oper_chwidth=1
 			vht_center_seg0=$idx
@@ -816,25 +781,11 @@ mac80211_prepare_iw_htmode() {
 						1) iw_htmode="HT40+" ;;
 						0) iw_htmode="HT40-";;
 					esac
-					# Horus SuperChannel: same edge problem fixed in
-					# mac80211_hostapd_setup_base() - this function runs even
-					# for STA-only radios (no AP, so that fix never ran), and
-					# it is what actually sets the phy's channel width via
-					# `iw ... set channel` before hostapd/wpa_supplicant
-					# starts. Flip direction rather than pick a secondary
-					# channel outside the registered plan.
-					local iw_5g_min=24 iw_5g_max=200
-					[ -r /lib/netifd/horus-5g-bounds ] && . /lib/netifd/horus-5g-bounds
-					[ -n "$HORUS_5G_MIN_CHAN" ] && iw_5g_min="$HORUS_5G_MIN_CHAN"
-					[ -n "$HORUS_5G_MAX_CHAN" ] && iw_5g_max="$HORUS_5G_MAX_CHAN"
-					case "$iw_htmode" in
-						"HT40-")
-							[ "$(($channel - 4))" -lt "$iw_5g_min" ] && iw_htmode="HT40+"
-						;;
-						"HT40+")
-							[ "$(($channel + 4))" -gt "$iw_5g_max" ] && iw_htmode="HT40-"
-						;;
-					esac
+					# Horus: same clamp as mac80211_hostapd_setup_base(), but
+					# this path runs for STA-only radios too (no AP, so that
+					# fix never ran) and is what actually sets the phy width
+					# via `iw ... set channel`.
+					horus_clamp_ht40 iw_htmode "$iw_htmode" "$channel" 5g
 				;;
 			esac
 			[ "$auto_channel" -gt 0 ] && iw_htmode="HT40+"

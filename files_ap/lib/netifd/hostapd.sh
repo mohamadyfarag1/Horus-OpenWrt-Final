@@ -1,6 +1,10 @@
 . /lib/functions/network.sh
 . /lib/functions.sh
 
+# Horus: all Horus-specific wireless logic lives here, so this file stays
+# diffable against stock OpenWrt. See /lib/netifd/horus_wireless.sh.
+. /lib/netifd/horus_wireless.sh
+
 wpa_supplicant_add_rate() {
 	local var="$1"
 	local val="$(($2 / 1000))"
@@ -1230,28 +1234,10 @@ hostapd_set_bss_options() {
 		append bss_conf "$val" "$N"
 	done
 
-	# Horus Ubiquiti airMAX AP Beacon/Probe IE Injection (OUI 00:27:22)
-	local dev_airmax
-	json_get_vars airmax airmax_compat vendor_elements
-	if [ "$airmax" = "1" ] || [ "$airmax_compat" = "1" ]; then
-		dev_airmax=1
-	else
-		local rdev
-		rdev=$(uci -q get "wireless.${vif}.device")
-		[ -n "$rdev" ] && dev_airmax=$(uci -q get "wireless.${rdev}.airmax_compat")
-		[ -z "$dev_airmax" ] && dev_airmax=$(uci -q get "wireless.${phy}.airmax_compat")
-	fi
-	if [ "$dev_airmax" = "1" ]; then
-		local airmax_ie="dd080027220002040608"
-		if [ -n "$vendor_elements" ]; then
-			case "$vendor_elements" in
-				*002722*) ;;
-				*) append bss_conf "vendor_elements=$vendor_elements $airmax_ie" "$N" ;;
-			esac
-		else
-			append bss_conf "vendor_elements=$airmax_ie" "$N"
-		fi
-	fi
+	# Horus: Ubiquiti airMAX beacon/probe IE (OUI 00:27:22)
+	local horus_ve=
+	horus_airmax_ie_for_vif horus_ve "$vif" "$phy"
+	[ -n "$horus_ve" ] && append bss_conf "vendor_elements=$horus_ve" "$N"
 
 	append "$var" "$bss_conf" "$N"
 	return 0
@@ -1290,47 +1276,6 @@ hostapd_set_log_options() {
 	return 0
 }
 
-# Horus: read a config field that may be either a uci `list` (JSON array)
-# or a plain `option` (JSON string), space-separated.
-#
-# json_get_vars/json_get_var only handle scalars. Used on a field declared
-# with config_add_array they set the variable to the empty string - which
-# is why `list freq_list ...` silently did nothing, and why reading
-# scan_list with json_get_vars clobbered the value the wireless device
-# script had already put in that same variable.
-horus_json_get_list() {
-	local _dest="$1" _field="$2" _type= _val=
-	json_get_type _type "$_field"
-	case "$_type" in
-		array)  json_get_values _val "$_field" ;;
-		string) json_get_var _val "$_field" ;;
-	esac
-	eval "$_dest=\"\$_val\""
-}
-
-# Horus: keep only plain MHz values.
-#
-# wpa_supplicant reads freq_list/scan_freq in MHz; a channel number there
-# becomes a frequency nobody transmits on and the station never associates.
-# We refuse to guess: in the Horus plan channels 24..59 exist in BOTH the
-# 2.4 GHz upper band (2557..2732 MHz) and the 5 GHz table (5120..5295 MHz),
-# so "44" is ambiguous and any conversion would be a coin flip.
-horus_freq_list_sanitize() {
-	local _dest="$1"; shift
-	local _out= _f=
-	for _f in "$@"; do
-		case "$_f" in
-			""|*[!0-9]*) continue ;;
-		esac
-		if [ "$_f" -ge 2300 ] && [ "$_f" -le 6000 ]; then
-			_out="${_out:+$_out }$_f"
-		else
-			echo "horus: ignoring \"$_f\" in freq_list - expected MHz (2300-6000)" >&2
-		fi
-	done
-	eval "$_dest=\"\$_out\""
-}
-
 _wpa_supplicant_common() {
 	local ifname="$1"
 
@@ -1351,20 +1296,9 @@ wpa_supplicant_prepare_interface() {
 
 	json_get_vars mode wds multi_ap
 
-	# Horus: read our own frequency options into private variables. Reading
-	# them with json_get_vars into $scan_list overwrote the value the
-	# wireless device script had already placed there (json_get_var yields
-	# an empty string for a config_add_array field), so the interface came
-	# up with no freq_list at all.
-	local h_scan_list= h_freq_list= h_scan_freq=
-	horus_json_get_list h_scan_list scan_list
-	horus_json_get_list h_freq_list freq_list
-	horus_json_get_list h_scan_freq scan_freq
-
-	local all_scan_list="${h_scan_list:-$scan_list}"
-	[ -z "$all_scan_list" ] && all_scan_list="$h_freq_list"
-	[ -z "$all_scan_list" ] && all_scan_list="$h_scan_freq"
-	horus_freq_list_sanitize all_scan_list $all_scan_list
+	# Horus: resolve the interface-wide scan frequencies.
+	local all_scan_list=
+	horus_iface_scan_list all_scan_list
 
 	[ -n "$network_bridge" ] && {
 		fail=
@@ -1373,21 +1307,9 @@ wpa_supplicant_prepare_interface() {
 				fail=1
 			;;
 			sta)
-				# Horus: a bridged client needs 4-address mode for
-				# transparent bridging, so default WDS on - but only when
-				# the config did not already answer. The old test forced
-				# wds=1 even on an explicit "option wds 0", and 4addr
-				# against an AP that does not speak WDS associates and then
-				# passes no data at all: plain client mode has to stay
-				# reachable. Never fail with BRIDGE_NOT_ALLOWED here.
-				[ -z "$wds" ] && [ "$multi_ap" != 1 ] && wds=1
-				if [ "$wds" = 1 ]; then
-					# 4addr only takes effect while the interface is down.
-					ip link set dev "$ifname" down 2>/dev/null
-					iw dev "$ifname" set 4addr on 2>/dev/null || \
-						echo "horus: $ifname does not support 4addr" >&2
-					ip link set dev "$ifname" up 2>/dev/null || true
-				fi
+				# Horus: bridged clients get 4addr. Never fail with
+				# BRIDGE_NOT_ALLOWED here.
+				wds="$(horus_setup_4addr "$ifname" "$wds" "$multi_ap")"
 			;;
 		esac
 
@@ -1410,15 +1332,9 @@ wpa_supplicant_prepare_interface() {
 		country_str="country=$country"
 	}
 
-	json_get_vars vendor_elements airmax airmax_compat
-	local g_ve="$vendor_elements"
-	if [ -z "$g_ve" ]; then
-		local dev_compat
-		dev_compat=$(uci -q get "wireless.${_w_device}.airmax_compat")
-		if [ "$airmax" = "1" ] || [ "$airmax_compat" = "1" ] || [ "$dev_compat" = "1" ]; then
-			g_ve="dd080027220002040608"
-		fi
-	fi
+	# Horus: airMAX vendor IE for this radio, if enabled.
+	local g_ve=
+	horus_airmax_ie g_ve "$_w_device"
 
 	multiap_flag_file="${_config}.is_multiap"
 	if [ "$multi_ap" = "1" ]; then
@@ -1524,28 +1440,9 @@ wpa_supplicant_add_network() {
 		[ "$default_disabled" = 1 ] && append network_data "disabled=1" "$N$T"
 
 		# Horus: pin the station scan to the frequencies the link is
-		# supposed to use. If scan_list/freq_list is not specified,
-		# provide the full spectrum of Horus SuperChannels so the station
-		# can discover and connect to any SuperChannel or standard AP.
-		local sl_list= sf_list= net_freqs=
-		horus_json_get_list sl_list scan_list
-		[ -z "$sl_list" ] && horus_json_get_list sl_list freq_list
-		if [ -z "$sl_list" ]; then
-			if [ "$band" = "5g" ] || [ -z "$band" -a -n "$freq" -a "$freq" -ge 5000 ]; then
-				sl_list="$(seq 5120 5 6000)"
-			elif [ "$band" = "2g" ] || [ -z "$band" -a -n "$freq" -a "$freq" -lt 3000 ]; then
-				sl_list="$(seq 2312 5 2682)"
-			elif [ -n "$freq" ]; then
-				sl_list="$freq"
-			else
-				sl_list="$(seq 5120 5 6000)"
-			fi
-		fi
-		horus_json_get_list sf_list scan_freq
-
-		horus_freq_list_sanitize sf_list $sf_list
-		net_freqs="${sl_list:-$sf_list}"
-		horus_freq_list_sanitize net_freqs $net_freqs
+		# supposed to use, defaulting to the full SuperChannel sweep.
+		local net_freqs= sf_list=
+		horus_sta_network_freqs net_freqs sf_list "$band" "$freq"
 
 		[ -n "$net_freqs" ] && append network_data "freq_list=$net_freqs" "$N$T"
 		[ -n "$sf_list" ] && append network_data "scan_freq=$sf_list" "$N$T"
@@ -1780,30 +1677,18 @@ wpa_supplicant_add_network() {
 	if [ "$key_mgmt" = "WPS" ]; then
 		echo "wps_cred_processing=1" >> "$_config"
 	else
-		# Horus Ubiquiti airMAX & Vendor Elements Injection
-	local net_ve="$vendor_elements"
-	if [ -z "$net_ve" ]; then
-		local dev_compat
-		dev_compat=$(uci -q get "wireless.${_w_device}.airmax_compat")
-		if [ "$airmax" = "1" ] || [ "$airmax_compat" = "1" ] || [ "$dev_compat" = "1" ]; then
-			net_ve="dd080027220002040608"
-		fi
-	fi
-	if [ -n "$net_ve" ]; then
-		(
-			sleep 2
-			wpa_cli -p /var/run/wpa_supplicant -i "$ifname" vendor_elem_add 0 "$net_ve" 2>/dev/null || true
-			wpa_cli -p /var/run/wpa_supplicant -i "$ifname" vendor_elem_add 11 "$net_ve" 2>/dev/null || true
-		) &
-	fi
+		# Horus: push the airMAX vendor IE into the running supplicant.
+		local net_ve=
+		horus_airmax_ie net_ve "$_w_device"
+		horus_airmax_supplicant_push "$ifname" "$net_ve"
 
-	json_get_values extra_supplicant_opts wpa_supplicant_options
-	[ -z "$extra_supplicant_opts" ] && json_get_values extra_supplicant_opts supplicant_options
-	for opt in $extra_supplicant_opts; do
-		append network_data "$opt" "$N$T"
-	done
+		json_get_values extra_supplicant_opts wpa_supplicant_options
+		[ -z "$extra_supplicant_opts" ] && json_get_values extra_supplicant_opts supplicant_options
+		for opt in $extra_supplicant_opts; do
+			append network_data "$opt" "$N$T"
+		done
 
-	cat >> "$_config" <<EOF
+		cat >> "$_config" <<EOF
 network={
 	$scan_ssid
 	ssid="$ssid"

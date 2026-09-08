@@ -491,6 +491,98 @@ if [ -z "$ROOTFS_PORT_ACT" ] || [ ! -f "$ROOTFS_PORT_ACT" ]; then
 fi
 echo "OK: rootfs /www/cgi-bin/port_action is present ($ROOTFS_PORT_ACT)."
 
+# ------------------------------------------------------------------------------
+# 5. netifd Horus wireless layer
+# ------------------------------------------------------------------------------
+# Horus wireless logic was extracted out of the stock netifd scripts into
+# /lib/netifd/horus_wireless.sh so those scripts stay diffable against upstream.
+# That split introduces a new failure mode: the helper file (or the bounds file
+# it sources) can go missing from the image, or a call site can name a function
+# that no longer exists. Neither breaks the build - they break the radio, on the
+# device, at runtime. So assert the contract here.
+
+echo ""
+echo "--- Verifying netifd Horus wireless layer ---"
+
+ROOTFS_HORUS_LIB=$(find build_dir -type f -path '*/root-*/lib/netifd/horus_wireless.sh' 2>/dev/null | head -n1)
+if [ -z "$ROOTFS_HORUS_LIB" ] || [ ! -f "$ROOTFS_HORUS_LIB" ]; then
+    fail_assertion "horus_wireless.sh missing from rootfs" \
+        "/lib/netifd/horus_wireless.sh present in rootfs" \
+        "File not found in rootfs" \
+        "Every Horus wireless helper is undefined. hostapd.sh and mac80211.sh call into them for scan frequencies, airMAX IEs, 4addr and SuperChannel band-edge clamping: the radio comes up on the wrong channel width or does not come up at all." \
+        "Ensure files_ap/lib/netifd/horus_wireless.sh is copied into rootfs by scripts/05-configure.sh."
+fi
+echo "OK: rootfs /lib/netifd/horus_wireless.sh is present ($ROOTFS_HORUS_LIB)."
+
+ROOTFS_HORUS_BOUNDS=$(find build_dir -type f -path '*/root-*/lib/netifd/horus-5g-bounds' 2>/dev/null | head -n1)
+if [ -z "$ROOTFS_HORUS_BOUNDS" ] || [ ! -f "$ROOTFS_HORUS_BOUNDS" ]; then
+    fail_assertion "horus-5g-bounds missing from rootfs" \
+        "/lib/netifd/horus-5g-bounds present in rootfs" \
+        "File not found in rootfs" \
+        "SuperChannel plan edges fall back to compiled-in defaults. If the plan in gen_package_patches.py ever moves, the band-edge clamp silently uses stale bounds and hostapd asks for a channel the driver never registered (AP at 0 dBm)." \
+        "Ensure files_ap/lib/netifd/horus-5g-bounds is copied into rootfs by scripts/05-configure.sh."
+fi
+echo "OK: rootfs /lib/netifd/horus-5g-bounds is present ($ROOTFS_HORUS_BOUNDS)."
+
+# Assert the bounds file agrees with the channel plan the driver was built with.
+PLAN_MIN=$(grep -oE '^CHANS = list\(range\(([0-9]+)' ../scripts/gen_package_patches.py 2>/dev/null | grep -oE '[0-9]+$')
+PLAN_MAX=$(grep -oE '^CHANS = list\(range\([0-9]+, ([0-9]+)' ../scripts/gen_package_patches.py 2>/dev/null | grep -oE '[0-9]+$')
+[ -n "$PLAN_MAX" ] && PLAN_MAX=$((PLAN_MAX - 1))
+BOUNDS_MIN=$(grep -E '^HORUS_5G_MIN_CHAN=' "$ROOTFS_HORUS_BOUNDS" | cut -d= -f2 | tr -dc '0-9')
+BOUNDS_MAX=$(grep -E '^HORUS_5G_MAX_CHAN=' "$ROOTFS_HORUS_BOUNDS" | cut -d= -f2 | tr -dc '0-9')
+if [ -n "$PLAN_MIN" ] && [ -n "$PLAN_MAX" ]; then
+    if [ "$PLAN_MIN" != "$BOUNDS_MIN" ] || [ "$PLAN_MAX" != "$BOUNDS_MAX" ]; then
+        fail_assertion "horus-5g-bounds does not match the compiled channel plan" \
+            "HORUS_5G_MIN_CHAN=$PLAN_MIN HORUS_5G_MAX_CHAN=$PLAN_MAX (from gen_package_patches.py CHANS)" \
+            "HORUS_5G_MIN_CHAN=$BOUNDS_MIN HORUS_5G_MAX_CHAN=$BOUNDS_MAX" \
+            "The band-edge clamp in mac80211.sh will place a 40/80 MHz centre outside the channels ath10k actually registered. cfg80211 rejects the chandef and the radio silently drops to 20 MHz, or hostapd refuses the channel entirely and the AP beacons at 0 dBm." \
+            "Update HORUS_5G_MIN_CHAN/HORUS_5G_MAX_CHAN in files_ap/lib/netifd/horus-5g-bounds to match CHANS in scripts/gen_package_patches.py."
+    fi
+    echo "OK: horus-5g-bounds matches the compiled plan (ch $BOUNDS_MIN..$BOUNDS_MAX)."
+else
+    echo "WARN: could not read CHANS from gen_package_patches.py - skipping bounds cross-check."
+fi
+
+# Assert every horus_* function called from the stock netifd scripts is defined.
+# This is the check that catches a rename or a half-finished extraction: a call
+# to a function that does not exist is a runtime "not found", never a build error.
+ROOTFS_HOSTAPD=$(find build_dir -type f -path '*/root-*/lib/netifd/hostapd.sh' 2>/dev/null | head -n1)
+ROOTFS_MAC80211=$(find build_dir -type f -path '*/root-*/lib/netifd/wireless/mac80211.sh' 2>/dev/null | head -n1)
+if [ -n "$ROOTFS_HOSTAPD" ] && [ -n "$ROOTFS_MAC80211" ]; then
+    HORUS_DEFINED=$(grep -oE '^horus_[a-z0-9_]+\(\)' "$ROOTFS_HORUS_LIB" | tr -d '()' | sort -u)
+    HORUS_CALLED=$(grep -ohE '(^|[^a-zA-Z0-9_])horus_[a-z0-9_]+[[:space:]]' \
+        "$ROOTFS_HOSTAPD" "$ROOTFS_MAC80211" \
+        | grep -oE 'horus_[a-z0-9_]+' | sort -u)
+    HORUS_MISSING=
+    for fn in $HORUS_CALLED; do
+        # Skip local variables that happen to share the prefix.
+        grep -qE "^[[:space:]]*(local[[:space:]]+)?$fn=" "$ROOTFS_HOSTAPD" "$ROOTFS_MAC80211" && continue
+        echo "$HORUS_DEFINED" | grep -qx "$fn" || HORUS_MISSING="$HORUS_MISSING $fn"
+    done
+    if [ -n "$HORUS_MISSING" ]; then
+        fail_assertion "netifd calls an undefined Horus helper" \
+            "Every horus_* function called in hostapd.sh / mac80211.sh defined in horus_wireless.sh" \
+            "Undefined:$HORUS_MISSING" \
+            "netifd aborts that call with 'not found' while bringing the interface up. Depending on which helper is missing the station gets no freq_list (never associates), the AP advertises no airMAX IE, or a 40/80 MHz block is placed off the end of the band." \
+            "Define the missing function in files_ap/lib/netifd/horus_wireless.sh, or fix the call site."
+    fi
+    HORUS_N=$(echo "$HORUS_CALLED" | grep -c 'horus_')
+    echo "OK: all $HORUS_N horus_* call sites resolve to defined functions."
+fi
+
+# Syntax-check the whole netifd wireless layer.
+for nf in "$ROOTFS_HORUS_LIB" "$ROOTFS_HORUS_BOUNDS" "$ROOTFS_HOSTAPD" "$ROOTFS_MAC80211"; do
+    [ -n "$nf" ] && [ -f "$nf" ] || continue
+    if ! sh -n "$nf" 2>/dev/null; then
+        fail_assertion "netifd script has a shell syntax error" \
+            "sh -n clean" \
+            "Syntax error in $nf" \
+            "netifd cannot source the script. No wireless interface comes up at all - the device boots with the radios dead." \
+            "Run 'sh -n' on the matching file under files_ap/lib/netifd/ and fix the syntax."
+    fi
+done
+echo "OK: netifd wireless layer passes sh -n."
+
 echo ""
 echo "========================================================================"
 echo "🎉 ALL POST-BUILD SELF-PROVING OUTPUT VERIFICATIONS PASSED!"
@@ -498,6 +590,7 @@ echo "   - Compiled DTB verified (0 hardcoded MACs, NVMEM cells, NOR read-only, 
 echo "   - Sysupgrade archive verified (compat 1.1, FIT magic 0xd00dfeed, size $KERNEL_MB MB)"
 echo "   - Kernel symbols verified (SPI-NAND, UBI, UBIFS, BCH ECC, IPQ40xx, AT803X_PHY)"
 echo "   - Rootfs UI assets verified (29_ports.js, Wi-Fi cards, port controls)"
+echo "   - netifd Horus layer verified (helpers present, bounds match plan, calls resolve)"
 echo "   Firmware is physically safe and certified for deployment."
 echo "========================================================================"
 echo ""
