@@ -1086,11 +1086,7 @@ mac80211_setup_supplicant() {
 
 	wpa_supplicant_prepare_interface "$ifname" nl80211 || return 1
 
-	if [ "$mode" = "sta" ]; then
-		wpa_supplicant_add_network "$ifname"
-	else
-		wpa_supplicant_add_network "$ifname" "$freq" "$htmode" "$hostapd_noscan"
-	fi
+	wpa_supplicant_add_network "$ifname" "$freq" "$htmode" "$hostapd_noscan"
 
 	wpa_supplicant_add_interface "$ifname" "$mode"
 
@@ -1130,6 +1126,10 @@ mac80211_setup_vif() {
 			fi
 		;;
 		sta)
+			local _dev=$(uci -q get "wireless.${name}.device")
+			local _chan=$(uci -q get "wireless.${_dev}.channel")
+			local _band=$(uci -q get "wireless.${_dev}.band")
+			[ -n "$_chan" ] && [ "$_chan" != "auto" ] && freq="$(get_freq "$phy" "$_chan" "${_band:-5g}")"
 			mac80211_setup_supplicant || failed=1
 		;;
 		monitor)
@@ -1198,6 +1198,7 @@ mac80211_set_suffix() {
 drv_mac80211_setup() {
 	json_select config
 	json_get_vars \
+		channel band auto_channel \
 		radio phy macaddr path \
 		country chanbw distance \
 		txpower \

@@ -1386,6 +1386,7 @@ wpa_supplicant_prepare_interface() {
 					ip link set dev "$ifname" down 2>/dev/null
 					iw dev "$ifname" set 4addr on 2>/dev/null || \
 						echo "horus: $ifname does not support 4addr" >&2
+					ip link set dev "$ifname" up 2>/dev/null || true
 				fi
 			;;
 		esac
@@ -1491,7 +1492,7 @@ wpa_supplicant_add_network() {
 	local T="	"
 
 	local scan_ssid="scan_ssid=1"
-	local freq wpa_key_mgmt
+	local wpa_key_mgmt
 
 	[ "$_w_mode" = "adhoc" ] && {
 		append network_data "mode=1" "$N$T"
@@ -1521,17 +1522,12 @@ wpa_supplicant_add_network() {
 		[ "$default_disabled" = 1 ] && append network_data "disabled=1" "$N$T"
 
 		# Horus: pin the station scan to the frequencies the link is
-		# supposed to use. Without it wpa_supplicant sweeps every
-		# registered channel, and on the SuperChannel plan that is
-		# hundreds of them - slow enough that the AP ages out of the
-		# scan cache before the sweep comes back round to it.
-		#
-		# Values are MHz. The old code also fell back to $freq, which is
-		# declared local and only ever filled in the adhoc/mesh branches,
-		# so in sta mode it was always empty - dead code, not a fallback.
+		# supposed to use. If scan_list/freq_list is not specified,
+		# fall back to the radio's configured operating frequency ($freq).
 		local sl_list= sf_list= net_freqs=
 		horus_json_get_list sl_list scan_list
 		[ -z "$sl_list" ] && horus_json_get_list sl_list freq_list
+		[ -z "$sl_list" ] && [ -n "$freq" ] && sl_list="$freq"
 		horus_json_get_list sf_list scan_freq
 
 		horus_freq_list_sanitize sf_list $sf_list
