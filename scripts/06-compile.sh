@@ -275,6 +275,33 @@ find build_dir -type f -path '*/root-*/www/luci-static/resources/view/status/inc
     fi
 done
 
+# Patch LuCI validation.js: allow Arabic/Unicode characters in hostname field.
+# Stock regex /^[a-zA-Z0-9_]+$/ blocks non-ASCII. Expanding char class to
+# include U+0080-U+FFFF lets users type Arabic (or any Unicode) hostnames.
+_VALJS_PY=$(mktemp /tmp/patch_valjs_XXXXXX.py)
+cat > "$_VALJS_PY" << 'INNEREOF'
+import sys
+path = sys.argv[1]
+with open(path, encoding='utf-8') as fh:
+    txt = fh.read()
+txt = txt.replace(
+    '/^[a-zA-Z0-9_]+$/',
+    '/^[a-zA-Z0-9-￿_]+$/'
+)
+txt = txt.replace(
+    '/^[a-zA-Z0-9_][a-zA-Z0-9_\\-.]*[a-zA-Z0-9]\\.?$/',
+    '/^[a-zA-Z0-9-￿_][a-zA-Z0-9-￿_\\-.]*[a-zA-Z0-9-￿]\\.?$/'
+)
+with open(path, 'w', encoding='utf-8') as fh:
+    fh.write(txt)
+print('  Patched Unicode hostname in', path)
+INNEREOF
+find build_dir -type f -path '*/root-*/www/luci-static/resources/validation.js' 2>/dev/null | while read -r valjs; do
+    grep -q 'a-zA-Z0-9_' "$valjs" 2>/dev/null && python3 "$_VALJS_PY" "$valjs"
+done
+rm -f "$_VALJS_PY"
+
+
 # Ensure port_control, port_action, hamax CLI, and init script exist with executable permissions in all rootfs directories
 find build_dir -maxdepth 2 -type d -name 'root-*' 2>/dev/null | while read -r rdir; do
     echo "Enforcing port control & hamax utilities in $rdir..."
