@@ -17,7 +17,7 @@ HORUS_WIRELESS_SH=1
 # with horus-5g-bounds; that file is the source of truth.
 : "${HORUS_5G_MIN_CHAN:=24}"
 : "${HORUS_5G_MAX_CHAN:=200}"
-: "${HORUS_5G_MIN_FREQ:=5120}"
+: "${HORUS_5G_MIN_FREQ:=5100}"
 : "${HORUS_5G_MAX_FREQ:=6000}"
 : "${HORUS_2G_MIN_FREQ:=2312}"
 : "${HORUS_2G_MAX_FREQ:=2682}"
@@ -60,7 +60,7 @@ horus_json_get_list() {
 # wpa_supplicant reads freq_list/scan_freq in MHz; a channel number there
 # becomes a frequency nobody transmits on and the station never associates.
 # We refuse to guess: in the Horus plan channels 24..59 exist in BOTH the
-# 2.4 GHz upper band (2557..2732 MHz) and the 5 GHz table (5120..5295 MHz),
+# 2.4 GHz upper band (2557..2732 MHz) and the 5 GHz table (5100..5295 MHz),
 # so "44" is ambiguous and any conversion would be a coin flip.
 horus_freq_list_sanitize() {
 	local _dest="$1"; shift
