@@ -18,7 +18,7 @@
 # scripts/09-generate-regdb.sh - or cfg80211 disables it for not fitting a
 # 20 MHz slot.
 # ---------------------------------------------------------------------
-HAMAX_CHANS="$(seq 24 220)"
+HAMAX_CHANS="$(seq 20 220)"
 
 # The 20 MHz centres a stock 802.11 client actually tunes to when it
 # scans. Anything outside this set is off-grid: a phone or laptop never
