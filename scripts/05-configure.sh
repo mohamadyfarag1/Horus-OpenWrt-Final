@@ -281,6 +281,13 @@ mkdir -p files
 find ../files_ap -type f ! -name '*.db' ! -name '*.bin' -exec sed -i 's/\r$//' {} +
 cp -r ../files_ap/* files/
 
+# Inject build fingerprint into SSH banner and /etc/horus_version
+_COMMIT=$(cd .. && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')
+printf ' Build : %s\n Date  : %s\n ---------------------------------------------------\n' \
+    "$_COMMIT" "$_DATE" >> files/etc/banner
+printf 'HORUS_COMMIT=%s\nHORUS_DATE=%s\n' "$_COMMIT" "$_DATE" > files/etc/horus_version
+
 # Ensure execution permissions for scripts
 chmod +x files/www/cgi-bin/* 2>/dev/null || true
 chmod +x files/etc/init.d/* 2>/dev/null || true
