@@ -18,11 +18,11 @@ HORUS_WIRELESS_SH=1
 : "${HORUS_5G_MIN_CHAN:=24}"
 : "${HORUS_5G_MAX_CHAN:=200}"
 : "${HORUS_5G_MIN_FREQ:=5100}"
-: "${HORUS_5G_MAX_FREQ:=6000}"
+: "${HORUS_5G_MAX_FREQ:=6100}"
 : "${HORUS_2G_MIN_FREQ:=2312}"
 : "${HORUS_2G_MAX_FREQ:=2682}"
 : "${HORUS_FREQ_SANE_MIN:=2300}"
-: "${HORUS_FREQ_SANE_MAX:=6000}"
+: "${HORUS_FREQ_SANE_MAX:=6100}"
 
 # Ubiquiti airMAX vendor IE (OUI 00:27:22). Advertised in beacons, probe
 # responses and association requests so Rocket AC / airMAX peers recognise us.

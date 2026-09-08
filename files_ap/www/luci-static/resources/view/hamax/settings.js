@@ -28,15 +28,15 @@ var STD_5G = { 36:1,40:1,44:1,48:1,52:1,56:1,60:1,64:1,
                100:1,104:1,108:1,112:1,116:1,120:1,124:1,128:1,132:1,136:1,140:1,144:1,
                149:1,153:1,157:1,161:1,165:1 };
 
-/* Full 5 GHz plan: ch 24..200 = 5120..6000 MHz in 5 MHz steps.
+/* Full 5 GHz plan: ch 20..220 = 5100..6100 MHz in 5 MHz steps.
  * Matches ath10k_5ghz_channels[] — see scripts/gen_package_patches.py.
- * ch 24..35 (5120-5175): extended lower band (off-grid for stock clients)
+ * ch 20..35 (5100-5175): extended lower band (off-grid for stock clients)
  * ch 36..177: standard + inter-channel range
- * ch 178..200 (5890-6000): extended upper band / UNII-4
+ * ch 178..220 (5890-6100): extended upper band / UNII-4
  */
 var HAMAX_STATIC_CHANNELS = (function() {
 	var out = [];
-	for (var ch = 24; ch <= 200; ch++) {
+	for (var ch = 20; ch <= 220; ch++) {
 		out.push({ channel: ch, freq: 5000 + 5 * ch, standard: !!STD_5G[ch], band: '5g' });
 	}
 	return out;

@@ -43,7 +43,7 @@ import re
 import sys
 
 # 5 GHz channel plan: 5120 MHz - 6000 MHz in 5 MHz steps, channels 24..200.
-CHANS = list(range(20, 201))
+CHANS = list(range(20, 221))
 MIN_5G = min(CHANS)             # 24
 MAX_5G = max(CHANS)             # 200
 
