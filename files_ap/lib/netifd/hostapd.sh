@@ -1532,13 +1532,13 @@ wpa_supplicant_add_network() {
 		[ -z "$sl_list" ] && horus_json_get_list sl_list freq_list
 		if [ -z "$sl_list" ]; then
 			if [ "$band" = "5g" ] || [ -z "$band" -a -n "$freq" -a "$freq" -ge 5000 ]; then
-				sl_list="$(seq 5120 5 5925)"
+				sl_list="$(seq 5120 5 6000)"
 			elif [ "$band" = "2g" ] || [ -z "$band" -a -n "$freq" -a "$freq" -lt 3000 ]; then
-				sl_list="$(seq 2312 5 2732)"
+				sl_list="$(seq 2312 5 2682)"
 			elif [ -n "$freq" ]; then
 				sl_list="$freq"
 			else
-				sl_list="$(seq 5120 5 5925)"
+				sl_list="$(seq 5120 5 6000)"
 			fi
 		fi
 		horus_json_get_list sf_list scan_freq
