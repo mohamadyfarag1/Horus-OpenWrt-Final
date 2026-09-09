@@ -3,7 +3,7 @@
 # =====================================================================
 
 # ---------------------------------------------------------------------
-# 5 GHz channel plan: channels 20..220 = 5120 - 6100 MHz in 5 MHz steps,
+# 5 GHz channel plan: channels 24..200 = 5120 - 6000 MHz in 5 MHz steps,
 # matching ath10k_5ghz_channels[] (see scripts/gen_package_patches.py).
 #
 # This used to start at 36, on the theory that IPQ4019 BDF calibration data
@@ -18,7 +18,7 @@
 # scripts/09-generate-regdb.sh - or cfg80211 disables it for not fitting a
 # 20 MHz slot.
 # ---------------------------------------------------------------------
-HAMAX_CHANS="$(seq 20 220)"
+HAMAX_CHANS="$(seq 24 200)"
 
 # The 20 MHz centres a stock 802.11 client actually tunes to when it
 # scans. Anything outside this set is off-grid: a phone or laptop never

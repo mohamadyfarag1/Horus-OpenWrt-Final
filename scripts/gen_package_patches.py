@@ -43,7 +43,7 @@ import re
 import sys
 
 # 5 GHz channel plan: 5120 MHz - 6000 MHz in 5 MHz steps, channels 24..200.
-CHANS = list(range(20, 223))
+CHANS = list(range(24, 201))
 MIN_5G = min(CHANS)             # 24
 MAX_5G = max(CHANS)             # 200
 
@@ -57,18 +57,18 @@ MAX_5G = max(CHANS)             # 200
 # numbers, so beacons and assoc frames on those channels were either tagged as
 # 5 GHz or thrown away and no client could ever associate.
 #
-# So 2.4 GHz is confined to numbers OUTSIDE the 5 GHz range: 1..19 and 223..255.
+# So 2.4 GHz is confined to numbers OUTSIDE the 5 GHz range: 1..23 and 201..255.
 # Each block below is a plain linear map, because the identical arithmetic has to
 # be reproduced in the kernel (net/wireless/util.c) and in hostapd
 # (ieee80211_freq_to_channel_ext) - see build_2g_plan() for the single source.
 _BLOCKS_2G = [
     # (first_channel, first_freq, count)  -- ascending in frequency
-    (234, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 234..253
+    (201, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 201..220
     (1,   2412, 13),   # standard ISM          2412 - 2472 -> ch 1..13
-    (223, 2477, 2),    # transition            2477 - 2482 -> ch 223..224
+    (221, 2477, 2),    # transition            2477 - 2482 -> ch 221..222
     (14,  2484, 1),    # 802.11b Japan         2484        -> ch 14
-    (15,  2487, 5),    # upper band, part A    2487 - 2507 -> ch 15..19
-    (225, 2512, 9),    # upper band, part B    2512 - 2552 -> ch 225..233
+    (15,  2487, 9),    # upper band, part A    2487 - 2527 -> ch 15..23
+    (223, 2532, 31),   # upper band, part B    2532 - 2682 -> ch 223..253
 ]
 
 
@@ -197,7 +197,7 @@ def validate_plans():
              % (min(nums_2g), max(nums_2g)))
 
     total = len(CHANS) + len(CHANS_2G)
-    if total > 300:
+    if total > 253:
         fail("combined channel count %d exceeds the 253 that ath10k-ct is known "
              "to build with (ATH10K_NUM_CHANS)" % total)
 
@@ -368,22 +368,6 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t}"
     )
     scan_r1 = (
-        "\tstatic unsigned int horus_scan_cycle = 0;\n"
-        "\tunsigned int horus_skip_count = 0, horus_skipped = 0, horus_total = 0;\n"
-        "\tbands = hw->wiphy->bands;\n"
-        "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
-        "\t\tif (bands[band]) {\n"
-        "\t\t\tfor (i = 0; i < bands[band]->n_channels; i++) {\n"
-        "\t\t\t\tif (!(bands[band]->channels[i].flags & IEEE80211_CHAN_DISABLED))\n"
-        "\t\t\t\t\thorus_total++;\n"
-        "\t\t\t}\n"
-        "\t\t}\n"
-        "\t}\n"
-        "\tif (horus_total > 0) {\n"
-        "\t\tunsigned int num_cycles = (horus_total + 59) / 60;\n"
-        "\t\thorus_scan_cycle = (horus_scan_cycle + 1) % num_cycles;\n"
-        "\t\thorus_skip_count = horus_scan_cycle * 60;\n"
-        "\t}\n"
         "\tbands = hw->wiphy->bands;\n"
         "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
         "\t\tif (!bands[band])\n"
@@ -395,12 +379,19 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\t    IEEE80211_CHAN_DISABLED)\n"
         "\t\t\t\tcontinue;\n"
         "\n"
-        "\t\t\t/* Horus: round-robin channel scan batches to fit within CE3 limit (60) */\n"
-        "\t\t\tif (horus_skipped < horus_skip_count) {\n"
-        "\t\t\t\thorus_skipped++;\n"
-        "\t\t\t\tcontinue;\n"
+        "\t\t\t/* Horus: limit scan channels to prevent Copy Engine DMA buffer overflow (CE3 limit 2048 bytes).\n"
+        "\t\t\t * Total scan channels capped <= 60 (~1680 bytes < 2048 bytes).\n"
+        "\t\t\t * All registered channels remain fully registered in ath10k channel arrays for AP/STA use.\n"
+        "\t\t\t */\n"
+        + c_scan_filter_2g() +
+        "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
+        "\t\t\t\tint f = channel->center_freq;\n"
+        "\t\t\t\tif (!((f >= 5120 && f <= 5700 && f % 20 == 0) ||\n"
+        "\t\t\t\t      (f >= 5725 && f <= 5885 && (f - 5725) % 20 == 0) ||\n"
+        "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 ||\n"
+        "\t\t\t\t      f == 5905 || f == 5925 || f == 5945 || f == 5965 || f == 6000))\n"
+        "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
-        "\n"
         "\t\t\tif (arg.n_channels >= 60)\n"
         "\t\t\t\tbreak;\n"
         "\n"
@@ -421,7 +412,6 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\t\tcontinue;"
     )
     scan_r2 = (
-        "\thorus_skipped = 0;\n"
         "\tch = arg.channels;\n"
         "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
         "\t\tif (!bands[band])\n"
@@ -433,11 +423,15 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\tif (channel->flags & IEEE80211_CHAN_DISABLED)\n"
         "\t\t\t\tcontinue;\n"
         "\n"
-        "\t\t\tif (horus_skipped < horus_skip_count) {\n"
-        "\t\t\t\thorus_skipped++;\n"
-        "\t\t\t\tcontinue;\n"
+        + c_scan_filter_2g() +
+        "\t\t\tif (channel->band == NL80211_BAND_5GHZ) {\n"
+        "\t\t\t\tint f = channel->center_freq;\n"
+        "\t\t\t\tif (!((f >= 5120 && f <= 5700 && f % 20 == 0) ||\n"
+        "\t\t\t\t      (f >= 5725 && f <= 5885 && (f - 5725) % 20 == 0) ||\n"
+        "\t\t\t\t      f == 5125 || f == 5445 || f == 5455 || f == 5465 ||\n"
+        "\t\t\t\t      f == 5905 || f == 5925 || f == 5945 || f == 5965 || f == 6000))\n"
+        "\t\t\t\t\tcontinue;\n"
         "\t\t\t}\n"
-        "\n"
         "\t\t\tif (ch - arg.channels >= arg.n_channels)\n"
         "\t\t\t\tbreak;"
     )
@@ -445,15 +439,6 @@ def patch_ath10k(build_dir, pkg_dir):
         fail("could not find ath10k_update_channel_list scan loop anchor in %s" % mac)
     new_mac = new_mac.replace(scan_t1, scan_r1, 1).replace(scan_t2, scan_r2, 1)
     print("  scan buffer overflow: protected (capped <= 60 channels in WMI scan list, 5G >= 5120 MHz)")
-
-    hook_re = re.compile(
-        r"(static int ath10k_hw_scan\([^)]+\)\s*\{[^{]*?mutex_lock\(&ar->conf_mutex\);)",
-        re.DOTALL
-    )
-    new_mac, n = hook_re.subn(r"\g<1>\n\n\t/* Horus: rotate scan batches on every scan */\n\tath10k_update_channel_list(ar);", new_mac, count=1)
-    if not n:
-        fail("ath10k_hw_scan hook failed in %s" % mac)
-    print("  scan buffer overflow: rotate scan batches on every scan")
 
     # --- core.h bounds -----------------------------------------------
     # ATH10K_NUM_CHANS must equal the COMBINED length of the two channel
@@ -564,7 +549,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "channel-number ranges disjoint, and protect the CE DMA scan buffer.\n"
         "\n"
         "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
-        "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..19 and 223..255.\n"
+        "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..23 and 201..255.\n"
         "- 5 GHz: %d channels (5120-6000 MHz, channels 24..200, 5 MHz steps).\n"
         "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
         "\n"
@@ -687,8 +672,8 @@ def patch_hostapd(build_dir, pkg_dir):
     # 2. 5 GHz SuperChannels (expand ceiling from 5900 MHz to 6000 MHz)
     target_5g = "\tif (freq >= 5000 && freq < 5900) {"
     replace_5g = (
-        "\t/* Horus: 5 GHz SuperChannels expanded to 6110 MHz (channels 20..222) */\n"
-        "\tif (freq >= 5000 && freq <= 6110 && freq != 5935) {"
+        "\t/* Horus: 5 GHz SuperChannels expanded to 6000 MHz (channels 24..200) */\n"
+        "\tif (freq >= 5000 && freq <= 6000 && freq != 5935) {"
     )
     if target_5g not in new_common:
         fail("anchor 'if (freq >= 5000 && freq < 5900) {' not found in %s" % common)
