@@ -474,6 +474,19 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\tif (ch - arg.channels >= arg.n_channels)\n"
         "\t\t\t\tbreak;"
     )
+    scan_t3 = "\tmemset(&arg, 0, sizeof(arg));\n\tath10k_wmi_start_scan_init(ar, &arg);"
+    scan_r3 = (
+        "\tmemset(&arg, 0, sizeof(arg));\n"
+        "\n"
+        "\t/* Horus: rotate background WMI scan channel list for every hardware scan request */\n"
+        "\tath10k_update_channel_list(ar);\n"
+        "\n"
+        "\tath10k_wmi_start_scan_init(ar, &arg);"
+    )
+    if scan_t3 in new_mac:
+        new_mac = new_mac.replace(scan_t3, scan_r3)
+        print("Horus scan_r3 rotation trigger applied.")
+
     if scan_t1 not in new_mac or scan_t2 not in new_mac:
         fail("could not find ath10k_update_channel_list scan loop anchor in %s" % mac)
     new_mac = new_mac.replace(scan_t1, scan_r1, 1).replace(scan_t2, scan_r2, 1)
