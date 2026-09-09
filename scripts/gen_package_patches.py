@@ -446,6 +446,15 @@ def patch_ath10k(build_dir, pkg_dir):
     new_mac = new_mac.replace(scan_t1, scan_r1, 1).replace(scan_t2, scan_r2, 1)
     print("  scan buffer overflow: protected (capped <= 60 channels in WMI scan list, 5G >= 5120 MHz)")
 
+    hook_re = re.compile(
+        r"(static int ath10k_hw_scan\([^)]+\)\s*\{[^{]*?mutex_lock\(&ar->conf_mutex\);)",
+        re.DOTALL
+    )
+    new_mac, n = hook_re.subn(r"\g<1>\n\n\t/* Horus: rotate scan batches on every scan */\n\tath10k_update_channel_list(ar);", new_mac, count=1)
+    if not n:
+        fail("ath10k_hw_scan hook failed in %s" % mac)
+    print("  scan buffer overflow: rotate scan batches on every scan")
+
     # --- core.h bounds -----------------------------------------------
     # ATH10K_NUM_CHANS must equal the COMBINED length of the two channel
     # arrays, exactly. mac.c checks it at compile time:
