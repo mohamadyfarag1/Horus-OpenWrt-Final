@@ -15,14 +15,14 @@ HORUS_WIRELESS_SH=1
 
 # Fallbacks, in case the bounds file is missing from the image. Keep in sync
 # with horus-5g-bounds; that file is the source of truth.
-: "${HORUS_5G_MIN_CHAN:=24}"
-: "${HORUS_5G_MAX_CHAN:=200}"
+: "${HORUS_5G_MIN_CHAN:=20}"
+: "${HORUS_5G_MAX_CHAN:=222}"
 : "${HORUS_5G_MIN_FREQ:=5100}"
-: "${HORUS_5G_MAX_FREQ:=6100}"
+: "${HORUS_5G_MAX_FREQ:=6110}"
 : "${HORUS_2G_MIN_FREQ:=2312}"
 : "${HORUS_2G_MAX_FREQ:=2682}"
 : "${HORUS_FREQ_SANE_MIN:=2300}"
-: "${HORUS_FREQ_SANE_MAX:=6100}"
+: "${HORUS_FREQ_SANE_MAX:=6110}"
 
 # Ubiquiti airMAX vendor IE (OUI 00:27:22). Advertised in beacons, probe
 # responses and association requests so Rocket AC / airMAX peers recognise us.

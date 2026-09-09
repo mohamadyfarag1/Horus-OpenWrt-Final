@@ -20,9 +20,9 @@ for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
   sed -i 's/REG_RULE(2467-10, 2472+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
   sed -i 's/REG_RULE(2484-10, 2484+10, 40, 0, 20,/REG_RULE(2182-10, 2750+10, 40, 0, 33,/g' "$REGD"
   
-  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(5090-10, 6110+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5090-10, 6110+10, 160, 0, 33,/g' "$REGD"
-  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5090-10, 6110+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5150-10, 5350+10, 80, 0, 30,/REG_RULE(5090-10, 6130+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5470-10, 5850+10, 80, 0, 30,/REG_RULE(5090-10, 6130+10, 160, 0, 33,/g' "$REGD"
+  sed -i 's/REG_RULE(5725-10, 5850+10, 80, 0, 30,/REG_RULE(5090-10, 6130+10, 160, 0, 33,/g' "$REGD"
   
   sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
   sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
@@ -177,7 +177,7 @@ done
 #
 # The reverse direction matters just as much: ieee80211_channel_to_freq_khz()
 # maps 5 GHz channels 182..196 to the 4.9 GHz public-safety band
-# (4000 + chan * 5). Our plan uses those numbers for 5910..6110 MHz, so that
+# (4000 + chan * 5). Our plan uses those numbers for 5910..6130 MHz, so that
 # branch has to go or the top of the 5 GHz SuperChannel range lands 1 GHz low.
 #############################################
 HORUS_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -247,7 +247,7 @@ rblock = ("%s/* %s: reverse map, same table as above. */\n" % (ri, MARK)
           + c_chan_to_freq_2g(ri, ret="return MHZ_TO_KHZ(%s);"))
 src = src[:rev.start()] + rblock + src[rev.end():]
 
-# 5 GHz channels 182..196 are 5910..6110 MHz in our plan, not 4.9 GHz.
+# 5 GHz channels 182..196 are 5910..6130 MHz in our plan, not 4.9 GHz.
 r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
                r"\t+return MHZ_TO_KHZ\(4000 \+ chan \* 5\);\n"
                r"\t*else\n"
@@ -256,7 +256,7 @@ r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
 if r4:
     r4i = r4.group(1)
     src = src[:r4.start()] + (
-        "%s/* %s: 182..196 are 5910..6110 MHz here, not the 4.9 GHz band. */\n"
+        "%s/* %s: 182..196 are 5910..6130 MHz here, not the 4.9 GHz band. */\n"
         "%sreturn MHZ_TO_KHZ(5000 + chan * 5);\n" % (r4i, MARK, r4i)
     ) + src[r4.end():]
     print("  -> 5 GHz 182..196 no longer aliased to the 4.9 GHz band")
@@ -269,6 +269,40 @@ print("  -> freq<->channel mapping now covers %d - %d MHz and 5120 - %d MHz"
       % (lo, hi, max_5g_freq))
 PYEOF
   echo "  -> net/wireless/util.c patched OK"
+done
+
+#############################################
+# PATCH 3B: Bypass 6 GHz center frequency validation
+#
+# Our 5 GHz SuperChannels go up to 6110 MHz. cfg80211_valid_center_freq()
+# enforces strict 6 GHz alignment rules for any center freq >= 5955 MHz.
+# This causes VHT80 to fail on channel 200 (6000 MHz) with 'invalid channel
+# definition' because 6010 MHz is not aligned to the 6 GHz 80 MHz blocks.
+# We bypass this check by returning true early.
+#############################################
+for CHAN in $(find . -path "*/net/wireless/chan.c" 2>/dev/null); do
+  echo "[PATCH 3B] Patching 6 GHz center verification in: $CHAN"
+  python3 - "$CHAN" <<'PYEOF'
+import sys
+import re
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    src = f.read()
+if "Horus: Bypass 6 GHz strict center validation" in src:
+    print("  -> already patched, skipping")
+    sys.exit(0)
+# We want to insert 'return true;' at the top of cfg80211_valid_center_freq
+m = re.search(r"static bool cfg80211_valid_center_freq\s*\([^)]*\)\s*\{", src)
+if m:
+    ins = m.group(0) + "
+	/* Horus: Bypass 6 GHz strict center validation for our SuperChannels */
+	return true;"
+    src = src[:m.start()] + ins + src[m.end():]
+    with open(sys.argv[1], "w", encoding="utf-8") as f:
+        f.write(src)
+    print("  -> cfg80211_valid_center_freq bypassed")
+else:
+    print("!!!! cfg80211_valid_center_freq not found in " + sys.argv[1])
+PYEOF
 done
 
 #############################################

@@ -56,7 +56,7 @@ with open('db.txt', 'w') as f:
         # centre +/- 10 MHz fits inside a rule, and an 80 MHz block is only
         # accepted when every one of its four 20 MHz sub-channels passes.
         #
-        # 5 GHz plan is ch 20..220 = 5120..6100 MHz:
+        # 5 GHz plan is ch 20..222 = 5120..6100 MHz:
         #   lowest  sub-channel centre 5120 -> needs the rule to start <= 5110
         #   highest sub-channel centre 6100 -> needs the rule to end   >= 6010
         # The old 5115 floor is why 5120 MHz (ch 24) was the single disabled
@@ -64,7 +64,7 @@ with open('db.txt', 'w') as f:
         #
         # 2.4 GHz plan is 2312..2682 MHz, so 2292..2702 with the same margin.
         f.write('\t(2182 - 2750 @ 40), (33)\n')
-        f.write('\t(5100 - 6120 @ 160), (33)\n')
+        f.write('\t(5100 - 6130 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')
 "
