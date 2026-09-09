@@ -293,9 +293,7 @@ if "Horus: Bypass 6 GHz strict center validation" in src:
 # We want to insert 'return true;' at the top of cfg80211_valid_center_freq
 m = re.search(r"static bool cfg80211_valid_center_freq\s*\([^)]*\)\s*\{", src)
 if m:
-    ins = m.group(0) + "
-	/* Horus: Bypass 6 GHz strict center validation for our SuperChannels */
-	return true;"
+    ins = m.group(0) + "\n\t/* Horus: Bypass 6 GHz strict center validation for our SuperChannels */\n\treturn true;"
     src = src[:m.start()] + ins + src[m.end():]
     with open(sys.argv[1], "w", encoding="utf-8") as f:
         f.write(src)
