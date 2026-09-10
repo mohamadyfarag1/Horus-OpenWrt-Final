@@ -379,6 +379,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t}"
     )
     new_mac = new_mac.replace(
+
         "static int ath10k_update_channel_list(struct ath10k *ar)\n{",
         "static int ath10k_update_channel_list(struct ath10k *ar, struct cfg80211_scan_request *req)\n{\n"
         "\tstatic unsigned int horus_scan_cycle = 0;\n"
