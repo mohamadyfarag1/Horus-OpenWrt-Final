@@ -516,7 +516,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "\tath10k_wmi_start_scan_init(ar, &arg);"
     )
     if scan_t3 in new_mac:
-        new_mac = new_mac.replace(scan_t3, scan_r3)
+        new_mac = new_mac.replace(scan_t3, scan_r3, 1)
         print("Horus scan_r3 rotation trigger applied.")
 
     if scan_t1 not in new_mac or scan_t2 not in new_mac:
