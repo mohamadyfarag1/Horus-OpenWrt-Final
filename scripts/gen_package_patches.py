@@ -379,8 +379,12 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t}"
     )
     new_mac = new_mac.replace(
-        "static int ath10k_update_channel_list(struct ath10k *ar)",
-        "static int ath10k_update_channel_list(struct ath10k *ar, struct cfg80211_scan_request *req)"
+        "static int ath10k_update_channel_list(struct ath10k *ar)\n{",
+        "static int ath10k_update_channel_list(struct ath10k *ar, struct cfg80211_scan_request *req)\n{\n"
+        "\tstatic unsigned int horus_scan_cycle = 0;\n"
+        "\tunsigned int horus_skip_count = 0, horus_skipped = 0, horus_rotatable = 0;\n"
+        "\tint active_freqs[60] = {0};\n"
+        "\tint num_active = 0;\n"
     )
     new_mac = re.sub(
         r"\bath10k_update_channel_list\(ar\)",
@@ -390,10 +394,6 @@ def patch_ath10k(build_dir, pkg_dir):
 
     scan_r1 = (
         "\t/* Horus: Smart round-robin channel scan batches */\n"
-        "\tstatic unsigned int horus_scan_cycle = 0;\n"
-        "\tunsigned int horus_skip_count = 0, horus_skipped = 0, horus_rotatable = 0;\n"
-        "\tint active_freqs[60] = {0};\n"
-        "\tint num_active = 0;\n"
         "\t/* Protect active and scanning channels from rotation */\n"
         "\tif (ar->rx_channel) {\n"
         "\t\tactive_freqs[num_active++] = ar->rx_channel->center_freq;\n"
