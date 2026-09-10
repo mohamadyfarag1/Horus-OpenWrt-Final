@@ -42,33 +42,43 @@ import os
 import re
 import sys
 
-# 5 GHz channel plan: 5120 MHz - 6000 MHz in 5 MHz steps, channels 24..200.
-CHANS = list(range(24, 201))
-MIN_5G = min(CHANS)             # 24
-MAX_5G = max(CHANS)             # 200
+def build_5g_plan():
+    plan = []
+    # 5080 - 5915 (168) -> 16..183
+    for c in range(16, 184): plan.append((c, 5000 + c * 5))
+    # 4920 - 5000 (17) -> 184..200
+    for c in range(184, 201): plan.append((c, 4000 + c * 5))
+    # 6005 - 6100 (20) -> 201..220
+    for c in range(201, 221): plan.append((c, 5000 + c * 5))
+    # 5920 - 6000 (17) -> 221..237
+    for c in range(221, 238): plan.append((c, 5920 + (c - 221) * 5))
+    return plan
+
+CHANS_5G = build_5g_plan()
+CHANS = [c for c, f in CHANS_5G]
+MIN_5G = min(CHANS)
+MAX_5G = max(CHANS)
 
 # 2.4 GHz channel plan: 2312 MHz - 2682 MHz in 5 MHz steps, plus 2484 MHz.
 #
 # The channel NUMBERS matter as much as the frequencies. ath10k decides which
 # band a received management frame belongs to from the channel number alone
-# (ath10k_wmi_event_mgmt_rx: <= 14 is 2 GHz, 24..ATH10K_MAX_5G_CHAN is 5 GHz,
-# anything else is dropped with a WARN). The previous plan numbered the extended
-# 2.4 GHz channels 15..59 and 74..80, which collide head-on with the 5 GHz
-# numbers, so beacons and assoc frames on those channels were either tagged as
-# 5 GHz or thrown away and no client could ever associate.
+# (ath10k_wmi_event_mgmt_rx: patched to MIN_5G..MAX_5G is 5 GHz,
+# anything else is 2.4 GHz).
 #
-# So 2.4 GHz is confined to numbers OUTSIDE the 5 GHz range: 1..23 and 201..255.
+# So 2.4 GHz is confined to numbers OUTSIDE the 5 GHz range (16..237):
+# 1..15 and 238..299.
 # Each block below is a plain linear map, because the identical arithmetic has to
 # be reproduced in the kernel (net/wireless/util.c) and in hostapd
 # (ieee80211_freq_to_channel_ext) - see build_2g_plan() for the single source.
 _BLOCKS_2G = [
     # (first_channel, first_freq, count)  -- ascending in frequency
-    (201, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 201..220
+    (238, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 238..257
     (1,   2412, 13),   # standard ISM          2412 - 2472 -> ch 1..13
-    (221, 2477, 2),    # transition            2477 - 2482 -> ch 221..222
+    (258, 2477, 2),    # transition            2477 - 2482 -> ch 258..259
     (14,  2484, 1),    # 802.11b Japan         2484        -> ch 14
-    (15,  2487, 9),    # upper band, part A    2487 - 2527 -> ch 15..23
-    (223, 2532, 31),   # upper band, part B    2532 - 2682 -> ch 223..253
+    (260, 2487, 9),    # upper band, part A    2487 - 2527 -> ch 260..268
+    (269, 2532, 31),   # upper band, part B    2532 - 2682 -> ch 269..299
 ]
 
 
@@ -203,7 +213,8 @@ def validate_plans():
 
     print("  plan validated      : %d (5G, ch %d..%d) + %d (2.4G) = %d channels"
           % (len(CHANS), MIN_5G, MAX_5G, len(CHANS_2G), total))
-    print("  5 GHz span          : %d - %d MHz" % (5000 + 5 * MIN_5G, 5000 + 5 * MAX_5G))
+    freqs_5g = [f for _, f in CHANS_5G]
+    print("  5 GHz span          : %d - %d MHz" % (min(freqs_5g), max(freqs_5g)))
     print("  2.4 GHz span        : %d - %d MHz" % (min(freqs_2g), max(freqs_2g)))
 
 
@@ -307,7 +318,7 @@ def patch_ath10k(build_dir, pkg_dir):
     old_wmic = open(wmic, encoding="utf-8", errors="ignore").read()
 
     # --- 5 GHz table -------------------------------------------------
-    lines = "".join("\tCHAN5G(%d, %d, 0),\n" % (c, 5000 + 5 * c) for c in CHANS)
+    lines = "".join("\tCHAN5G(%d, %d, 0),\n" % (c, f) for c, f in CHANS_5G)
     new_array = ("static const struct ieee80211_channel ath10k_5ghz_channels[] = {\n"
                  + lines
                  + "\t/* Horus: 10 MHz-spaced plan, matches the reference AP "
@@ -629,8 +640,8 @@ def patch_ath10k(build_dir, pkg_dir):
     os.makedirs("tmp", exist_ok=True)
     freq_list = os.path.join("tmp", "horus-driver-freqs.txt")
     with open(freq_list, "w", encoding="utf-8", newline="\n") as fh:
-        for c in CHANS:
-            fh.write("%d\n" % (5000 + 5 * c))
+        for c, f in CHANS_5G:
+            fh.write("%d\n" % f)
     print("  wrote %s (%d frequencies)" % (freq_list, len(CHANS)))
 
     entries = [(os.path.join(subname, "wmi.c").replace(os.sep, "/"), old_wmic, new_wmic),
@@ -843,7 +854,8 @@ def write_5g_bounds():
     registered. So emit all of them from the plan, and only from the plan.
     """
     freqs_2g = [f for _, f in CHANS_2G]
-    min_5g_freq, max_5g_freq = 5000 + 5 * MIN_5G, 5000 + 5 * MAX_5G
+    freqs_5g = [f for _, f in CHANS_5G]
+    min_5g_freq, max_5g_freq = min(freqs_5g), max(freqs_5g)
     min_2g_freq, max_2g_freq = min(freqs_2g), max(freqs_2g)
 
     # Sanitiser window for freq_list values. Deliberately wider than the plan:
