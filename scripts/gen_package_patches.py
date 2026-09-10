@@ -382,9 +382,10 @@ def patch_ath10k(build_dir, pkg_dir):
         "static int ath10k_update_channel_list(struct ath10k *ar)",
         "static int ath10k_update_channel_list(struct ath10k *ar, struct cfg80211_scan_request *req)"
     )
-    new_mac = new_mac.replace(
-        "ret = ath10k_update_channel_list(ar);",
-        "ret = ath10k_update_channel_list(ar, NULL);"
+    new_mac = re.sub(
+        r"\bath10k_update_channel_list\(ar\)",
+        "ath10k_update_channel_list(ar, NULL)",
+        new_mac
     )
 
     scan_r1 = (
