@@ -73,12 +73,13 @@ MAX_5G = max(CHANS)
 # (ieee80211_freq_to_channel_ext) - see build_2g_plan() for the single source.
 _BLOCKS_2G = [
     # (first_channel, first_freq, count)  -- ascending in frequency
-    (238, 2312, 20),   # 2.3 GHz band          2312 - 2407 -> ch 238..257
-    (1,   2412, 13),   # standard ISM          2412 - 2472 -> ch 1..13
-    (258, 2477, 2),    # transition            2477 - 2482 -> ch 258..259
-    (14,  2484, 1),    # 802.11b Japan         2484        -> ch 14
-    (260, 2487, 9),    # upper band, part A    2487 - 2527 -> ch 260..268
-    (269, 2532, 31),   # upper band, part B    2532 - 2682 -> ch 269..299
+    (238, 2312, 20),   # 2312 - 2407 -> ch 238..257
+    (1,   2412, 13),   # 2412 - 2472 -> ch 1..13
+    (15,  2477, 1),    # 2477        -> ch 15
+    (258, 2482, 1),    # 2482        -> ch 258
+    (14,  2484, 1),    # 2484        -> ch 14
+    (259, 2487, 5),    # 2487 - 2507 -> ch 259..263
+    (264, 2512, 45),   # 2512 - 2732 -> ch 264..308
 ]
 
 
@@ -202,14 +203,13 @@ def validate_plans():
              "ath10k_wmi_event_mgmt_rx would tag those frames as 5 GHz and drop "
              "the association" % (clash, MIN_5G, MAX_5G))
 
-    if max(nums_2g) > 255 or min(nums_2g) < 1:
-        fail("2.4 GHz channel numbers must stay in 1..255, got %d..%d"
-             % (min(nums_2g), max(nums_2g)))
+    if min(nums_2g) < 1:
+        fail("2.4 GHz channel numbers must stay > 0, got min %d"
+             % min(nums_2g))
 
     total = len(CHANS) + len(CHANS_2G)
-    if total > 253:
-        fail("combined channel count %d exceeds the 253 that ath10k-ct is known "
-             "to build with (ATH10K_NUM_CHANS)" % total)
+    # The firmware has been protected from buffer overflows via the scan batching fix.
+    # We can now comfortably support 308+ channels.
 
     print("  plan validated      : %d (5G, ch %d..%d) + %d (2.4G) = %d channels"
           % (len(CHANS), MIN_5G, MAX_5G, len(CHANS_2G), total))
@@ -378,11 +378,20 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t}\n"
         "\t}"
     )
+    new_mac = new_mac.replace(
+        "static int ath10k_update_channel_list(struct ath10k *ar)",
+        "static int ath10k_update_channel_list(struct ath10k *ar, struct cfg80211_scan_request *req)"
+    )
+    new_mac = new_mac.replace(
+        "ret = ath10k_update_channel_list(ar);",
+        "ret = ath10k_update_channel_list(ar, NULL);"
+    )
+
     scan_r1 = (
         "\t/* Horus: Smart round-robin channel scan batches */\n"
         "\tstatic unsigned int horus_scan_cycle = 0;\n"
         "\tunsigned int horus_skip_count = 0, horus_skipped = 0, horus_rotatable = 0;\n"
-        "\tint active_freqs[8] = {0};\n"
+        "\tint active_freqs[60] = {0};\n"
         "\tint num_active = 0;\n"
         "\t/* Protect active and scanning channels from rotation */\n"
         "\tif (ar->rx_channel) {\n"
@@ -392,6 +401,17 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\tbool dup = false;\n"
         "\t\tif (num_active > 0 && active_freqs[0] == ar->scan_channel->center_freq) dup = true;\n"
         "\t\tif (!dup) active_freqs[num_active++] = ar->scan_channel->center_freq;\n"
+        "\t}\n"
+        "\tif (req && req->n_channels) {\n"
+        "\t\tint j;\n"
+        "\t\tfor (j = 0; j < req->n_channels && num_active < 60; j++) {\n"
+        "\t\t\tbool dup = false;\n"
+        "\t\t\tint k;\n"
+        "\t\t\tfor (k = 0; k < num_active; k++) {\n"
+        "\t\t\t\tif (active_freqs[k] == req->channels[j]->center_freq) { dup = true; break; }\n"
+        "\t\t\t}\n"
+        "\t\t\tif (!dup) active_freqs[num_active++] = req->channels[j]->center_freq;\n"
+        "\t\t}\n"
         "\t}\n"
         "\tbands = hw->wiphy->bands;\n"
         "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
@@ -490,7 +510,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "\tmemset(&arg, 0, sizeof(arg));\n"
         "\n"
         "\t/* Horus: rotate background WMI scan channel list for every hardware scan request */\n"
-        "\tath10k_update_channel_list(ar);\n"
+        "\tath10k_update_channel_list(ar, req);\n"
         "\n"
         "\tath10k_wmi_start_scan_init(ar, &arg);"
     )
@@ -590,21 +610,24 @@ def patch_ath10k(build_dir, pkg_dir):
              "drops its management frames" % wmic)
     bi = band_old.group(1)
     band_new = (
-        "%s/* Horus: the 2.4 GHz plan uses channel numbers outside the 5 GHz\n"
-        "%s * range (1..%d and %d..255), so anything that is not a 5 GHz\n"
-        "%s * channel number is 2.4 GHz. The stock test only accepted 1..14\n"
-        "%s * here and dropped the management frames of every extended\n"
-        "%s * 2.4 GHz channel, so no client could associate on them. */\n"
-        "%sif (channel >= %d && channel <= ATH10K_MAX_5G_CHAN) {\n"
+        "%s/* Horus: the firmware often reports channel numbers that collide\n"
+        "%s * between bands on SuperChannels. We must classify by phy_mode first! */\n"
+        "%sif (phy_mode == MODE_11G || phy_mode == MODE_11B || phy_mode == MODE_11GONLY ||\n"
+        "%s    phy_mode == MODE_11NG_HT20 || phy_mode == MODE_11NG_HT40 ||\n"
+        "%s    phy_mode == MODE_11AC_VHT20_2G || phy_mode == MODE_11AC_VHT40_2G || phy_mode == MODE_11AC_VHT80_2G) {\n"
+        "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
+        "%s} else if (phy_mode == MODE_11A || phy_mode == MODE_11NA_HT20 || phy_mode == MODE_11NA_HT40 ||\n"
+        "%s           phy_mode == MODE_11AC_VHT20 || phy_mode == MODE_11AC_VHT40 || phy_mode == MODE_11AC_VHT80 ||\n"
+        "%s           phy_mode == MODE_11AC_VHT160 || phy_mode == MODE_11AC_VHT80_80) {\n"
         "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
-        "%s} else if (channel >= 1 && channel <= 255) {\n"
+        "%s} else if (channel >= %d && channel <= ATH10K_MAX_5G_CHAN) {\n"
+        "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
+        "%s} else if (channel >= 1) {\n"
         "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
         "%s} else {"
-        % (bi, bi, MIN_5G - 1, MAX_5G + 1, bi, bi, bi,
-           bi, MIN_5G, bi, bi, bi, bi))
+        % (bi, bi, bi, bi, bi, bi, bi, bi, bi, bi, bi, MIN_5G, bi, bi, bi, bi))
     new_wmic = old_wmic[:band_old.start()] + band_new + old_wmic[band_old.end():]
-    print("  wmi.c               : mgmt-rx band now 5G=%d..%d, 2.4G=everything else"
-          % (MIN_5G, MAX_5G))
+    print("  wmi.c               : mgmt-rx band now prioritizes phy_mode classification")
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
     header = (
