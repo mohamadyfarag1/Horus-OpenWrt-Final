@@ -537,9 +537,10 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t}\n"
         "\t}"
     )
-    if scan_t4 in new_mac:
-        new_mac = new_mac.replace(scan_t4, scan_r4, 1)
-        print("Horus scan_r4 STA client scan round-robin applied.")
+    if scan_t4 not in new_mac:
+        fail("could not find ath10k_hw_scan channel loop anchor (scan_t4) in %s" % mac)
+    new_mac = new_mac.replace(scan_t4, scan_r4, 1)
+    print("Horus scan_r4 STA client scan round-robin applied.")
 
     if scan_t1 not in new_mac or scan_t2 not in new_mac:
         fail("could not find ath10k_update_channel_list scan loop anchor in %s" % mac)
