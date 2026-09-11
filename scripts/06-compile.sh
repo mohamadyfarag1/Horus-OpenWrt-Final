@@ -109,6 +109,18 @@ else
 fi
 
 echo "======================================="
+echo "Step 2.7: Early Compilation of wireless driver (ath10k-ct)..."
+echo "======================================="
+# Build tools, toolchain, linux target, mac80211, and ath10k-ct directly first.
+# As instructed: detect driver compile issues early without waiting hours for userland.
+make package/kernel/ath10k-ct/compile -j$(nproc) || {
+    echo "!!!! Early ath10k-ct compile failed - running single-threaded verbose diagnostic..."
+    make package/kernel/ath10k-ct/compile V=s -j1
+    exit 1
+}
+echo "✅ Early wireless driver compilation completed successfully!"
+
+echo "======================================="
 echo "Step 3: Starting Full Compilation..."
 echo "======================================="
 # Always save the full compile log to build.log for debugging

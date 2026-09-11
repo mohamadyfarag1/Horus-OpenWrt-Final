@@ -509,6 +509,38 @@ def patch_ath10k(build_dir, pkg_dir):
         new_mac = new_mac.replace(scan_t3, scan_r3, 1)
         print("Horus scan_r3 rotation trigger applied.")
 
+    scan_t4 = (
+        "\tif (req->n_channels) {\n"
+        "\t\targ.n_channels = req->n_channels;\n"
+        "\t\tfor (i = 0; i < arg.n_channels; i++)\n"
+        "\t\t\targ.channels[i] = req->channels[i]->center_freq;\n"
+        "\t}"
+    )
+    scan_r4 = (
+        "\tif (req->n_channels) {\n"
+        "\t\tif (req->n_channels <= 60) {\n"
+        "\t\t\targ.n_channels = req->n_channels;\n"
+        "\t\t\tfor (i = 0; i < arg.n_channels; i++)\n"
+        "\t\t\t\targ.channels[i] = req->channels[i]->center_freq;\n"
+        "\t\t} else {\n"
+        "\t\t\tstatic unsigned int sta_scan_cycle = 0;\n"
+        "\t\t\tunsigned int batch_size = 60;\n"
+        "\t\t\tunsigned int num_cycles = (req->n_channels + batch_size - 1) / batch_size;\n"
+        "\t\t\tunsigned int start_idx = (sta_scan_cycle % num_cycles) * batch_size;\n"
+        "\t\t\tunsigned int count = min_t(unsigned int, batch_size, req->n_channels - start_idx);\n"
+        "\n"
+        "\t\t\targ.n_channels = count;\n"
+        "\t\t\tfor (i = 0; i < count; i++)\n"
+        "\t\t\t\targ.channels[i] = req->channels[start_idx + i]->center_freq;\n"
+        "\n"
+        "\t\t\tsta_scan_cycle++;\n"
+        "\t\t}\n"
+        "\t}"
+    )
+    if scan_t4 in new_mac:
+        new_mac = new_mac.replace(scan_t4, scan_r4, 1)
+        print("Horus scan_r4 STA client scan round-robin applied.")
+
     if scan_t1 not in new_mac or scan_t2 not in new_mac:
         fail("could not find ath10k_update_channel_list scan loop anchor in %s" % mac)
     new_mac = new_mac.replace(scan_t1, scan_r1, 1).replace(scan_t2, scan_r2, 1)
@@ -556,22 +588,16 @@ def patch_ath10k(build_dir, pkg_dir):
 
     # --- wmi.h scan channel buffer -----------------------------------
     # In struct wmi_start_scan_arg, channels[64] was sized for stock (27 5GHz + 14 2.4GHz = 41 channels).
-    # When mac80211 requests a scan of the 5 GHz band, it passes ALL registered
-    # 5 GHz channels (68 channels) to ath10k_hw_scan().
-    # If channels[] is only 64 entries:
-    # 1. mac.c overflows arg.channels[] by 4 elements onto the stack/struct (overwriting arg.ssids).
-    # 2. ath10k_wmi_start_scan_verify() checks:
-    #      if (arg->n_channels > ARRAY_SIZE(arg->channels)) return -EINVAL;
-    #    Since 68 > 64, it immediately fails with -22 (-EINVAL):
-    #      "ath10k_ahb a800000.wifi: failed to start hw scan: -22"
-    # 3. Hardware scan fails every time, so client / station (STA) mode can never connect to any AP.
-    # Sizing channels[] to num_chans (82) fixes both the buffer overflow and the -22 error,
-    # exactly matching the Golden Reference AP (which disassembles to `cmp r3, #0x52` = 82 in
-    # ath10k_wmi_start_scan_verify).
+    # Sizing channels[] to 82 (0x52) exactly matches the Golden Reference AP
+    # (which disassembles to `cmp r3, #0x52` = 82 in ath10k_wmi_start_scan_verify).
+    # 82 channels accommodates the 60-channel CE3 DMA batches while keeping
+    # sizeof(struct wmi_start_scan_arg) small (~676 bytes), preventing stack frame
+    # overflow in ath10k_hw_scan and ath10k_remain_on_channel (-Werror=frame-larger-than=1024).
     new_wmi, c = re.subn(r"(u16\s+channels\[)\d+(\];)",
-                         r"\g<1>%d\g<2>" % num_chans, old_wmi)
+                         r"\g<1>82\g<2>", old_wmi)
     if not c:
         fail("u16 channels[64] not found in %s" % wmi)
+    print("  wmi.h               : channels[64] -> channels[82] (Golden Ref 0x52, keeps stack frame < 1024)")
 
     # --- wmi.c: which band a received management frame belongs to -----
     # ath10k_wmi_event_mgmt_rx() decides the band from the channel NUMBER:
