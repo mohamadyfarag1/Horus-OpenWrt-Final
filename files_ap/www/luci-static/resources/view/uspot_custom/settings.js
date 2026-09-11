@@ -3,6 +3,7 @@
 'require form';
 'require fs';
 'require ui';
+'require tools.widgets as widgets';
 
 // Horus Spot — General Settings (real uspot schema)
 return view.extend({
@@ -15,15 +16,19 @@ return view.extend({
 		s = m.section(form.NamedSection, 'hotspot', 'uspot', _('General Settings'));
 		s.addremove = false;
 
+		o = s.option(form.Flag, 'enabled', _('Enable Horus Spot'),
+			_('Turn the captive portal on or off.'));
+		o.default = '1';
+
 		o = s.option(form.ListValue, 'auth_mode', _('Authentication mode'));
 		o.value('uam', _('UAM (MikroTik pages + CHAP) — recommended for SAS'));
 		o.value('radius', _('RADIUS (built-in credentials form)'));
 		o.value('click-to-continue', _('Click to continue'));
 		o.default = 'uam';
 
-		o = s.option(form.Value, 'interface', _('Network interface'),
+		o = s.option(widgets.NetworkSelect, 'interface', _('Network interface'),
 			_('The dedicated network the hotspot runs on (e.g. captive or lan).'));
-		o.datatype = 'network';
+		o.multiple = false;
 		o.default = 'lan';
 
 		o = s.option(form.ListValue, 'mac_format', _('MAC address format'),
@@ -55,11 +60,23 @@ return view.extend({
 	handleSaveApply: function(ev, mode) {
 		var self = this;
 		return this.super('handleSaveApply', [ev, mode]).then(function() {
-			return fs.exec('/usr/bin/uspot', ['restart']).catch(function() {
+			return fs.exec('/sbin/uci', ['get', 'uspot.hotspot.enabled']).then(function(res) {
+				if (res.stdout && res.stdout.trim() === '0') {
+					return fs.exec('/etc/init.d/uspot', ['stop']).then(function() {
+						return fs.exec('/etc/init.d/uspot', ['disable']);
+					}).then(function() {
+						ui.addNotification(null, E('p', _('Horus Spot disabled and stopped.')), 'info');
+					});
+				} else {
+					return fs.exec('/etc/init.d/uspot', ['enable']).then(function() {
+						return fs.exec('/etc/init.d/uspot', ['restart']);
+					}).then(function() {
+						ui.addNotification(null, E('p', _('Horus Spot enabled and restarted.')), 'info');
+					});
+				}
+			}).catch(function() {
 				return fs.exec('/etc/init.d/uspot', ['restart']);
-			}).then(function() {
-				ui.addNotification(null, E('p', _('Horus Spot restarted.')), 'info');
-			}).catch(function() {});
+			});
 		});
 	}
 });
