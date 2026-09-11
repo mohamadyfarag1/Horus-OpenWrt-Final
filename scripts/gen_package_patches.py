@@ -796,6 +796,7 @@ def patch_hostapd(build_dir, pkg_dir):
         % (min(f for _, f in CHANS_2G), max(f for _, f in CHANS_2G))
         + c_freq_to_chan_2g(
             "\t",
+            "freq",
             assign="*channel = %s;",
             ok="*op_class = 81;\n\t\treturn HOSTAPD_MODE_IEEE80211G;",
             bad="return NUM_HOSTAPD_MODES;",
@@ -817,6 +818,7 @@ def patch_hostapd(build_dir, pkg_dir):
         % (min(f for _, f in CHANS_5G), max(f for _, f in CHANS_5G), len(CHANS_5G))
         + c_freq_to_chan_5g(
             "\t",
+            "freq",
             assign="*channel = %s;",
             ok="*op_class = 115;\n\t\treturn HOSTAPD_MODE_IEEE80211A;",
             bad="return NUM_HOSTAPD_MODES;")
@@ -998,6 +1000,7 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
 
 
