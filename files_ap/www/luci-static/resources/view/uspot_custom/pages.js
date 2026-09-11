@@ -8,8 +8,7 @@ return view.extend({
 
 		m = new form.Map('uspot', _('Portal Pages'), _('Upload and manage the captive portal login pages.'));
 
-		s = m.section(form.TypedSection, 'uspot', _('Login Page Management'));
-		s.anonymous = true;
+		s = m.section(form.NamedSection, 'hotspot', 'uspot', _('Login Page Management'));
 
 		o = s.option(form.FileUpload, 'login_page_html', _('Login Page HTML'));
 		o.root_directory = '/www/uspot';

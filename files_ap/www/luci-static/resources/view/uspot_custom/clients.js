@@ -14,7 +14,7 @@ return view.extend({
 		}).catch(function() { return []; });
 	},
 	render: function(clients) {
-		var E = document.createElement;
+		/* E is inherited globally from DOM */
 		
 		// If clients is an object instead of array (some ubus returns object mapped by MAC)
 		var clientArray = [];
