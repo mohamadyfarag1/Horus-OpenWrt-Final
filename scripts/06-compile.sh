@@ -131,6 +131,7 @@ if [ ${PIPESTATUS[0]} -ne 0 ]; then
     if [ -n "$FAILED" ]; then
         for pkg in $FAILED; do
             echo "##### Package Failure Details: $pkg #####"
+            make "$pkg/compile" V=s -j1 2>&1 || true
             find "logs/$pkg" -name '*.txt' 2>/dev/null | head -n 5 | while read -r L; do
                 echo "----- $L (last 80 lines) -----"
                 tail -n 80 "$L"

@@ -43,6 +43,7 @@
 | **خارطة طريق الترددات 5MHz** | جدول القنوات الـ 177 التفصيلي من 5120 MHz إلى 6000 MHz وقيم الترددات المركزية. | [Frequency Roadmap](docs/Frequency-Expansion-Roadmap-5MHz.md) |
 | **بروتوكول HAMax** | تفاصيل بروتوكول العزل وتوليد الشبكات والنسخ الاحتياطي في فيرموير Horus. | [HAMax Protocol](docs/HAMax-Protocol.md) |
 | **بنية مزامنة الـ Radius** | المعمارية التقنية لمزامنة بيانات المشتركين فائقة السرعة مع واجهة LuCI. | [Radius Sync Architecture](docs/Ultra_Fast_Radius_Sync_Architecture.md) |
+| **نظام Horus-Spot الهجين وسد الثغرات** | المعمارية الهندسية للكابتف بورتال الهجين المتوافق مع SAS وسد كافة ثغرات الـ DNS والـ IPv6. | [Horus-Spot Hybrid Architecture](docs/Horus-Spot-Hybrid-Captive-Portal-Architecture.md) |
 
 ---
 

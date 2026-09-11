@@ -381,16 +381,11 @@ def patch_ath10k(build_dir, pkg_dir):
     new_mac = new_mac.replace(
 
         "static int ath10k_update_channel_list(struct ath10k *ar)\n{",
-        "static int ath10k_update_channel_list(struct ath10k *ar, struct cfg80211_scan_request *req)\n{\n"
+        "static int ath10k_update_channel_list(struct ath10k *ar)\n{\n"
         "\tstatic unsigned int horus_scan_cycle = 0;\n"
         "\tunsigned int horus_skip_count = 0, horus_skipped = 0, horus_rotatable = 0;\n"
-        "\tint active_freqs[60] = {0};\n"
+        "\tint active_freqs[8] = {0};\n"
         "\tint num_active = 0;\n"
-    )
-    new_mac = re.sub(
-        r"\bath10k_update_channel_list\(ar\)",
-        "ath10k_update_channel_list(ar, NULL)",
-        new_mac
     )
 
     scan_r1 = (
@@ -403,17 +398,6 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\tbool dup = false;\n"
         "\t\tif (num_active > 0 && active_freqs[0] == ar->scan_channel->center_freq) dup = true;\n"
         "\t\tif (!dup) active_freqs[num_active++] = ar->scan_channel->center_freq;\n"
-        "\t}\n"
-        "\tif (req && req->n_channels) {\n"
-        "\t\tint j;\n"
-        "\t\tfor (j = 0; j < req->n_channels && num_active < 60; j++) {\n"
-        "\t\t\tbool dup = false;\n"
-        "\t\t\tint k;\n"
-        "\t\t\tfor (k = 0; k < num_active; k++) {\n"
-        "\t\t\t\tif (active_freqs[k] == req->channels[j]->center_freq) { dup = true; break; }\n"
-        "\t\t\t}\n"
-        "\t\t\tif (!dup) active_freqs[num_active++] = req->channels[j]->center_freq;\n"
-        "\t\t}\n"
         "\t}\n"
         "\tbands = hw->wiphy->bands;\n"
         "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
@@ -517,7 +501,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "\tmemset(&arg, 0, sizeof(arg));\n"
         "\n"
         "\t/* Horus: rotate background WMI scan channel list for every hardware scan request */\n"
-        "\tath10k_update_channel_list(ar, req);\n"
+        "\tath10k_update_channel_list(ar);\n"
         "\n"
         "\tath10k_wmi_start_scan_init(ar, &arg);"
     )
