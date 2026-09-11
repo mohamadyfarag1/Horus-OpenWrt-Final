@@ -204,6 +204,7 @@ grep -E "^CONFIG_PACKAGE_(kmod-)?ath10k[a-z0-9-]*=y" .config
 
 # Enable ccache for fast incremental builds
 echo "CONFIG_CCACHE=y" >> .config
+echo "CONFIG_CCACHE_DIR=\"/home/runner/.cache/ccache\"" >> .config
 
 # Remove samba (force)
 sed -i '/samba/d' .config
@@ -295,3 +296,4 @@ chmod +x files/usr/lib/hamax/* 2>/dev/null || true
 chmod +x files/lib/netifd/hostapd.sh 2>/dev/null || true
 
 echo "Done: Feeds updated, Superchannel JS injected, config applied, custom files copied."
+
