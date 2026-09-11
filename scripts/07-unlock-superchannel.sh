@@ -219,8 +219,8 @@ block = ("\n%s/* %s: 2.4 GHz (%d - %d MHz) and 5 GHz (%d - %d MHz, %d channels).
          "%s * Generated from _BLOCKS_2G and _BLOCKS_5G in scripts/gen_package_patches.py.\n"
          "%s * hostapd is generated from the same tables, and the two MUST agree. */\n"
          % (ind, MARK, lo, hi, lo_5g, hi_5g, len(CHANS_5G), ind, ind)
-         + c_freq_to_chan_2g(ind, assign="return %s;", ok="", bad="return 0;")
-         + c_freq_to_chan_5g(ind, assign="return %s;", ok="", bad="return 0;"))
+         + c_freq_to_chan_2g(ind, "freq", assign="return %s;", ok="", bad="return 0;")
+         + c_freq_to_chan_5g(ind, "freq", assign="return %s;", ok="", bad="return 0;"))
 block = "\n".join(l for l in block.split("\n") if l.strip() != "") + "\n"
 src = src[:anchor.start()] + "\n" + block + anchor.group(0).lstrip("\n") + src[anchor.end():]
 
@@ -248,7 +248,7 @@ if not rev:
     sys.exit(1)
 ri = rev.group(1)
 rblock = ("%s/* %s: reverse map, same table as above. */\n" % (ri, MARK)
-          + c_chan_to_freq_2g(ri, ret="return MHZ_TO_KHZ(%s);"))
+          + c_chan_to_freq_2g(ri, "chan", ret="return MHZ_TO_KHZ(%s);"))
 src = src[:rev.start()] + rblock + src[rev.end():]
 
 # 5 GHz reverse mapping: channels 184..200 (4920..5000 MHz), 16..183, 221..237, 201..220
@@ -260,7 +260,7 @@ r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
 if r4:
     r4i = r4.group(1)
     rblock_5g = ("%s/* %s: 5 GHz reverse map, generated from _BLOCKS_5G. */\n" % (r4i, MARK)
-                 + c_chan_to_freq_5g(r4i, ret="return MHZ_TO_KHZ(%s);")
+                 + c_chan_to_freq_5g(r4i, "chan", ret="return MHZ_TO_KHZ(%s);")
                  + ("%sreturn 0;\n%sbreak;\n" % (r4i, r4i)))
     src = src[:r4.start()] + rblock_5g + src[r4.end():]
     print("  -> 5 GHz reverse map replaced with exact Horus 5G plan")

@@ -106,7 +106,7 @@ SCAN_ANCHORS_2G = [2312, 2352, 2412, 2437, 2462, 2484,
                    2512, 2552, 2592, 2632, 2682]
 
 
-def c_freq_to_chan_2g(indent, assign, ok, bad, skip_freqs=()):
+def c_freq_to_chan_2g(indent, var, assign, ok, bad, skip_freqs=()):
     """Emit C that maps a 2.4 GHz `freq` to our channel number.
 
     Both the kernel (net/wireless/util.c, ieee80211_freq_khz_to_channel) and
@@ -125,22 +125,22 @@ def c_freq_to_chan_2g(indent, assign, ok, bad, skip_freqs=()):
             continue
         last_freq = first_freq + 5 * (count - 1)
         if count == 1:
-            out.append("%sif (freq == %d) {\n" % (i, first_freq))
+            out.append("%sif (%s == %d) {\n" % (i, var, first_freq))
             out.append("%s\t%s\n" % (i, assign % str(first_ch)))
             out.append("%s\t%s\n" % (i, ok))
             out.append("%s}\n" % i)
             continue
-        out.append("%sif (freq >= %d && freq <= %d) {\n" % (i, first_freq, last_freq))
-        out.append("%s\tif ((freq - %d) %% 5)\n" % (i, first_freq))
+        out.append("%sif (%s >= %d && %s <= %d) {\n" % (i, var, first_freq, var, last_freq))
+        out.append("%s\tif ((%s - %d) %% 5)\n" % (i, var, first_freq))
         out.append("%s\t\t%s\n" % (i, bad))
-        out.append("%s\t%s\n" % (i, assign % ("%d + (freq - %d) / 5"
-                                              % (first_ch, first_freq))))
+        out.append("%s\t%s\n" % (i, assign % ("%d + (%s - %d) / 5"
+                                              % (first_ch, var, first_freq))))
         out.append("%s\t%s\n" % (i, ok))
         out.append("%s}\n" % i)
     return "".join(out)
 
 
-def c_chan_to_freq_2g(indent, ret):
+def c_chan_to_freq_2g(indent, var, ret):
     """Emit C that maps one of our 2.4 GHz channel numbers back to a frequency.
 
     The inverse of c_freq_to_chan_2g(). cfg80211 needs both directions;
@@ -152,16 +152,16 @@ def c_chan_to_freq_2g(indent, ret):
     for first_ch, first_freq, count in _BLOCKS_2G:
         last_ch = first_ch + count - 1
         if count == 1:
-            out.append("%sif (chan == %d)\n" % (i, first_ch))
+            out.append("%sif (%s == %d)\n" % (i, var, first_ch))
             out.append("%s\t%s\n" % (i, ret % str(first_freq)))
             continue
-        out.append("%sif (chan >= %d && chan <= %d)\n" % (i, first_ch, last_ch))
-        out.append("%s\t%s\n" % (i, ret % ("%d + (chan - %d) * 5"
-                                           % (first_freq, first_ch))))
+        out.append("%sif (%s >= %d && %s <= %d)\n" % (i, var, first_ch, var, last_ch))
+        out.append("%s\t%s\n" % (i, ret % ("%d + (%s - %d) * 5"
+                                           % (first_freq, var, first_ch))))
     return "".join(out)
 
 
-def c_freq_to_chan_5g(indent, assign, ok, bad):
+def c_freq_to_chan_5g(indent, var, assign, ok, bad):
     """Emit C that maps a 5 GHz `freq` to our channel number.
 
     Generated from _BLOCKS_5G so that the kernel (net/wireless/util.c),
@@ -171,26 +171,26 @@ def c_freq_to_chan_5g(indent, assign, ok, bad):
     out = []
     for first_ch, first_freq, count in _BLOCKS_5G:
         last_freq = first_freq + 5 * (count - 1)
-        out.append("%sif (freq >= %d && freq <= %d) {\n" % (i, first_freq, last_freq))
-        out.append("%s\tif ((freq - %d) %% 5)\n" % (i, first_freq))
+        out.append("%sif (%s >= %d && %s <= %d) {\n" % (i, var, first_freq, var, last_freq))
+        out.append("%s\tif ((%s - %d) %% 5)\n" % (i, var, first_freq))
         out.append("%s\t\t%s\n" % (i, bad))
-        out.append("%s\t%s\n" % (i, assign % ("%d + (freq - %d) / 5"
-                                              % (first_ch, first_freq))))
+        out.append("%s\t%s\n" % (i, assign % ("%d + (%s - %d) / 5"
+                                              % (first_ch, var, first_freq))))
         if ok:
             out.append("%s\t%s\n" % (i, ok))
         out.append("%s}\n" % i)
     return "".join(out)
 
 
-def c_chan_to_freq_5g(indent, ret):
+def c_chan_to_freq_5g(indent, var, ret):
     """Emit C that maps one of our 5 GHz channel numbers back to a frequency."""
     i = indent
     out = []
     for first_ch, first_freq, count in _BLOCKS_5G:
         last_ch = first_ch + count - 1
-        out.append("%sif (chan >= %d && chan <= %d)\n" % (i, first_ch, last_ch))
-        out.append("%s\t%s\n" % (i, ret % ("%d + (chan - %d) * 5"
-                                           % (first_freq, first_ch))))
+        out.append("%sif (%s >= %d && %s <= %d)\n" % (i, var, first_ch, var, last_ch))
+        out.append("%s\t%s\n" % (i, ret % ("%d + (%s - %d) * 5"
+                                           % (first_freq, var, first_ch))))
     return "".join(out)
 
 
