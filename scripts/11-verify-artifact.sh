@@ -556,11 +556,10 @@ fi
 echo "OK: rootfs /lib/netifd/horus-5g-bounds is present ($ROOTFS_HORUS_BOUNDS)."
 
 # Assert the bounds file agrees with the channel plan the driver was built with.
-PLAN_MIN=$(grep -oE '^CHANS = list\(range\(([0-9]+)' ../scripts/gen_package_patches.py 2>/dev/null | grep -oE '[0-9]+$')
-PLAN_MAX=$(grep -oE '^CHANS = list\(range\([0-9]+, ([0-9]+)' ../scripts/gen_package_patches.py 2>/dev/null | grep -oE '[0-9]+$')
-[ -n "$PLAN_MAX" ] && PLAN_MAX=$((PLAN_MAX - 1))
-BOUNDS_MIN=$(grep -E '^HORUS_5G_MIN_CHAN=' "$ROOTFS_HORUS_BOUNDS" | cut -d= -f2 | tr -dc '0-9')
-BOUNDS_MAX=$(grep -E '^HORUS_5G_MAX_CHAN=' "$ROOTFS_HORUS_BOUNDS" | cut -d= -f2 | tr -dc '0-9')
+PLAN_MIN=$(python3 -c 'import sys; sys.path.insert(0, "../scripts"); import gen_package_patches as g; print(g.MIN_5G)' 2>/dev/null || true)
+PLAN_MAX=$(python3 -c 'import sys; sys.path.insert(0, "../scripts"); import gen_package_patches as g; print(g.MAX_5G)' 2>/dev/null || true)
+BOUNDS_MIN=$(grep -E '^HORUS_5G_MIN_CHAN=' "$ROOTFS_HORUS_BOUNDS" 2>/dev/null | cut -d= -f2 | tr -dc '0-9' || true)
+BOUNDS_MAX=$(grep -E '^HORUS_5G_MAX_CHAN=' "$ROOTFS_HORUS_BOUNDS" 2>/dev/null | cut -d= -f2 | tr -dc '0-9' || true)
 if [ -n "$PLAN_MIN" ] && [ -n "$PLAN_MAX" ]; then
     if [ "$PLAN_MIN" != "$BOUNDS_MIN" ] || [ "$PLAN_MAX" != "$BOUNDS_MAX" ]; then
         fail_assertion "horus-5g-bounds does not match the compiled channel plan" \
@@ -577,13 +576,13 @@ fi
 # Assert every horus_* function called from the stock netifd scripts is defined.
 # This is the check that catches a rename or a half-finished extraction: a call
 # to a function that does not exist is a runtime "not found", never a build error.
-ROOTFS_HOSTAPD=$(find build_dir -type f -path '*/root-*/lib/netifd/hostapd.sh' 2>/dev/null | head -n1)
-ROOTFS_MAC80211=$(find build_dir -type f -path '*/root-*/lib/netifd/wireless/mac80211.sh' 2>/dev/null | head -n1)
+ROOTFS_HOSTAPD=$(find build_dir -type f -path '*/root-*/lib/netifd/hostapd.sh' 2>/dev/null | head -n1 || true)
+ROOTFS_MAC80211=$(find build_dir -type f -path '*/root-*/lib/netifd/wireless/mac80211.sh' 2>/dev/null | head -n1 || true)
 if [ -n "$ROOTFS_HOSTAPD" ] && [ -n "$ROOTFS_MAC80211" ]; then
-    HORUS_DEFINED=$(grep -oE '^horus_[a-z0-9_]+\(\)' "$ROOTFS_HORUS_LIB" | tr -d '()' | sort -u)
+    HORUS_DEFINED=$(grep -oE '^horus_[a-z0-9_]+\(\)' "$ROOTFS_HORUS_LIB" 2>/dev/null | tr -d '()' | sort -u || true)
     HORUS_CALLED=$(grep -ohE '(^|[^a-zA-Z0-9_])horus_[a-z0-9_]+[[:space:]]' \
-        "$ROOTFS_HOSTAPD" "$ROOTFS_MAC80211" \
-        | grep -oE 'horus_[a-z0-9_]+' | sort -u)
+        "$ROOTFS_HOSTAPD" "$ROOTFS_MAC80211" 2>/dev/null \
+        | grep -oE 'horus_[a-z0-9_]+' | sort -u || true)
     HORUS_MISSING=
     for fn in $HORUS_CALLED; do
         # Skip local variables that happen to share the prefix.
