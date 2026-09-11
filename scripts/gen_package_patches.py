@@ -43,11 +43,7 @@ import re
 import sys
 
 _BLOCKS_5G = [
-    # (first_channel, first_freq, count)  -- sorted by frequency
-    (184, 4920, 17),   # 4920 - 5000 -> ch 184..200
-    (16,  5080, 168),  # 5080 - 5915 -> ch 16..183
-    (221, 5920, 17),   # 5920 - 6000 -> ch 221..237
-    (201, 6005, 20),   # 6005 - 6100 -> ch 201..220
+    (22, 5110, 181),   # 5110 - 6010 -> ch 22..202
 ]
 
 
@@ -692,7 +688,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "\n"
         "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
         "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..23 and 201..255.\n"
-        "- 5 GHz: %d channels (5120-6000 MHz, channels 24..200, 5 MHz steps).\n"
+        "- 5 GHz: %d channels (5110-6010 MHz, channels 22..202, 5 MHz steps).\n"
         "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
         "\n"
         "ath10k_wmi_event_mgmt_rx() derives the band from the channel number, so\n"
@@ -811,7 +807,7 @@ def patch_hostapd(build_dir, pkg_dir):
         fail("anchor 'if (freq >= 2412 && freq <= 2472) {' not found in %s" % common)
     new_common = old_common.replace(target_2g, inject_2g, 1)
 
-    # 2. 5 GHz SuperChannels (4920 - 6100 MHz, 222 channels)
+    # 2. 5 GHz SuperChannels (5110 - 6010 MHz, 181 channels)
     target_5g = "\tif (freq >= 5000 && freq < 5900) {"
     inject_5g = (
         "\t/* Horus SuperChannel 5 GHz plan (%d - %d MHz, %d channels).\n"
@@ -1002,3 +998,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+

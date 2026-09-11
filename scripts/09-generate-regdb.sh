@@ -61,7 +61,7 @@ with open('db.txt', 'w') as f:
         #   Highest channel 6100 -> needs >= 6140 for VHT80 bonding
         # 2.4 GHz plan covers 2312..2732 MHz
         f.write('\t(2180 - 2750 @ 40), (33)\n')
-        f.write('\t(4800 - 6150 @ 160), (33)\n')
+        f.write('\t(5110 - 6010 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')
 "
@@ -72,3 +72,5 @@ make || echo "WARNING: regulatory.db build failed"
 mkdir -p ../openwrt/files/lib/firmware
 cp regulatory.db ../openwrt/files/lib/firmware/regulatory.db
 echo "Injected custom regulatory.db into firmware files!"
+
+
