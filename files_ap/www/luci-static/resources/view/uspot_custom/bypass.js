@@ -4,24 +4,29 @@
 'require fs';
 'require ui';
 
-// Horus Spot — MAC bypass (open internet WITHOUT RADIUS), MikroTik IP-binding=bypassed
+// Horus Spot — IP Bindings (MikroTik style)
 return view.extend({
 	render: function() {
 		var m, s, o;
 
-		m = new form.Map('uspot', _('Horus Spot — MAC Bypass'),
-			_('Devices listed here get internet access directly, without any RADIUS/SAS login (like a MikroTik "bypassed" IP-binding). Add a MAC and a comment.'));
+		m = new form.Map('uspot', _('Horus Spot — IP Bindings (MAC Bypass)'),
+			_('Local rules for MAC addresses. "Bypassed" gives unlimited internet without SAS. "Blocked" drops the MAC completely. For speed-limited MACs, add them in SAS Panel instead (MAC Auto-Login is enabled).'));
 
-		s = m.section(form.GridSection, 'whitelist', _('Bypassed devices'));
+		s = m.section(form.TableSection, 'whitelist', _('IP Bindings List'));
 		s.addremove = true;
 		s.anonymous = true;
-		s.sortable = false;
+		s.sortable = true;
 		s.nodescriptions = true;
 
-		o = s.option(form.Value, 'mac', _('MAC address'));
+		o = s.option(form.Value, 'mac', _('MAC Address'));
 		o.datatype = 'macaddr';
 		o.rmempty = false;
 		o.placeholder = 'AA:BB:CC:DD:EE:FF';
+
+		o = s.option(form.ListValue, 'type', _('Type'));
+		o.value('bypassed', _('Bypassed (Unlimited)'));
+		o.value('blocked', _('Blocked (Drop)'));
+		o.default = 'bypassed';
 
 		o = s.option(form.Value, 'comment', _('Comment'));
 		o.placeholder = _('e.g. admin laptop, printer, CCTV');
@@ -36,7 +41,7 @@ return view.extend({
 	handleSaveApply: function(ev, mode) {
 		return this.super('handleSaveApply', [ev, mode]).then(function() {
 			return fs.exec('/usr/bin/uspot-maclist.sh', ['apply']).then(function() {
-				ui.addNotification(null, E('p', _('Bypass list applied.')), 'info');
+				ui.addNotification(null, E('p', _('IP Bindings applied successfully.')), 'info');
 			}).catch(function() {
 				ui.addNotification(null, E('p', _('Saved. Could not apply live — will apply on next hotspot restart.')), 'warning');
 			});
