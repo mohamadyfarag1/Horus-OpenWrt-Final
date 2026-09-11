@@ -189,8 +189,9 @@ import re
 import sys
 
 sys.path.insert(0, os.environ["HORUS_SCRIPT_DIR"])
-from gen_package_patches import (CHANS_2G, MAX_5G, c_chan_to_freq_2g,
-                                 c_freq_to_chan_2g)
+from gen_package_patches import (CHANS_2G, CHANS_5G, MAX_5G,
+                                 c_chan_to_freq_2g, c_freq_to_chan_2g,
+                                 c_chan_to_freq_5g, c_freq_to_chan_5g)
 
 path = sys.argv[1]
 with open(path, encoding="utf-8", errors="ignore") as fh:
@@ -204,6 +205,8 @@ if MARK in src:
 max_5g_freq = 5000 + 5 * MAX_5G
 lo = min(f for _, f in CHANS_2G)
 hi = max(f for _, f in CHANS_2G)
+lo_5g = min(f for _, f in CHANS_5G)
+hi_5g = max(f for _, f in CHANS_5G)
 
 # --- forward: frequency -> channel number ---------------------------------
 anchor = re.search(r"\n(\t*)if \(freq == 2484\)\n\t+return 14;\n", src)
@@ -212,11 +215,12 @@ if not anchor:
           " anchor not found - refusing to ship an unmapped util.c")
     sys.exit(1)
 ind = anchor.group(1)
-block = ("\n%s/* %s: 2.4 GHz %d - %d MHz. Generated from _BLOCKS_2G in\n"
-         "%s * scripts/gen_package_patches.py - hostapd is generated from the\n"
-         "%s * same table, and the two MUST agree. */\n"
-         % (ind, MARK, lo, hi, ind, ind)
-         + c_freq_to_chan_2g(ind, assign="return %s;", ok="", bad="return 0;"))
+block = ("\n%s/* %s: 2.4 GHz (%d - %d MHz) and 5 GHz (%d - %d MHz, %d channels).\n"
+         "%s * Generated from _BLOCKS_2G and _BLOCKS_5G in scripts/gen_package_patches.py.\n"
+         "%s * hostapd is generated from the same tables, and the two MUST agree. */\n"
+         % (ind, MARK, lo, hi, lo_5g, hi_5g, len(CHANS_5G), ind, ind)
+         + c_freq_to_chan_2g(ind, assign="return %s;", ok="", bad="return 0;")
+         + c_freq_to_chan_5g(ind, assign="return %s;", ok="", bad="return 0;"))
 block = "\n".join(l for l in block.split("\n") if l.strip() != "") + "\n"
 src = src[:anchor.start()] + "\n" + block + anchor.group(0).lstrip("\n") + src[anchor.end():]
 
@@ -247,7 +251,7 @@ rblock = ("%s/* %s: reverse map, same table as above. */\n" % (ri, MARK)
           + c_chan_to_freq_2g(ri, ret="return MHZ_TO_KHZ(%s);"))
 src = src[:rev.start()] + rblock + src[rev.end():]
 
-# 5 GHz channels 182..196 are 5910..5980 MHz in our plan, not 4.9 GHz.
+# 5 GHz reverse mapping: channels 184..200 (4920..5000 MHz), 16..183, 221..237, 201..220
 r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
                r"\t+return MHZ_TO_KHZ\(4000 \+ chan \* 5\);\n"
                r"\t*else\n"
@@ -255,18 +259,18 @@ r4 = re.search(r"(\t*)if \(chan >= 182 && chan <= 196\)\n"
                r"\t*break;\n", src)
 if r4:
     r4i = r4.group(1)
-    src = src[:r4.start()] + (
-        "%s/* %s: 182..196 are 5910..5980 MHz here, not the 4.9 GHz band. */\n"
-        "%sreturn MHZ_TO_KHZ(5000 + chan * 5);\n" % (r4i, MARK, r4i)
-    ) + src[r4.end():]
-    print("  -> 5 GHz 182..196 no longer aliased to the 4.9 GHz band")
+    rblock_5g = ("%s/* %s: 5 GHz reverse map, generated from _BLOCKS_5G. */\n" % (r4i, MARK)
+                 + c_chan_to_freq_5g(r4i, ret="return MHZ_TO_KHZ(%s);")
+                 + ("%sreturn 0;\n%sbreak;\n" % (r4i, r4i)))
+    src = src[:r4.start()] + rblock_5g + src[r4.end():]
+    print("  -> 5 GHz reverse map replaced with exact Horus 5G plan")
 else:
     print("  -> 4.9 GHz alias branch not present, nothing to undo")
 
 with open(path, "w", encoding="utf-8", newline="\n") as fh:
     fh.write(src)
-print("  -> freq<->channel mapping now covers %d - %d MHz and 5120 - %d MHz"
-      % (lo, hi, max_5g_freq))
+print("  -> freq<->channel mapping now covers %d - %d MHz and %d - %d MHz"
+      % (lo, hi, lo_5g, hi_5g))
 PYEOF
   echo "  -> net/wireless/util.c patched OK"
 done

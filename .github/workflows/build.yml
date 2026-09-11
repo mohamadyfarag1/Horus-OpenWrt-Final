@@ -52,7 +52,7 @@ jobs:
       - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
+          path: ~/.cache/ccache
           key: openwrt-ccache-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}
           restore-keys: |
             openwrt-ccache-${{ runner.os }}-${{ github.ref }}-

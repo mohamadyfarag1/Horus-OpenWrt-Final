@@ -42,17 +42,22 @@ import os
 import re
 import sys
 
+_BLOCKS_5G = [
+    # (first_channel, first_freq, count)  -- sorted by frequency
+    (184, 4920, 17),   # 4920 - 5000 -> ch 184..200
+    (16,  5080, 168),  # 5080 - 5915 -> ch 16..183
+    (221, 5920, 17),   # 5920 - 6000 -> ch 221..237
+    (201, 6005, 20),   # 6005 - 6100 -> ch 201..220
+]
+
+
 def build_5g_plan():
     plan = []
-    # 5080 - 5915 (168) -> 16..183
-    for c in range(16, 184): plan.append((c, 5000 + c * 5))
-    # 4920 - 5000 (17) -> 184..200
-    for c in range(184, 201): plan.append((c, 4000 + c * 5))
-    # 6005 - 6100 (20) -> 201..220
-    for c in range(201, 221): plan.append((c, 5000 + c * 5))
-    # 5920 - 6000 (17) -> 221..237
-    for c in range(221, 238): plan.append((c, 5920 + (c - 221) * 5))
-    return plan
+    for first_ch, first_freq, count in _BLOCKS_5G:
+        for i in range(count):
+            plan.append((first_ch + i, first_freq + 5 * i))
+    return sorted(plan, key=lambda cf: cf[1])
+
 
 CHANS_5G = build_5g_plan()
 CHANS = [c for c, f in CHANS_5G]
@@ -150,6 +155,39 @@ def c_chan_to_freq_2g(indent, ret):
             out.append("%sif (chan == %d)\n" % (i, first_ch))
             out.append("%s\t%s\n" % (i, ret % str(first_freq)))
             continue
+        out.append("%sif (chan >= %d && chan <= %d)\n" % (i, first_ch, last_ch))
+        out.append("%s\t%s\n" % (i, ret % ("%d + (chan - %d) * 5"
+                                           % (first_freq, first_ch))))
+    return "".join(out)
+
+
+def c_freq_to_chan_5g(indent, assign, ok, bad):
+    """Emit C that maps a 5 GHz `freq` to our channel number.
+
+    Generated from _BLOCKS_5G so that the kernel (net/wireless/util.c),
+    hostapd (ieee80211_freq_to_channel_ext), and ath10k-ct stay in 100% sync.
+    """
+    i = indent
+    out = []
+    for first_ch, first_freq, count in _BLOCKS_5G:
+        last_freq = first_freq + 5 * (count - 1)
+        out.append("%sif (freq >= %d && freq <= %d) {\n" % (i, first_freq, last_freq))
+        out.append("%s\tif ((freq - %d) %% 5)\n" % (i, first_freq))
+        out.append("%s\t\t%s\n" % (i, bad))
+        out.append("%s\t%s\n" % (i, assign % ("%d + (freq - %d) / 5"
+                                              % (first_ch, first_freq))))
+        if ok:
+            out.append("%s\t%s\n" % (i, ok))
+        out.append("%s}\n" % i)
+    return "".join(out)
+
+
+def c_chan_to_freq_5g(indent, ret):
+    """Emit C that maps one of our 5 GHz channel numbers back to a frequency."""
+    i = indent
+    out = []
+    for first_ch, first_freq, count in _BLOCKS_5G:
+        last_ch = first_ch + count - 1
         out.append("%sif (chan >= %d && chan <= %d)\n" % (i, first_ch, last_ch))
         out.append("%s\t%s\n" % (i, ret % ("%d + (chan - %d) * 5"
                                            % (first_freq, first_ch))))
@@ -773,15 +811,25 @@ def patch_hostapd(build_dir, pkg_dir):
         fail("anchor 'if (freq >= 2412 && freq <= 2472) {' not found in %s" % common)
     new_common = old_common.replace(target_2g, inject_2g, 1)
 
-    # 2. 5 GHz SuperChannels (expand ceiling from 5900 MHz to 6000 MHz)
+    # 2. 5 GHz SuperChannels (4920 - 6100 MHz, 222 channels)
     target_5g = "\tif (freq >= 5000 && freq < 5900) {"
-    replace_5g = (
-        "\t/* Horus: 5 GHz SuperChannels expanded to 6000 MHz (channels 24..200) */\n"
-        "\tif (freq >= 5000 && freq <= 6000 && freq != 5935) {"
+    inject_5g = (
+        "\t/* Horus SuperChannel 5 GHz plan (%d - %d MHz, %d channels).\n"
+        "\t * Generated from _BLOCKS_5G in scripts/gen_package_patches.py.\n"
+        "\t * Must stay identical to ieee80211_freq_khz_to_channel() in the\n"
+        "\t * kernel and ath10k-ct driver table. */\n"
+        % (min(f for _, f in CHANS_5G), max(f for _, f in CHANS_5G), len(CHANS_5G))
+        + c_freq_to_chan_5g(
+            "\t",
+            assign="*channel = %s;",
+            ok="*op_class = 115;\n\t\treturn HOSTAPD_MODE_IEEE80211A;",
+            bad="return NUM_HOSTAPD_MODES;")
+        + "\n"
+        + target_5g
     )
     if target_5g not in new_common:
         fail("anchor 'if (freq >= 5000 && freq < 5900) {' not found in %s" % common)
-    new_common = new_common.replace(target_5g, replace_5g, 1)
+    new_common = new_common.replace(target_5g, inject_5g, 1)
 
     # --- src/common/hw_features_common.c (Annex J HT40 pair whitelist) ---
     #

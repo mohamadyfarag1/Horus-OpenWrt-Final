@@ -111,8 +111,19 @@ fi
 echo "======================================="
 echo "Step 3: Starting Full Compilation..."
 echo "======================================="
+# Enforce ccache environment variables and unified XDG path
+export CCACHE_DIR="/home/runner/.cache/ccache"
+export CCACHE_COMPRESS=1
+export CCACHE_COMPRESSLEVEL=6
+export CCACHE_MAXSIZE="5G"
+echo "CCACHE initial stats:"
+ccache -s 2>/dev/null || true
+
 # Always save the full compile log to build.log for debugging
 make -j$(nproc) 2>&1 | tee build.log
+
+echo "CCACHE post-build stats:"
+ccache -s 2>/dev/null || true
 
 # If the build failed, print the REAL error before exiting.
 #
