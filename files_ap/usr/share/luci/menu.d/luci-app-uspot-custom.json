@@ -1,0 +1,60 @@
+{
+	"admin/services/uspot": {
+		"title": "Horus Spot",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/settings"
+		},
+		"depends": {
+			"acl": [ "luci-app-uspot-custom" ]
+		}
+	},
+	"admin/services/uspot/settings": {
+		"title": "General Settings",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/settings"
+		},
+		"order": 1
+	},
+	"admin/services/uspot/nas": {
+		"title": "NAS (RADIUS)",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/nas"
+		},
+		"order": 2
+	},
+	"admin/services/uspot/pages": {
+		"title": "Portal Pages",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/pages"
+		},
+		"order": 3
+	},
+	"admin/services/uspot/clients": {
+		"title": "Connected Clients",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/clients"
+		},
+		"order": 4
+	},
+	"admin/services/uspot/bypass": {
+		"title": "MAC Bypass",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/bypass"
+		},
+		"order": 5
+	},
+	"admin/services/uspot/advanced": {
+		"title": "Advanced Config",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/advanced"
+		},
+		"order": 6
+	}
+}

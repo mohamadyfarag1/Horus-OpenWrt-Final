@@ -1,0 +1,6 @@
+#!/bin/sh
+# Re-apply the Horus-Spot MAC bypass list when an interface comes up,
+# so bypassed devices keep working across reconnects/reboots.
+[ "$ACTION" = "ifup" ] || exit 0
+[ -x /usr/bin/uspot-maclist.sh ] && /usr/bin/uspot-maclist.sh apply >/dev/null 2>&1 &
+exit 0

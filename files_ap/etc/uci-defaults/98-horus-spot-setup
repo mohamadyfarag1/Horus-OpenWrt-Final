@@ -1,0 +1,42 @@
+#!/bin/sh
+# ==============================================================================
+# Horus-Spot First-Boot Initialization (SAFE prep only)
+# ------------------------------------------------------------------------------
+# This script only prepares directories/permissions and reloads the firewall.
+# It deliberately does NOT touch /etc/config/uhttpd, /etc/config/network or
+# /etc/config/firewall, because binding the captive portal to port 80 can
+# conflict with the LuCI web UI and lock you out. The uhttpd / firewall / captive
+# interface wiring is documented in docs/Horus-Spot-Wiring.md and must be applied
+# deliberately (a dedicated guest interface is strongly recommended).
+# ==============================================================================
+
+mkdir -p /www/uspot
+mkdir -p /etc/uspot
+mkdir -p /etc/nftables.d
+mkdir -p /usr/share/uspot
+
+# permissions for the MikroTik-emulation engine + handler and portal assets
+chmod 644 /usr/share/uspot/mikrotik.uc 2>/dev/null || true
+chmod 644 /usr/share/uspot/handler-mikrotik.uc 2>/dev/null || true
+chmod 644 /etc/nftables.d/10-horus-spot-security.nft 2>/dev/null || true
+[ -f /usr/bin/uspot-clients.sh ] && chmod 755 /usr/bin/uspot-clients.sh 2>/dev/null || true
+[ -f /usr/bin/uspot-maclist.sh ] && chmod 755 /usr/bin/uspot-maclist.sh 2>/dev/null || true
+[ -f /etc/hotplug.d/iface/99-horus-spot-maclist ] && chmod 755 /etc/hotplug.d/iface/99-horus-spot-maclist 2>/dev/null || true
+
+# make radcli load the MikroTik VSA dictionary so SAS rate/quota attributes
+# (Mikrotik-Rate-Limit / Mikrotik-Total-Limit) are returned by name to uspot.
+RADDICT=/etc/radcli/dictionary
+if [ -f "$RADDICT" ]; then
+	for d in dictionary.WISPr dictionary.chillispot dictionary.mikrotik; do
+		[ -f "/etc/radcli/$d" ] || continue
+		grep -q "$d" "$RADDICT" 2>/dev/null || echo "\$INCLUDE /etc/radcli/$d" >> "$RADDICT"
+	done
+fi
+
+# reload firewall to apply anti-bypass rules (if present)
+/etc/init.d/firewall reload >/dev/null 2>&1 || true
+
+# apply local MAC bypass list (safe no-op if uspotfilter isn't running yet)
+[ -x /usr/bin/uspot-maclist.sh ] && /usr/bin/uspot-maclist.sh apply >/dev/null 2>&1 || true
+
+exit 0

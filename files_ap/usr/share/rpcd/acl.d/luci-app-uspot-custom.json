@@ -1,0 +1,25 @@
+{
+	"luci-app-uspot-custom": {
+		"description": "Grant access to Horus Spot hotspot app",
+		"read": {
+			"uci": [ "uspot" ],
+			"file": [ "/etc/uspot/*", "/tmp/uspot/*", "/www/uspot/*", "/usr/bin/uspot-clients.sh", "/usr/bin/uspot-maclist.sh", "/etc/config/uspot" ],
+			"ubus": {
+				"uspot": [ "clients", "status", "client_get", "state_get" ],
+				"uspotfilter": [ "client_list", "client_get" ],
+				"file": [ "read", "list", "stat", "exec" ]
+			},
+			"cgi-io": [ "exec" ]
+		},
+		"write": {
+			"uci": [ "uspot" ],
+			"file": [ "/etc/uspot/*", "/www/uspot/*", "/etc/config/uspot", "/usr/bin/uspot-maclist.sh", "/usr/bin/uspot" ],
+			"ubus": {
+				"uspot": [ "client_enable", "client_remove" ],
+				"uspotfilter": [ "client_set", "client_remove" ],
+				"file": [ "write", "remove", "exec" ]
+			},
+			"cgi-io": [ "exec" ]
+		}
+	}
+}

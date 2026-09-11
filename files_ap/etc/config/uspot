@@ -1,0 +1,62 @@
+# ==============================================================================
+# Horus-Spot / uspot configuration — SAS4 (MikroTik-emulation) compatible
+# ------------------------------------------------------------------------------
+# Schema follows the REAL uspot package options (f00b4r0/uspot). Values marked
+# CHANGE-ME must be set to your site's SAS server / router details, either here
+# or from the LuCI "Horus Spot" pages.
+#
+# auth_mode 'uam' is used because it provides, in one flow:
+#   1) MAC-authentication first  (auto-login for registered devices)
+#   2) a captive portal redirect (to the local MikroTik-style login page)
+#   3) CHAP credentials login     (subscribers + voucher cards, via SAS RADIUS)
+# RADIUS auth/acct + DAS(CoA) below make SAS treat this router exactly like a
+# MikroTik NAS (register it in SAS with type = Mikrotik, same shared secret).
+# ==============================================================================
+
+config uspot 'hotspot'
+	option auth_mode        'uam'
+	option interface        'lan'            # CHANGE-ME: dedicate a guest network if possible
+	option setname          'uspot'          # firewall ipset for authenticated clients
+	option idle_timeout     '600'            # kicked after 600s idle (overridden by RADIUS)
+	option session_timeout  '0'              # 0 = take Session-Timeout from RADIUS
+	option counters         '1'              # REQUIRED for accounting + quota (Total-Limit)
+	option debug            '0'
+
+	# ---- MAC address formatting (match what SAS expects: MikroTik uppercase) ----
+	option mac_format       'AA:BB:CC:DD:EE:FF'
+
+	# ---- RADIUS authentication (SAS FreeRADIUS) ----
+	option auth_server      '192.168.100.254'  # CHANGE-ME: SAS server IP
+	option auth_port        '1812'
+	option auth_secret      'HorusSAS_ChangeMe' # CHANGE-ME: must equal secret in SAS sas_nas record
+
+	# ---- RADIUS accounting (live counters in SAS dashboard) ----
+	option acct_server      '192.168.100.254'  # CHANGE-ME: usually same as auth_server
+	option acct_port        '1813'
+	option acct_secret      'HorusSAS_ChangeMe' # CHANGE-ME: same shared secret
+	option acct_interval    '60'               # interim updates every 60s (SAS keeps counters live)
+
+	# ---- NAS identity (must match the NAS record registered in SAS) ----
+	option nasid            'HorusNAS'          # RADIUS NAS-Identifier
+	option nasmac           '00:00:00:00:00:00' # CHANGE-ME: this AP's MAC -> Called-Station-Id
+
+	# ---- CoA / Disconnect (RFC 5176) — lets SAS kick a client when quota ends ----
+	option das_secret       'HorusSAS_ChangeMe' # CHANGE-ME: same shared secret; presence enables DAS
+	option das_port         '3799'
+
+	# ---- Captive portal / UAM web login (local MikroTik-style pages) ----
+	option uam_port         '3990'
+	option uam_server       'http://192.168.100.1/uspot/login.html'  # CHANGE-ME: this router's captive URL
+	option challenge        'HorusSpotCHAP'     # CHAP shared challenge seed
+	option mac_auth         '1'                 # try MAC auto-login before showing the portal
+	# option mac_passwd     ''                  # leave unset => MAC-auth password == the MAC (SAS rule)
+
+# ==============================================================================
+# Local MAC bypass (open internet WITHOUT RADIUS) — MikroTik IP-binding=bypassed.
+# Managed from the LuCI "Horus Spot > Clients" page (M6). Example format:
+# ------------------------------------------------------------------------------
+# config whitelist
+#	option mac      'AA:BB:CC:DD:EE:FF'
+#	option comment  'Network admin - office laptop'
+#	option enabled  '1'
+# ==============================================================================

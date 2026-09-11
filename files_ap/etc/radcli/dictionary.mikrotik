@@ -1,0 +1,37 @@
+#
+# MikroTik VSA dictionary (Vendor 14988) for radcli / uspot (Horus-Spot).
+# Lets uspot's radius-client return MikroTik reply attributes by name so the
+# hotspot can apply SAS-provided rate limits and quotas. Loaded via an
+# $INCLUDE appended to /etc/radcli/dictionary by 98-horus-spot-setup.
+#
+VENDOR		Mikrotik	14988	Mikrotik
+
+ATTRIBUTE	Mikrotik-Recv-Limit			1	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Xmit-Limit			2	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Group				3	string	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-Forward		4	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-Skip-Dot1x		5	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-Enc-Algo		6	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-Enc-Key		7	string	Mikrotik
+ATTRIBUTE	Mikrotik-Rate-Limit			8	string	Mikrotik
+ATTRIBUTE	Mikrotik-Realm				9	string	Mikrotik
+ATTRIBUTE	Mikrotik-Host-IP			10	ipaddr	Mikrotik
+ATTRIBUTE	Mikrotik-Mark-Id			11	string	Mikrotik
+ATTRIBUTE	Mikrotik-Advertise-URL			12	string	Mikrotik
+ATTRIBUTE	Mikrotik-Advertise-Interval		13	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Recv-Limit-Gigawords		14	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Xmit-Limit-Gigawords		15	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-PSK			16	string	Mikrotik
+ATTRIBUTE	Mikrotik-Total-Limit			17	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Total-Limit-Gigawords		18	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Address-List			19	string	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-MPKey			20	string	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-Comment		21	string	Mikrotik
+ATTRIBUTE	Mikrotik-Delegated-IPv6-Pool		22	string	Mikrotik
+ATTRIBUTE	Mikrotik-DHCP-Option-Set		23	string	Mikrotik
+ATTRIBUTE	Mikrotik-DHCP-Option-Param-STR1		24	string	Mikrotik
+ATTRIBUTE	Mikrotik-DHCP-Option-Param-STR2		25	string	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-VLANID		26	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-VLANIDtype		27	integer	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-Minsignal		28	string	Mikrotik
+ATTRIBUTE	Mikrotik-Wireless-Maxsignal		29	string	Mikrotik

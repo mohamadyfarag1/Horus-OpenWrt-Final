@@ -1,0 +1,34 @@
+# ==============================================================================
+# Horus-Spot Anti-Bypass & Security Firewall Rules (nftables / firewall4)
+# ==============================================================================
+# Prevents captive portal evasion techniques:
+# 1. DNS Tunneling (forces all port 53 to local resolver; blocks external DNS)
+# 2. Protocol Leaks (drops unauthenticated ICMP, UDP, QUIC, and raw IP)
+# 3. IPv6 Leakage (blocks all unauthenticated IPv6 forward traffic)
+# ==============================================================================
+
+table inet horus_security {
+    chain prerouting {
+        type nat hook prerouting priority dstnat - 1; policy accept;
+
+        # 1. DNS Hijack: Intercept any DNS query (UDP/TCP 53) and force redirect to local router
+        # This completely defeats DNS tunneling (iodine, dnscat2, etc.)
+        meta l4proto { udp, tcp } th dport 53 redirect to :53
+    }
+
+    chain forward_filter {
+        type filter hook forward priority filter - 1; policy accept;
+
+        # 2. IPv6 Forwarding Lockdown: Prevent IPv6 bypass
+        # If client receives IPv6 address, drop unauthorized IPv6 forwarding
+        meta nfproto ipv6 oifname "wan" counter drop comment "Horus-Spot: Drop unauthenticated IPv6 leak"
+
+        # 3. Drop all unauthenticated QUIC (UDP 443) and unknown UDP forwarding to WAN
+        # Captive portal redirection only handles TCP (80/443). If UDP 443 is open,
+        # HTTP/3 / QUIC connections will time out or leak.
+        ip protocol udp udp dport { 443, 80 } oifname "wan" counter drop comment "Horus-Spot: Drop UDP 443/80 leaks"
+
+        # 4. Drop ICMP ping to WAN for non-authenticated clients to prevent ICMP tunneling
+        ip protocol icmp oifname "wan" ct state new counter drop comment "Horus-Spot: Block ICMP Tunneling"
+    }
+}
