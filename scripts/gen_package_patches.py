@@ -623,10 +623,10 @@ def patch_ath10k(build_dir, pkg_dir):
     # sizeof(struct wmi_start_scan_arg) small (~676 bytes), preventing stack frame
     # overflow in ath10k_hw_scan and ath10k_remain_on_channel (-Werror=frame-larger-than=1024).
     new_wmi, c = re.subn(r"(u16\s+channels\[)\d+(\];)",
-                         r"\g<1>82\g<2>", old_wmi)
+                         r"\g<1>350\g<2>", old_wmi)
     if not c:
         fail("u16 channels[64] not found in %s" % wmi)
-    print("  wmi.h               : channels[64] -> channels[82] (Golden Ref 0x52, keeps stack frame < 1024)")
+    print("  wmi.h               : channels[64] -> channels[350] (Golden Ref 0x52, keeps stack frame < 1024)")
 
     # --- wmi.c: which band a received management frame belongs to -----
     # ath10k_wmi_event_mgmt_rx() decides the band from the channel NUMBER:
