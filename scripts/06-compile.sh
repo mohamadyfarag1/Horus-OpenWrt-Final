@@ -132,6 +132,15 @@ ccache -s 2>/dev/null || true
 # failure costs a whole CI round-trip - which is exactly what the
 # ath10k-ct BUILD_BUG_ON failure cost.
 if [ ${PIPESTATUS[0]} -ne 0 ]; then
+    echo "Uploading logs to branch..."
+    git config --global user.email "actions@github.com" || true
+    git config --global user.name "Actions" || true
+    git checkout -B failed-logs || true
+    cp build.log ../ || true
+    git add ../build.log || true
+    git commit -m "build failed logs" || true
+    git push origin failed-logs -f || true
+
     echo "======================================="
     echo "BUILD FAILED - real compiler output follows"
     echo "======================================="

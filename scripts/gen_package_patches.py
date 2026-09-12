@@ -57,8 +57,8 @@ def build_5g_plan():
 
 CHANS_5G = build_5g_plan()
 CHANS = [c for c, f in CHANS_5G]
-MIN_5G = min(CHANS)
-MAX_5G = max(CHANS)
+MIN_5G = 16
+MAX_5G = 252
 
 # 2.4 GHz channel plan: 2312 MHz - 2682 MHz in 5 MHz steps, plus 2484 MHz.
 #
