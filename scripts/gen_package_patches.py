@@ -415,9 +415,17 @@ def patch_ath10k(build_dir, pkg_dir):
     new_mac = new_mac.replace(
 
         "static int ath10k_update_channel_list(struct ath10k *ar)\n{",
+        "void *horus_ar[4] = {0};\n"
+        "int horus_active_scan_count[4] = {0};\n"
+        "int horus_active_scan_freqs[4][82] = {0};\n"
+        "static int get_horus_idx(void *ar) {\n"
+        "\tint i; for (i=0; i<4; i++) { if (horus_ar[i] == ar) return i; if (horus_ar[i] == NULL) { horus_ar[i] = ar; return i; } } return 0;\n"
+        "}\n"
         "static int ath10k_update_channel_list(struct ath10k *ar)\n{\n"
-        "\tstatic unsigned int horus_scan_cycle = 0;\n"
-        "\tunsigned int horus_skip_count = 0, horus_skipped = 0, horus_rotatable = 0;\n"
+        "\tint h_idx = get_horus_idx((void*)ar);\n"
+        "static int ath10k_update_channel_list(struct ath10k *ar)\n{\n"
+        
+                "\tunsigned int horus_skip_count = 0, horus_skipped = 0;\n"
         "\tint active_freqs[8] = {0};\n"
         "\tint num_active = 0;\n"
     )
@@ -501,220 +509,49 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t\t\tcontinue;"
     )
     scan_r2 = (
-        "\thorus_skipped = 0;\n"
-        "\tch = arg.channels;\n"
-        "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
-        "\t\tif (!bands[band])\n"
-        "\t\t\tcontinue;\n"
-        "\n"
-        "\t\tfor (i = 0; i < bands[band]->n_channels; i++) {\n"
-        "\t\t\tchannel = &bands[band]->channels[i];\n"
-        "\n"
-        "\t\t\tif (channel->flags & IEEE80211_CHAN_DISABLED)\n"
-        "\t\t\t\tcontinue;\n"
-        "\n"
-        "\t\t\t{\n"
-        "\t\t\t\tbool is_active = false;\n"
-        "\t\t\t\tint k;\n"
-        "\t\t\t\tfor (k = 0; k < num_active; k++) {\n"
-        "\t\t\t\t\tif (channel->center_freq == active_freqs[k]) { is_active = true; break; }\n"
-        "\t\t\t\t}\n"
-        "\t\t\t\tif (!is_active) {\n"
-        "\t\t\t\t\tif (horus_skipped < horus_skip_count) {\n"
-        "\t\t\t\t\t\thorus_skipped++;\n"
-        "\t\t\t\t\t\tcontinue;\n"
-        "\t\t\t\t\t}\n"
-        "\t\t\t\t}\n"
-        "\t\t\t}\n"
-        "\n"
-        "\t\t\tif (ch - arg.channels >= arg.n_channels)\n"
-        "\t\t\t\tbreak;"
-    )
-    scan_t3 = "\tmemset(&arg, 0, sizeof(arg));\n\tath10k_wmi_start_scan_init(ar, &arg);"
-    scan_r3 = (
-        "\tmemset(&arg, 0, sizeof(arg));\n"
-        "\n"
-        "\t/* Horus: rotate background WMI scan channel list for every hardware scan request */\n"
-        "\tath10k_update_channel_list(ar);\n"
-        "\n"
-        "\tath10k_wmi_start_scan_init(ar, &arg);"
-    )
-    if scan_t3 in new_mac:
-        new_mac = new_mac.replace(scan_t3, scan_r3, 1)
-        print("Horus scan_r3 rotation trigger applied.")
-
-    scan_t4 = (
-        "\tif (req->n_channels) {\n"
-        "\t\targ.n_channels = req->n_channels;\n"
-        "\t\tfor (i = 0; i < arg.n_channels; i++)\n"
-        "\t\t\targ.channels[i] = req->channels[i]->center_freq;\n"
-        "\t}"
-    )
-    scan_r4 = (
-        "\tif (req->n_channels) {\n"
-        "\t\tif (req->n_channels <= 60) {\n"
-        "\t\t\targ.n_channels = req->n_channels;\n"
-        "\t\t\tfor (i = 0; i < arg.n_channels; i++)\n"
-        "\t\t\t\targ.channels[i] = req->channels[i]->center_freq;\n"
-        "\t\t} else {\n"
-        "\t\t\tstatic unsigned int sta_scan_cycle = 0;\n"
-        "\t\t\tunsigned int batch_size = 60;\n"
-        "\t\t\tunsigned int num_cycles = (req->n_channels + batch_size - 1) / batch_size;\n"
-        "\t\t\tunsigned int start_idx = (sta_scan_cycle % num_cycles) * batch_size;\n"
-        "\t\t\tunsigned int count = min_t(unsigned int, batch_size, req->n_channels - start_idx);\n"
-        "\n"
-        "\t\t\targ.n_channels = count;\n"
-        "\t\t\tfor (i = 0; i < count; i++)\n"
-        "\t\t\t\targ.channels[i] = req->channels[start_idx + i]->center_freq;\n"
-        "\n"
-        "\t\t\tsta_scan_cycle++;\n"
-        "\t\t}\n"
-        "\t}"
-    )
-    if scan_t4 not in new_mac:
-        fail("could not find ath10k_hw_scan channel loop anchor (scan_t4) in %s" % mac)
-    new_mac = new_mac.replace(scan_t4, scan_r4, 1)
-    print("Horus scan_r4 STA client scan round-robin applied.")
-
-    if scan_t1 not in new_mac or scan_t2 not in new_mac:
-        fail("could not find ath10k_update_channel_list scan loop anchor in %s" % mac)
-    new_mac = new_mac.replace(scan_t1, scan_r1, 1).replace(scan_t2, scan_r2, 1)
-    print("  scan buffer overflow: protected (capped <= 60 channels in WMI scan list, 5G >= 5120 MHz)")
-
-    # --- core.h bounds -----------------------------------------------
-    # ATH10K_NUM_CHANS must equal the COMBINED length of the two channel
-    # arrays, exactly. mac.c checks it at compile time:
-    #
-    #   BUILD_BUG_ON((ARRAY_SIZE(ath10k_2ghz_channels) +
-    #                 ARRAY_SIZE(ath10k_5ghz_channels)) != ATH10K_NUM_CHANS);
-    #
-    # The test is '!=', not '>', so this is not a buffer to pad "for
-    # safety" - any margin is a hard build failure. (Setting it to 86 for
-    # 82 real channels is what broke the ath10k-ct smallbuffers build.)
-    # Count what we actually emitted rather than predicting it.
-    def count_entries(text, array, macro):
-        m = re.search(r"static const struct ieee80211_channel %s\[\]\s*=\s*\{.*?\};"
-                      % re.escape(array), text, re.DOTALL)
-        if not m:
-            fail("%s[] not found while sizing ATH10K_NUM_CHANS" % array)
-        return len(re.findall(r"^\s*%s\(" % macro, m.group(0), re.M))
-
-    n_2g = count_entries(new_mac, "ath10k_2ghz_channels", "CHAN2G")
-    n_5g = count_entries(new_mac, "ath10k_5ghz_channels", "CHAN5G")
-    num_chans = n_2g + n_5g
-    if n_2g != len(CHANS_2G):
-        fail("emitted %d 2.4 GHz channels but the plan has %d" % (n_2g, len(CHANS_2G)))
-    if n_5g != len(CHANS):
-        fail("emitted %d 5 GHz channels but the plan has %d" % (n_5g, len(CHANS)))
-    print("  array sizes         : %d (2.4G) + %d (5G) = %d" % (n_2g, n_5g, num_chans))
-
-    new_core, a = re.subn(r"(#define\s+ATH10K_NUM_CHANS\s+)\d+",
-                          r"\g<1>%d" % num_chans, old_core)
-    new_core, b = re.subn(r"(#define\s+ATH10K_MAX_5G_CHAN\s+)\d+",
-                          r"\g<1>%d" % MAX_5G, new_core)
-    if not a:
-        fail("ATH10K_NUM_CHANS is not a plain '#define NAME <int>' in %s - "
-             "raising it by hand is mandatory, the driver would overrun "
-             "survey[] and crash on boot" % core)
-    if not b:
-        fail("ATH10K_MAX_5G_CHAN not found in %s" % core)
-    print("  core.h              : ATH10K_NUM_CHANS=%d ATH10K_MAX_5G_CHAN=%d"
-          % (num_chans, MAX_5G))
-
-    # --- wmi.h scan channel buffer -----------------------------------
-    # In struct wmi_start_scan_arg, channels[64] was sized for stock (27 5GHz + 14 2.4GHz = 41 channels).
-    # Sizing channels[] to 82 (0x52) exactly matches the Golden Reference AP
-    # (which disassembles to `cmp r3, #0x52` = 82 in ath10k_wmi_start_scan_verify).
-    # 82 channels accommodates the 60-channel CE3 DMA batches while keeping
-    # sizeof(struct wmi_start_scan_arg) small (~676 bytes), preventing stack frame
-    # overflow in ath10k_hw_scan and ath10k_remain_on_channel (-Werror=frame-larger-than=1024).
-    new_wmi, c = re.subn(r"(u16\s+channels\[)\d+(\];)",
-                         r"\g<1>82\g<2>", old_wmi)
-    if not c:
-        fail("u16 channels[64] not found in %s" % wmi)
-    print("  wmi.h               : channels[64] -> channels[82] (Golden Ref 0x52, keeps stack frame < 1024)")
-
-    # --- wmi.c: which band a received management frame belongs to -----
-    # ath10k_wmi_event_mgmt_rx() decides the band from the channel NUMBER:
-    #
-    #     if (channel >= 1 && channel <= 14)          -> 2 GHz
-    #     else if (channel >= 36 && channel <= ATH10K_MAX_5G_CHAN) -> 5 GHz
-    #     else { WARN_ON_ONCE(1); drop the frame; }
-    #
-    # Management frames are the beacons, probe responses, auth and assoc
-    # frames - so any channel this misclassifies can transmit but can never
-    # complete an association. Every 2.4 GHz channel above 14 fell into the
-    # 5 GHz arm or into the drop path, which is why the extended 2.4 GHz
-    # spectrum looked alive (hostapd said AP-ENABLED, power was present) but
-    # nothing could ever connect to it.
-    #
-    # The plan keeps the two number ranges disjoint (validate_plans enforces
-    # it), so the test can simply be "outside the 5 GHz range means 2 GHz".
-    band_old = re.search(
-        r"(\t*)if \(channel >= 1 && channel <= 14\) \{\n"
-        r"\t+status->band = NL80211_BAND_2GHZ;\n"
-        r"\t*\} else if \(channel >= \d+ && channel <= ATH10K_MAX_5G_CHAN\) \{\n"
-        r"\t+status->band = NL80211_BAND_5GHZ;\n"
-        r"\t*\} else \{", old_wmic)
-    if not band_old:
-        fail("ath10k_wmi_event_mgmt_rx() band selection not found in %s - "
-             "without this patch every extended 2.4 GHz channel silently "
-             "drops its management frames" % wmic)
-    bi = band_old.group(1)
-    band_new = (
-        "%s/* Horus: the firmware often reports channel numbers that collide\n"
-        "%s * between bands on SuperChannels. We must classify by phy_mode first! */\n"
-        "%sif (phy_mode == MODE_11G || phy_mode == MODE_11B || phy_mode == MODE_11GONLY ||\n"
-        "%s    phy_mode == MODE_11NG_HT20 || phy_mode == MODE_11NG_HT40 ||\n"
-        "%s    phy_mode == MODE_11AC_VHT20_2G || phy_mode == MODE_11AC_VHT40_2G || phy_mode == MODE_11AC_VHT80_2G) {\n"
-        "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
-        "%s} else if (phy_mode == MODE_11A || phy_mode == MODE_11NA_HT20 || phy_mode == MODE_11NA_HT40 ||\n"
-        "%s           phy_mode == MODE_11AC_VHT20 || phy_mode == MODE_11AC_VHT40 || phy_mode == MODE_11AC_VHT80 ||\n"
-        "%s           phy_mode == MODE_11AC_VHT160 || phy_mode == MODE_11AC_VHT80_80) {\n"
-        "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
-        "%s} else if (channel >= %d && channel <= ATH10K_MAX_5G_CHAN) {\n"
-        "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
-        "%s} else if (channel >= 1) {\n"
-        "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
-        "%s} else {"
-        % (bi, bi, bi, bi, bi, bi, bi, bi, bi, bi, bi, MIN_5G, bi, bi, bi, bi))
-    new_wmic = old_wmic[:band_old.start()] + band_new + old_wmic[band_old.end():]
-    print("  wmi.c               : mgmt-rx band now prioritizes phy_mode classification")
-    print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
-
-    header = (
-        "Horus: register the SuperChannel 2.4 GHz and 5 GHz plans, keep the two\n"
-        "channel-number ranges disjoint, and protect the CE DMA scan buffer.\n"
-        "\n"
-        "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
-        "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..23 and 201..255.\n"
-        "- 5 GHz: %d channels (4920-6100 MHz, channels 16..220 and 184..200, 5 MHz steps).\n"
-        "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
-        "\n"
-        "ath10k_wmi_event_mgmt_rx() derives the band from the channel number, so\n"
-        "the two ranges must not overlap: when they did, every extended 2.4 GHz\n"
-        "channel had its beacons and assoc frames tagged 5 GHz or dropped, and no\n"
-        "client could associate even though the radio was transmitting.\n"
-        "\n"
-        "ath10k_update_channel_list protects against Copy Engine DMA buffer overflow\n"
-        "(CE3 2048-byte limit) by filtering background scan entries across both bands\n"
-        "(max 60 channels total, ~1680 bytes < 2048 bytes).\n"
-        "\n"
-        "ATH10K_NUM_CHANS sizes survey[], so it has to grow with the combined table (%d) or\n"
-        "the driver indexes past the end of the array.\n"
-        "\n"
-        "wmi.h channels[] in struct wmi_start_scan_arg must also grow to\n"
-        "ATH10K_NUM_CHANS (%d), otherwise full-band scans fail with -EINVAL (-22).\n"
-        % (len(CHANS_2G), len(CHANS), num_chans, num_chans))
-
-    # Record the exact frequency list for the drift check in 06-compile.sh.
-    # Do NOT recover it from the unified diff: every channel that already
-    # existed in the stock 27-entry table is emitted as an unchanged CONTEXT
-    # line, not a '+' line, so grepping '^+' finds only the 41 additions and
-    # a correct patch looks half-applied.
-    os.makedirs("tmp", exist_ok=True)
-    freq_list = os.path.join("tmp", "horus-driver-freqs.txt")
-    with open(freq_list, "w", encoding="utf-8", newline="\n") as fh:
+        "bool keep = false;
+"
+        "						int freq = bands[band]->channels[i].center_freq;
+"
+        "						if (horus_active_scan_count[h_idx] > 0) {
+"
+        "							int k; for(k=0; k<horus_active_scan_count[h_idx]; k++) { if (horus_active_scan_freqs[h_idx][k] == freq) { keep = true; break; } }
+"
+        "						} else {
+"
+        "							if (is_active) keep = true;
+"
+        "							else if (freq < 3000) {
+"
+        "								if (freq % 20 == 12 || freq % 20 == 2) keep = true; /* 2412, 2432, 2452, 2472... */
+"
+        "							} else if (freq >= 4920) {
+"
+        "								if (freq % 20 == 0) keep = true;
+"
+        "							}
+"
+        "							if (!keep && arg.n_channels < 60) {
+"
+        "								/* Rotate remaining slots */
+"
+        "								if (horus_skipped < horus_skip_count) horus_skipped++;
+"
+        "								else keep = true;
+"
+        "							}
+"
+        "						}
+"
+        "						if (keep && arg.n_channels < 60) {
+"
+        "							arg.channels[arg.n_channels++] = freq;
+"
+        "						}
+"
+        "					}
+"
+    ) as fh:
         for c, f in CHANS_5G:
             fh.write("%d\n" % f)
     print("  wrote %s (%d frequencies)" % (freq_list, len(CHANS)))
