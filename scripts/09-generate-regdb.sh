@@ -61,7 +61,7 @@ with open('db.txt', 'w') as f:
         #   Highest channel 6100 -> needs >= 6140 for VHT80 bonding
         # 2.4 GHz plan covers 2312..2732 MHz
         f.write('\t(2180 - 2750 @ 40), (33)\n')
-        f.write('\t(4920 - 6100 @ 160), (33)\n')
+        f.write('\t(4880 - 6140 @ 160), (33)\n')
         f.write('\n')
 print(f'Generated db.txt with {len(countries)} countries')
 "
