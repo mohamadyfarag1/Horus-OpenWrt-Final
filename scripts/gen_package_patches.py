@@ -495,6 +495,18 @@ def patch_ath10k(build_dir, pkg_dir):
         "\t\t}\n"
         "\t}"
     )
+    scan_t2 = (
+        "\tch = arg.channels;\n"
+        "\tfor (band = 0; band < NUM_NL80211_BANDS; band++) {\n"
+        "\t\tif (!bands[band])\n"
+        "\t\t\tcontinue;\n"
+        "\n"
+        "\t\tfor (i = 0; i < bands[band]->n_channels; i++) {\n"
+        "\t\t\tchannel = &bands[band]->channels[i];\n"
+        "\n"
+        "\t\t\tif (channel->flags & IEEE80211_CHAN_DISABLED)\n"
+        "\t\t\t\tcontinue;"
+    )
     scan_r2 = (
         "\thorus_skipped = 0;\n"
         "\tch = arg.channels;\n"
