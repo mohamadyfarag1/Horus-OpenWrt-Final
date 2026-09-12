@@ -1,0 +1,70 @@
+#!/usr/bin/lua
+-- Horus Spot: MikroTik Hotspot Template Emulator
+-- Intercepts captive portal requests, reads the MikroTik HTML files, replaces $(vars), and serves them.
+
+local uci = require("luci.model.uci").cursor()
+local http = require("luci.http")
+local fs = require("nixio.fs")
+
+-- 1. Parse URL query parameters
+local query = os.getenv("QUERY_STRING") or ""
+local params = {}
+for k, v in query:gmatch("([^&=]+)=([^&=]+)") do
+    params[k] = http.urldecode(v)
+end
+
+-- 2. Determine Router IP (for links)
+local server_addr = os.getenv("SERVER_ADDR") or "192.168.100.1"
+
+-- 3. Determine the requested page
+-- CoovaChilli/uspot redirects to this CGI script. 
+-- We map it to login.html by default, or others if specified.
+local page = "login.html"
+local path_info = os.getenv("PATH_INFO") or ""
+if path_info:match("status") then page = "status.html" end
+if path_info:match("logout") then page = "logout.html" end
+if path_info:match("alogin") then page = "alogin.html" end
+
+local file_path = "/www/uspot/" .. page
+
+-- 4. Map MikroTik Variables to uspot parameters
+local mt_vars = {
+    ["mac"] = params.mac or "00:00:00:00:00:00",
+    ["ip"] = params.client_ip or params.ip or "10.0.0.2",
+    ["username"] = params.username or "",
+    ["link-login"] = "http://" .. server_addr .. "/cgi-bin/hotspot/login",
+    ["link-login-only"] = "http://" .. server_addr .. ":3990/logon",
+    ["link-logout"] = "http://" .. server_addr .. ":3990/logoff",
+    ["link-status"] = "http://" .. server_addr .. "/cgi-bin/hotspot/status",
+    ["link-orig"] = params.userurl or "http://www.google.com/",
+    ["error"] = params.error or "",
+    ["error-orig"] = params.error or "",
+    ["chap-id"] = "",
+    ["chap-challenge"] = params.challenge or "",
+    ["popup"] = "true"
+}
+
+-- Extract chap-id correctly (uspot challenge format varies, usually chap-id is the first byte)
+if params.challenge and #params.challenge >= 2 then
+    mt_vars["chap-id"] = string.sub(params.challenge, 1, 2)
+end
+
+-- 5. Read the MikroTik HTML file
+local f = io.open(file_path, "r")
+if not f then
+    http.status(404, "Not Found")
+    http.prepare_content("text/html")
+    http.write("<h1>Horus Spot</h1><p>Error: " .. page .. " not found. Please upload a hotspot theme via LuCI.</p>")
+    return
+end
+local content = f:read("*a")
+f:close()
+
+-- 6. Process MikroTik Template Variables $(var)
+content = content:gsub("%$%(([%w%-]+)%)", function(var)
+    return mt_vars[var] or ""
+end)
+
+-- 7. Serve the processed HTML
+http.prepare_content("text/html")
+http.write(content)

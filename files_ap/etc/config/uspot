@@ -46,7 +46,7 @@ config uspot 'hotspot'
 
 	# ---- Captive portal / UAM web login (local MikroTik-style pages) ----
 	option uam_port         '3990'
-	option uam_server       'http://192.168.100.1/uspot/login.html'  # CHANGE-ME: this router's captive URL
+	option uam_server       'http://192.168.100.1/cgi-bin/hotspot'  # CHANGE-ME: this router's captive URL
 	option challenge        'HorusSpotCHAP'     # CHAP shared challenge seed
 	option mac_auth         '1'                 # try MAC auto-login before showing the portal
 	# option mac_passwd     ''                  # leave unset => MAC-auth password == the MAC (SAS rule)
@@ -60,3 +60,4 @@ config uspot 'hotspot'
 #	option comment  'Network admin - office laptop'
 #	option enabled  '1'
 # ==============================================================================
+

@@ -59,7 +59,7 @@ return view.extend({
 		o = s.option(form.Flag, 'mac_auth', _('Login By MAC'), _('Automatically authenticate known devices in SAS without showing the login page.'));
 		o.tab = 'profile'; o.default = '1';
 
-		o = s.option(form.Value, 'uam_server', _('External Login Page URL'), _('The full link to your SAS captive portal (e.g. http://10.0.0.1/login).'));
+		o = s.option(form.Value, 'uam_server', _('External Login Page URL'), _('The full link to your SAS captive portal (e.g. http://192.168.100.1/cgi-bin/hotspot).'));
 		o.tab = 'profile'; 
 
 		return m.render();
@@ -75,3 +75,4 @@ return view.extend({
 		});
 	}
 });
+
