@@ -961,7 +961,7 @@ def write_5g_bounds():
                  "\n"
                  "HORUS_FREQ_SANE_MIN=%d\n"
                  "HORUS_FREQ_SANE_MAX=%d\n"
-                 % (min_5g_freq, max_5g_freq,
+                 % (MIN_5G, MAX_5G,
                     min_5g_freq, max_5g_freq,
                     min_2g_freq, max_2g_freq,
                     sane_min, sane_max))
