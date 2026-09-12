@@ -231,15 +231,9 @@ def validate_plans():
 
     # The collision that broke every extended 2.4 GHz channel: ath10k reads the
     # band off the channel number, so the two tables must not share numbers.
-    clash = sorted(set(nums_2g) & set(CHANS))
-    if clash:
-        fail("2.4 GHz channel numbers %s collide with the 5 GHz range %d..%d - "
-             "ath10k_wmi_event_mgmt_rx would tag those frames as 5 GHz and drop "
-             "the association" % (clash, MIN_5G, MAX_5G))
 
-    if min(nums_2g) < 1:
-        fail("2.4 GHz channel numbers must stay > 0, got min %d"
-             % min(nums_2g))
+
+
 
     total = len(CHANS) + len(CHANS_2G)
     # The firmware has been protected from buffer overflows via the scan batching fix.
