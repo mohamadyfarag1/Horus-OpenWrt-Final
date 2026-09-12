@@ -602,6 +602,22 @@ def patch_ath10k(build_dir, pkg_dir):
         fail("emitted %d 5 GHz channels but the plan has %d" % (n_5g, len(CHANS)))
     print("  array sizes         : %d (2.4G) + %d (5G) = %d" % (n_2g, n_5g, num_chans))
 
+    # --- mac.c dynamic allocation for wmi_start_scan_arg ---
+    def patch_func(func_name, code):
+        pattern_decl = r"(static int " + func_name + r"\([^)]+\)\s*\{[^{]*?)(struct wmi_start_scan_arg arg;)"
+        replacement_decl = r"\1struct wmi_start_scan_arg *arg_ptr = kzalloc(sizeof(*arg_ptr), GFP_ATOMIC);\n\tif (!arg_ptr) return -ENOMEM;\n#define arg (*arg_ptr)"
+        code = re.sub(pattern_decl, replacement_decl, code, flags=re.DOTALL)
+        
+        pattern_exit = r"(static int " + func_name + r"\([^)]+\)\s*\{.*?)(exit:\n\tmutex_unlock\(&ar->conf_mutex\);\n)(\treturn ret;\n\})"
+        replacement_exit = r"\1\2#undef arg\n\tkfree(arg_ptr);\n\3"
+        code = re.sub(pattern_exit, replacement_exit, code, flags=re.DOTALL)
+        return code
+
+    new_mac = patch_func("ath10k_hw_scan", new_mac)
+    new_mac = patch_func("ath10k_remain_on_channel", new_mac)
+    print("  mac.c               : ath10k_hw_scan and ath10k_remain_on_channel patched to use kzalloc")
+
+
     new_core, a = re.subn(r"(#define\s+ATH10K_NUM_CHANS\s+)\d+",
                           r"\g<1>%d" % num_chans, old_core)
     new_core, b = re.subn(r"(#define\s+ATH10K_MAX_5G_CHAN\s+)\d+",
