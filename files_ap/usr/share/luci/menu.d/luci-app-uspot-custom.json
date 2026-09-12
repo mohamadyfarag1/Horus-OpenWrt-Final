@@ -49,12 +49,20 @@
 		},
 		"order": 5
 	},
+	"admin/services/uspot/walledgarden": {
+		"title": "Walled Garden",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/walledgarden"
+		},
+		"order": 6
+	},
 	"admin/services/uspot/advanced": {
 		"title": "Advanced Config",
 		"action": {
 			"type": "view",
 			"path": "uspot_custom/advanced"
 		},
-		"order": 6
+		"order": 7
 	}
 }
