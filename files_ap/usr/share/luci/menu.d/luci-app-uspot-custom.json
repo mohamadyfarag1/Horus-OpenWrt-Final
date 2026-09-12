@@ -18,7 +18,7 @@
 		"order": 1
 	},
 	"admin/services/uspot/nas": {
-		"title": "NAS (RADIUS)",
+		"title": "RADIUS",
 		"action": {
 			"type": "view",
 			"path": "uspot_custom/nas"
@@ -33,13 +33,29 @@
 		},
 		"order": 3
 	},
+	"admin/services/uspot/profiles": {
+		"title": "User Profiles",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/profiles"
+		},
+		"order": 4
+	},
+	"admin/services/uspot/users": {
+		"title": "Users",
+		"action": {
+			"type": "view",
+			"path": "uspot_custom/users"
+		},
+		"order": 5
+	},
 	"admin/services/uspot/clients": {
 		"title": "Connected Clients",
 		"action": {
 			"type": "view",
 			"path": "uspot_custom/clients"
 		},
-		"order": 4
+		"order": 6
 	},
 	"admin/services/uspot/bypass": {
 		"title": "MAC Bypass",
@@ -47,7 +63,7 @@
 			"type": "view",
 			"path": "uspot_custom/bypass"
 		},
-		"order": 5
+		"order": 7
 	},
 	"admin/services/uspot/walledgarden": {
 		"title": "Walled Garden",
@@ -55,7 +71,7 @@
 			"type": "view",
 			"path": "uspot_custom/walledgarden"
 		},
-		"order": 6
+		"order": 8
 	},
 	"admin/services/uspot/advanced": {
 		"title": "Advanced Config",
@@ -63,6 +79,6 @@
 			"type": "view",
 			"path": "uspot_custom/advanced"
 		},
-		"order": 7
+		"order": 9
 	}
 }

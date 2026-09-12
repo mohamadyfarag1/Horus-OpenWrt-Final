@@ -61,3 +61,21 @@ config uspot 'hotspot'
 #	option enabled  '1'
 # ==============================================================================
 
+
+
+# ==============================================================================
+# Local User Profiles (MikroTik style)
+# ==============================================================================
+config profile 'default'
+	option rate_limit '2M/2M'
+	option session_timeout '3600'
+	option idle_timeout '600'
+
+# ==============================================================================
+# Local Users (MikroTik style)
+# ==============================================================================
+config user 'admin'
+	option password 'admin'
+	option profile 'default'
+	option comment 'Default admin test user'
+

@@ -34,6 +34,11 @@ for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
   sed -i 's/REG_RULE(2412-10, 2462+10, 40, 6, 20, 0)/REG_RULE(2182-10, 2750+10, 40, 6, 33, 0)/g' "$REG"
   sed -i 's/REG_RULE(2467-10, 2472+10, 20, 6, 20,/REG_RULE(2182-10, 2750+10, 40, 6, 33,/g' "$REG"
   sed -i 's/REG_RULE(2484-10, 2484+10, 20, 6, 20,/REG_RULE(2182-10, 2750+10, 40, 6, 33,/g' "$REG"
+
+  sed -i 's/REG_RULE(5180-10, 5240+10, 80, 6, 20,/REG_RULE(4900-10, 6100+10, 160, 6, 33,/g' "$REG"
+  sed -i 's/REG_RULE(5260-10, 5320+10, 80, 6, 20,/REG_RULE(4900-10, 6100+10, 160, 6, 33,/g' "$REG"
+  sed -i 's/REG_RULE(5500-10, 5720+10, 160, 6, 20,/REG_RULE(4900-10, 6100+10, 160, 6, 33,/g' "$REG"
+  sed -i 's/REG_RULE(5745-10, 5825+10, 80, 6, 20,/REG_RULE(4900-10, 6100+10, 160, 6, 33,/g' "$REG"
   
   # Bypass regulatory checks safely without corrupting C syntax or deleting curly braces
   sed -i 's/static bool is_valid_rd(const struct ieee80211_regdomain \*rd)/static bool is_valid_rd(const struct ieee80211_regdomain *rd) { return true; }\nstatic bool _orig_is_valid_rd(const struct ieee80211_regdomain *rd)/g' "$REG"

@@ -9,8 +9,8 @@ return view.extend({
 	render: function() {
 		var m, s, o;
 
-		m = new form.Map('uspot', _('Horus Spot — SAS / RADIUS'),
-			_('Configure the connection to your SAS FreeRADIUS server. This page simulates the MikroTik "RADIUS" and "Hotspot Server Profile" settings.'));
+		m = new form.Map('uspot', _('RADIUS'),
+			_('Configure the connection to your RADIUS server. This page simulates the MikroTik "RADIUS" menu.'));
 
 		s = m.section(form.NamedSection, 'hotspot', 'uspot');
 		s.addremove = false;
