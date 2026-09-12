@@ -43,7 +43,7 @@ import re
 import sys
 
 _BLOCKS_5G = [
-    (22, 5110, 181),   # 5110 - 6010 -> ch 22..202
+    (184, 4920, 17), (16, 5080, 205),   # 5110 - 6010 -> ch 22..202
 ]
 
 
@@ -688,7 +688,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "\n"
         "ath10k builds its channel lists from ath10k_2ghz_channels[] and ath10k_5ghz_channels[].\n"
         "- 2.4 GHz: %d channels, 5 MHz steps, numbered 1..23 and 201..255.\n"
-        "- 5 GHz: %d channels (5110-6010 MHz, channels 22..202, 5 MHz steps).\n"
+        "- 5 GHz: %d channels (4920-6100 MHz, channels 16..220 and 184..200, 5 MHz steps).\n"
         "  Matches Ubiquiti Rocket AC / airMAX spectrum.\n"
         "\n"
         "ath10k_wmi_event_mgmt_rx() derives the band from the channel number, so\n"
@@ -1000,6 +1000,7 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
 
 
