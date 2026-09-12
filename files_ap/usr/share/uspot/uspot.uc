@@ -48,9 +48,9 @@ let uciload = uci.foreach('uspot', 'uspot', (d) => {
 			acct_server: d.acct_server,
 			acct_secret: d.acct_secret,
 			acct_port: d.acct_port || 1813,
-			acct_server2: d.acct_server,
-			acct_secret2: d.acct_secret,
-			acct_port2: d.acct_port || 1813,
+			acct_server2: d.acct_server2,
+			acct_secret2: d.acct_secret2,
+			acct_port2: d.acct_port2 || 1813,
 			acct_proxy: d.acct_proxy,
 			acct_interval: d.acct_interval,
 			swapio: d.swapio,
@@ -893,19 +893,63 @@ function run_service() {
 					return { 'access-accept': 1 };
 				}
 
-				// credentials
-				if (settings.auth_mode == 'credentials') {
+				// local users (credentials) - works in both 'credentials' and 'uam' modes
+				if (settings.auth_mode == 'credentials' || settings.auth_mode == 'uam') {
 					let match = 0;
-					uci.foreach('uspot', 'credentials', (d) => {
-						// check if the credentials are valid
-						if (d.uspot != uspot)
-							return;
-						if (d.username == username && d.password == password)
+					let user_profile = null;
+					
+					// 1. Check local "user" database
+					uci.foreach('uspot', 'user', (d) => {
+						if (d.uspot && d.uspot != uspot) return;
+						if (d.username == username && d.password == password) {
 							match = 1;
+							user_profile = d.profile;
+						}
 					});
-					if (match)
+					
+					// 2. Fallback to old "credentials" for compatibility
+					if (!match) {
+						uci.foreach('uspot', 'credentials', (d) => {
+							if (d.uspot != uspot) return;
+							if (d.username == username && d.password == password)
+								match = 1;
+						});
+					}
+
+					if (match) {
+						// Inject Mikrotik-like RADIUS attributes from local profile
+						let fmac_local = format_mac(uspot, address);
+						payload.radius = {
+							reply: {},
+							request: {
+								'User-Name':          username,
+								'Calling-Station-Id': fmac_local,
+								'Called-Station-Id':  settings.nas_mac,
+								'Acct-Session-Id':    sessionid,
+								'Framed-IP-Address':  client_ip,
+								'NAS-Port-Type':      19
+							}
+						};
+						if (user_profile) {
+							uci.foreach('uspot', 'profile', (p) => {
+								if (p['.name'] == user_profile) {
+									if (p.rate_limit)
+										payload.radius.reply['Mikrotik-Rate-Limit'] = p.rate_limit;
+									if (p.session_timeout)
+										payload.radius.reply['Session-Timeout'] = p.session_timeout;
+									if (p.idle_timeout)
+										payload.radius.reply['Idle-Timeout'] = p.idle_timeout;
+								}
+							});
+						}
 						client_create(uspot, address, payload);
-					return { 'access-accept': match };
+						return { 'access-accept': 1 };
+					}
+					
+					// If in strict credentials mode and no match, reject immediately.
+					if (settings.auth_mode == 'credentials')
+						return { 'access-accept': 0 };
+					// Otherwise (uam mode), let it fall through to RADIUS authentication
 				}
 
 				// else, radius/uam
