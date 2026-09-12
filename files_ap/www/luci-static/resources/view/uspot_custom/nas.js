@@ -4,75 +4,63 @@
 'require fs';
 'require ui';
 
-// Horus Spot — SAS / RADIUS (NAS) settings (real uspot schema)
+// Horus Spot — SAS / RADIUS (MikroTik style layout)
 return view.extend({
 	render: function() {
 		var m, s, o;
 
 		m = new form.Map('uspot', _('Horus Spot — SAS / RADIUS'),
-			_('Point the hotspot at your SAS FreeRADIUS server. Register this router in SAS as a NAS of type "Mikrotik" using the same shared secret.'));
+			_('Configure the connection to your SAS FreeRADIUS server. This page simulates the MikroTik "RADIUS" and "Hotspot Server Profile" settings.'));
 
 		s = m.section(form.NamedSection, 'hotspot', 'uspot');
 		s.addremove = false;
-		s.tab('auth', _('RADIUS Authentication (SAS)'));
-		s.tab('acct', _('RADIUS Accounting'));
-		s.tab('nas', _('NAS identity'));
-		s.tab('coa', _('CoA / Disconnect (quota end)'));
-		s.tab('portal', _('MAC auto-login + captive portal'));
+		
+		// Tabs matching MikroTik sections
+		s.tab('radius', _('RADIUS Server (SAS)'));
+		s.tab('incoming', _('Incoming / CoA (Disconnect)'));
+		s.tab('profile', _('Hotspot Profile (Login)'));
 
-		o = s.option(form.Value, 'auth_server', _('SAS server (auth)'), _('SAS FreeRADIUS IP or hostname.'));
-		o.tab = 'auth'; o.datatype = 'host';
-		
-		o = s.option(form.Value, 'auth_port', _('Auth port'));
-		o.tab = 'auth'; o.datatype = 'port'; o.default = '1812';
-		
-		o = s.option(form.Value, 'auth_secret', _('Shared secret'), _('Must equal the secret of this router in SAS (sas_nas).'));
-		o.tab = 'auth'; o.password = true;
+		// --- Tab: RADIUS Server ---
+		o = s.option(form.DummyValue, '_service', _('Service'));
+		o.tab = 'radius'; o.default = 'Hotspot (Fixed)';
 
-		o = s.option(form.Value, 'auth_server2', _('Backup server (optional)'));
-		o.tab = 'auth'; o.datatype = 'host'; o.optional = true;
+		o = s.option(form.Value, 'auth_server', _('Address (Auth Server)'), _('The IP address of your SAS server.'));
+		o.tab = 'radius'; o.datatype = 'host';
 		
-		o = s.option(form.Value, 'auth_secret2', _('Backup secret'));
-		o.tab = 'auth'; o.password = true; o.optional = true;
+		o = s.option(form.Value, 'auth_secret', _('Secret'), _('The Shared Secret you registered in SAS (sas_nas).'));
+		o.tab = 'radius'; o.password = true;
 
-		o = s.option(form.Value, 'acct_server', _('SAS server (accounting)'), _('Usually same as auth server.'));
-		o.tab = 'acct'; o.datatype = 'host';
-		
-		o = s.option(form.Value, 'acct_port', _('Accounting port'));
-		o.tab = 'acct'; o.datatype = 'port'; o.default = '1813';
-		
-		o = s.option(form.Value, 'acct_secret', _('Accounting secret'));
-		o.tab = 'acct'; o.password = true;
-		
-		o = s.option(form.Value, 'acct_interval', _('Interim interval (s)'), _('How often usage is reported to SAS.'));
-		o.tab = 'acct'; o.datatype = 'uinteger'; o.default = '60';
+		o = s.option(form.Value, 'auth_port', _('Authentication Port'));
+		o.tab = 'radius'; o.datatype = 'port'; o.default = '1812';
 
-		o = s.option(form.Value, 'nasid', _('NAS-Identifier'));
-		o.tab = 'nas'; o.default = 'HorusNAS';
+		o = s.option(form.Value, 'acct_server', _('Accounting Server'), _('Usually the exact same IP as the Address above.'));
+		o.tab = 'radius'; o.datatype = 'host';
 		
-		o = s.option(form.Value, 'nasmac', _('NAS MAC (Called-Station-Id)'), _("This AP's MAC address."));
-		o.tab = 'nas'; o.datatype = 'macaddr';
+		o = s.option(form.Value, 'acct_port', _('Accounting Port'));
+		o.tab = 'radius'; o.datatype = 'port'; o.default = '1813';
+		
+		o = s.option(form.Value, 'acct_secret', _('Accounting Secret'), _('Usually the exact same Secret as above.'));
+		o.tab = 'radius'; o.password = true;
+		
+		o = s.option(form.Value, 'acct_interval', _('Interim Update (s)'), _('How often to send live traffic counters to SAS.'));
+		o.tab = 'radius'; o.datatype = 'uinteger'; o.default = '60';
 
-		o = s.option(form.Value, 'das_secret', _('DAE secret'), _('Setting this enables RFC 5176 CoA/Disconnect so SAS can kick clients.'));
-		o.tab = 'coa'; o.password = true;
-		
-		o = s.option(form.Value, 'das_port', _('DAE port'));
-		o.tab = 'coa'; o.datatype = 'port'; o.default = '3799';
+		// --- Tab: Incoming / CoA ---
+		o = s.option(form.Value, 'das_port', _('Incoming Port'), _('MikroTik default is 3799.'));
+		o.tab = 'incoming'; o.datatype = 'port'; o.default = '3799';
 
-		o = s.option(form.Flag, 'mac_auth', _('MAC auto-login'), _('Try MAC authentication before showing the portal (password = the MAC, per SAS rule).'));
-		o.tab = 'portal'; o.default = '1';
+		o = s.option(form.Value, 'das_secret', _('Incoming Secret'), _('Usually the exact same Secret as the RADIUS server.'));
+		o.tab = 'incoming'; o.password = true;
+
+		// --- Tab: Hotspot Profile ---
+		o = s.option(form.Value, 'nasid', _('NAS-Identifier'), _('The identity of this router sent to SAS.'));
+		o.tab = 'profile'; o.default = 'HorusNAS';
 		
-		o = s.option(form.Value, 'mac_suffix', _('MAC username suffix'));
-		o.tab = 'portal'; o.optional = true;
-		
-		o = s.option(form.Value, 'uam_server', _('Captive portal URL'), _('Local MikroTik login page, e.g. http://10.0.0.1/login'));
-		o.tab = 'portal'; 
-		
-		o = s.option(form.Value, 'uam_port', _('UAM port'));
-		o.tab = 'portal'; o.datatype = 'port'; o.default = '3990';
-		
-		o = s.option(form.Value, 'challenge', _('CHAP challenge seed'), _('Shared seed used to derive the per-client CHAP challenge.'));
-		o.tab = 'portal';
+		o = s.option(form.Flag, 'mac_auth', _('Login By MAC'), _('Automatically authenticate known devices in SAS without showing the login page.'));
+		o.tab = 'profile'; o.default = '1';
+
+		o = s.option(form.Value, 'uam_server', _('External Login Page URL'), _('The full link to your SAS captive portal (e.g. http://10.0.0.1/login).'));
+		o.tab = 'profile'; 
 
 		return m.render();
 	},
@@ -82,7 +70,7 @@ return view.extend({
 			return fs.exec('/usr/bin/uspot', ['restart']).catch(function() {
 				return fs.exec('/etc/init.d/uspot', ['restart']);
 			}).then(function() {
-				ui.addNotification(null, E('p', _('Horus Spot restarted.')), 'info');
+				ui.addNotification(null, E('p', _('Horus Spot restarted with new RADIUS settings.')), 'info');
 			}).catch(function() {});
 		});
 	}
