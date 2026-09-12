@@ -670,7 +670,7 @@ def patch_ath10k(build_dir, pkg_dir):
         "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
         "%s} else if (phy_mode == MODE_11A || phy_mode == MODE_11NA_HT20 || phy_mode == MODE_11NA_HT40 ||\n"
         "%s           phy_mode == MODE_11AC_VHT20 || phy_mode == MODE_11AC_VHT40 || phy_mode == MODE_11AC_VHT80 ||\n"
-        "%s           phy_mode == MODE_11AC_VHT160 || phy_mode == MODE_11AC_VHT80_80) {\n"
+        "%s           phy_mode == MODE_11AC_VHT80_80) {\n"
         "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
         "%s} else if (channel >= %d && channel <= ATH10K_MAX_5G_CHAN) {\n"
         "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
