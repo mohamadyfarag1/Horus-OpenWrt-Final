@@ -661,23 +661,33 @@ def patch_ath10k(build_dir, pkg_dir):
              "without this patch every extended 2.4 GHz channel silently "
              "drops its management frames" % wmic)
     bi = band_old.group(1)
-    band_new = (
-        "%s/* Horus: the firmware often reports channel numbers that collide\n"
-        "%s * between bands on SuperChannels. We must classify by phy_mode first! */\n"
-        "%sif (phy_mode == MODE_11G || phy_mode == MODE_11B || phy_mode == MODE_11GONLY ||\n"
-        "%s    phy_mode == MODE_11NG_HT20 || phy_mode == MODE_11NG_HT40 ||\n"
-        "%s    phy_mode == MODE_11AC_VHT20_2G || phy_mode == MODE_11AC_VHT40_2G || phy_mode == MODE_11AC_VHT80_2G) {\n"
-        "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
-        "%s} else if (phy_mode == MODE_11A || phy_mode == MODE_11NA_HT20 || phy_mode == MODE_11NA_HT40 ||\n"
-        "%s           phy_mode == MODE_11AC_VHT20 || phy_mode == MODE_11AC_VHT40 || phy_mode == MODE_11AC_VHT80 ||\n"
-        "%s           phy_mode == MODE_11AC_VHT80_80) {\n"
-        "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
-        "%s} else if (channel >= %d && channel <= ATH10K_MAX_5G_CHAN) {\n"
-        "%s\tstatus->band = NL80211_BAND_5GHZ;\n"
-        "%s} else if (channel >= 1) {\n"
-        "%s\tstatus->band = NL80211_BAND_2GHZ;\n"
+band_new = (
+        "%s/* Horus: the firmware often reports channel numbers that collide
+"
+        "%s * between bands on SuperChannels. We must classify by phy_mode first! */
+"
+        "%sif (phy_mode == MODE_11G || phy_mode == MODE_11B || phy_mode == MODE_11GONLY ||
+"
+        "%s    phy_mode == MODE_11NG_HT20 || phy_mode == MODE_11NG_HT40) {
+"
+        "%s	status->band = NL80211_BAND_2GHZ;
+"
+        "%s} else if (phy_mode == MODE_11A || phy_mode == MODE_11NA_HT20 || phy_mode == MODE_11NA_HT40 ||
+"
+        "%s           phy_mode == MODE_11AC_VHT20 || phy_mode == MODE_11AC_VHT40 || phy_mode == MODE_11AC_VHT80) {
+"
+        "%s	status->band = NL80211_BAND_5GHZ;
+"
+        "%s} else if (channel >= %d && channel <= ATH10K_MAX_5G_CHAN) {
+"
+        "%s	status->band = NL80211_BAND_5GHZ;
+"
+        "%s} else if (channel >= 1) {
+"
+        "%s	status->band = NL80211_BAND_2GHZ;
+"
         "%s} else {"
-        % (bi, bi, bi, bi, bi, bi, bi, bi, bi, bi, bi, MIN_5G, bi, bi, bi, bi))
+        % (bi, bi, bi, bi, bi, bi, bi, bi, bi, MIN_5G, bi, bi, bi, bi))
     new_wmic = old_wmic[:band_old.start()] + band_new + old_wmic[band_old.end():]
     print("  wmi.c               : mgmt-rx band now prioritizes phy_mode classification")
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
