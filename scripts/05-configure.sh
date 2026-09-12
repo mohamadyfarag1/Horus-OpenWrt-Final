@@ -96,7 +96,7 @@ if os.path.exists(path):
                 for (var i = 0; i < horus_5g_plan.length; i++) {
                     var ch = horus_5g_plan[i][0];
                     var mhz = horus_5g_plan[i][1];
-                    new_5g.push(mhz, mhz + ' MHz (Ch ' + ch + ')', {available: true});
+                    new_5g.push(ch, mhz + ' MHz (Ch ' + ch + ')', {available: true});
                 }
                 this.channels['5g'] = new_5g;
             }
@@ -128,7 +128,7 @@ if os.path.exists(path):
                 for (var i = 0; i < horus_2g_plan.length; i++) {
                     var ch = horus_2g_plan[i][0];
                     var mhz = horus_2g_plan[i][1];
-                    new_2g.push(mhz, mhz + ' MHz (Ch ' + ch + ')', {available: true});
+                    new_2g.push(ch, mhz + ' MHz (Ch ' + ch + ')', {available: true});
                 }
                 this.channels['2g'] = new_2g;
             }
