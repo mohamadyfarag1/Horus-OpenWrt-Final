@@ -90,11 +90,11 @@ if os.path.exists(path):
             /* === HORUS SUPERCHANNEL ORDERED INJECTION START === */
             if (typeof L !== 'undefined' && L.env) {
                 if (typeof L.env.countrynames !== 'object') L.env.countrynames = {};
-                L.env.countrynames['S1'] = 'SUPER 1 (4920 - 5215)';
-                L.env.countrynames['S2'] = 'SUPER 2 (5220 - 5515)';
-                L.env.countrynames['S3'] = 'SUPER 3 (5520 - 5815)';
-                L.env.countrynames['S4'] = 'SUPER 4 (5820 - 6100)';
-                L.env.countrynames['S5'] = 'SUPER 2G (2312 - 2732)';
+                L.env.countrynames['XA'] = 'SUPER 1 (4920 - 5215)';
+                L.env.countrynames['XB'] = 'SUPER 2 (5220 - 5515)';
+                L.env.countrynames['XC'] = 'SUPER 3 (5520 - 5815)';
+                L.env.countrynames['XD'] = 'SUPER 4 (5820 - 6100)';
+                L.env.countrynames['XE'] = 'SUPER 2G (2312 - 2732)';
             }
             /* 5 GHz SuperChannel Plan: 222 Channels (4920 - 6100 MHz, Strictly sorted by MHz ascending like Rocket AC) */
             if (this.channels && this.channels['5g'] && this.channels['5g'].length > 0) {

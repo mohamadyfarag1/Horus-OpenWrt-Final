@@ -1,70 +1,202 @@
 #!/usr/bin/lua
--- Horus Spot: MikroTik Hotspot Template Emulator
--- Intercepts captive portal requests, reads the MikroTik HTML files, replaces $(vars), and serves them.
 
-local uci = require("luci.model.uci").cursor()
-local http = require("luci.http")
-local fs = require("nixio.fs")
+local function urldecode(s)
+    s = s:gsub('+', ' ')
+    s = s:gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end)
+    return s
+end
 
--- 1. Parse URL query parameters
+local function urlencode(s)
+    if not s then return "" end
+    s = s:gsub("\n", "\r\n")
+    s = s:gsub("([^%w ])", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end)
+    s = s:gsub(" ", "+")
+    return s
+end
+
 local query = os.getenv("QUERY_STRING") or ""
 local params = {}
 for k, v in query:gmatch("([^&=]+)=([^&=]+)") do
-    params[k] = http.urldecode(v)
+    params[k] = urldecode(v)
 end
 
--- 2. Determine Router IP (for links)
-local server_addr = os.getenv("SERVER_ADDR") or "192.168.100.1"
+local req_method = os.getenv("REQUEST_METHOD")
+if req_method == "POST" then
+    local content_length = tonumber(os.getenv("CONTENT_LENGTH")) or 0
+    if content_length > 0 then
+        local post_data = io.read(content_length)
+        if post_data then
+            for k, v in post_data:gmatch("([^&=]+)=([^&=]+)") do
+                params[k] = urldecode(v)
+            end
+        end
+    end
+end
 
--- 3. Determine the requested page
--- CoovaChilli/uspot redirects to this CGI script. 
--- We map it to login.html by default, or others if specified.
+local server_addr = os.getenv("SERVER_ADDR") or "192.168.100.1"
+local http_host = os.getenv("HTTP_HOST") or ""
+
+if http_host ~= "" and http_host ~= server_addr and not http_host:match(server_addr) then
+    local orig_url = "http://" .. http_host .. (os.getenv("REQUEST_URI") or "/")
+    local redirect_url = "http://" .. server_addr .. "/cgi-bin/hotspot?link-orig=" .. urlencode(orig_url)
+    print("Status: 302 Found")
+    print("Location: " .. redirect_url)
+    print("Content-Type: text/html\r\n")
+    print("Redirecting to hotspot...")
+    return
+end
+
+local client_ip = os.getenv("REMOTE_ADDR") or params.ip
+
+local mac = params.mac or "00:00:00:00:00:00"
+if mac == "00:00:00:00:00:00" and client_ip then
+    local f = io.popen("ip neigh show " .. client_ip)
+    local out = f:read("*a")
+    f:close()
+    local m = out:match("lladdr%s+([%w:]+)")
+    if m then mac = m end
+end
+params.mac = mac
+
+if req_method == "POST" and params.username and params.password then
+    local ubus = require("ubus")
+    local conn = ubus.connect()
+    if conn then
+        local status = conn:call("uspot", "client_auth", {
+            uspot = "hotspot",
+            address = mac,
+            client_ip = client_ip,
+            username = params.username,
+            password = params.password,
+            reqdata = {}
+        })
+        
+        if status and status.res == 0 then
+            conn:call("uspot", "client_enable", { uspot = "hotspot", address = mac })
+            local target = params['link-orig'] or ("http://" .. server_addr .. "/cgi-bin/hotspot?status")
+            print("Status: 302 Found")
+            print("Location: " .. target)
+            print("Content-Type: text/html\r\n")
+            print("Redirecting...")
+            return
+        else
+            params.error = "Invalid username or password"
+        end
+    else
+        params.error = "UBUS connection failed"
+    end
+end
+
 local page = "login.html"
 local path_info = os.getenv("PATH_INFO") or ""
-if path_info:match("status") then page = "status.html" end
-if path_info:match("logout") then page = "logout.html" end
-if path_info:match("alogin") then page = "alogin.html" end
+if path_info:match("status") or query:match("status") then page = "status.html" end
+if path_info:match("logout") or query:match("logout") then page = "logout.html" end
+if path_info:match("alogin") or query:match("alogin") then page = "alogin.html" end
 
 local file_path = "/www/uspot/" .. page
 
--- 4. Map MikroTik Variables to uspot parameters
 local mt_vars = {
-    ["mac"] = params.mac or "00:00:00:00:00:00",
-    ["ip"] = params.client_ip or params.ip or "10.0.0.2",
+    ["mac"] = mac,
+    ["mac-esc"] = mac,
+    ["ip"] = client_ip or "10.0.0.2",
     ["username"] = params.username or "",
-    ["link-login"] = "http://" .. server_addr .. "/cgi-bin/hotspot/login",
-    ["link-login-only"] = "http://" .. server_addr .. ":3990/logon",
-    ["link-logout"] = "http://" .. server_addr .. ":3990/logoff",
-    ["link-status"] = "http://" .. server_addr .. "/cgi-bin/hotspot/status",
-    ["link-orig"] = params.userurl or "http://www.google.com/",
+    ["link-login"] = "http://" .. server_addr .. "/cgi-bin/hotspot",
+    ["link-login-only"] = "http://" .. server_addr .. "/cgi-bin/hotspot",
+    ["link-logout"] = "http://" .. server_addr .. "/cgi-bin/hotspot?logout",
+    ["link-status"] = "http://" .. server_addr .. "/cgi-bin/hotspot?status",
+    ["link-orig"] = params['link-orig'] or "http://www.google.com/",
+    ["link-orig-esc"] = params['link-orig'] or "http://www.google.com/",
     ["error"] = params.error or "",
     ["error-orig"] = params.error or "",
     ["chap-id"] = "",
     ["chap-challenge"] = params.challenge or "",
+    ["trial"] = "yes",
     ["popup"] = "true"
 }
 
--- Extract chap-id correctly (uspot challenge format varies, usually chap-id is the first byte)
 if params.challenge and #params.challenge >= 2 then
     mt_vars["chap-id"] = string.sub(params.challenge, 1, 2)
 end
 
--- 5. Read the MikroTik HTML file
 local f = io.open(file_path, "r")
 if not f then
-    http.status(404, "Not Found")
-    http.prepare_content("text/html")
-    http.write("<h1>Horus Spot</h1><p>Error: " .. page .. " not found. Please upload a hotspot theme via LuCI.</p>")
+    print("Status: 404 Not Found")
+    print("Content-Type: text/html\r\n")
+    print("<h1>Horus Spot</h1><p>Error: " .. page .. " not found in /www/uspot/</p>")
     return
 end
 local content = f:read("*a")
 f:close()
 
--- 6. Process MikroTik Template Variables $(var)
+local function eval_cond(cond)
+    local var, op, val = cond:match("([%w%-]+)%s*(==|!=)%s*['\"]?(.-)['\"]?$")
+    if not var then var = cond:match("([%w%-]+)") end
+    if not var then return false end
+    
+    local v = mt_vars[var] or ""
+    if op == "==" then return v == val end
+    if op == "!=" then return v ~= val end
+    return (v ~= "" and v ~= "0" and v ~= "false")
+end
+
+local function process_ifs(str)
+    local result = ""
+    local pos = 1
+    while true do
+        local start_if, end_if, cond = str:find("%$%(if%s+([^%)]+)%)", pos)
+        if not start_if then
+            result = result .. str:sub(pos)
+            break
+        end
+        result = result .. str:sub(pos, start_if - 1)
+        
+        local nesting = 1
+        local search_pos = end_if + 1
+        local inner_end = nil
+        local end_endif = nil
+        
+        while search_pos <= #str do
+            local next_if_start, next_if_end = str:find("%$%(if%s+[^%)]+%)", search_pos)
+            local next_endif_start, next_endif_end = str:find("%$%(endif%)", search_pos)
+            
+            if next_endif_start and (not next_if_start or next_endif_start < next_if_start) then
+                nesting = nesting - 1
+                if nesting == 0 then
+                    inner_end = next_endif_start - 1
+                    end_endif = next_endif_end
+                    break
+                end
+                search_pos = next_endif_end + 1
+            elseif next_if_start then
+                nesting = nesting + 1
+                search_pos = next_if_end + 1
+            else
+                break
+            end
+        end
+        
+        if inner_end then
+            local inner_content = str:sub(end_if + 1, inner_end)
+            if eval_cond(cond) then
+                result = result .. process_ifs(inner_content)
+            end
+            pos = end_endif + 1
+        else
+            pos = end_if + 1
+        end
+    end
+    return result
+end
+
+content = process_ifs(content)
 content = content:gsub("%$%(([%w%-]+)%)", function(var)
     return mt_vars[var] or ""
 end)
 
--- 7. Serve the processed HTML
-http.prepare_content("text/html")
-http.write(content)
+-- Inject <base href="/uspot/"> to fix relative paths for CSS/JS/Images
+content = content:gsub("(<[hH][eE][aA][dD][^>]*>)", "%1\n<base href=\"/uspot/\">")
+
+print("Content-Type: text/html\r\n")
+print(content)

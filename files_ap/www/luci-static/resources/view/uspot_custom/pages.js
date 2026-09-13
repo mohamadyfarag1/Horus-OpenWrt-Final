@@ -16,7 +16,7 @@ return view.extend({
 
 		// Instruction Dummy
 		o = s.option(form.DummyValue, '_howto', _('How to upload?'));
-		o.default = _('Method 1 (Recommended): Compress your "hotspot" folder into a .zip file and upload it below.<br>Method 2 (Advanced): Use WinSCP (SFTP/SCP) to connect to the router and drag your "hotspot" folder directly into <b>/www/uspot/</b>');
+		o.default = _('<b>Method 1 (Recommended)</b>: Compress your MikroTik hotspot files into a .zip file. Click "Select file...". In the window that opens, click the <b>Upload icon (سهم لأعلى)</b> at the top to choose the ZIP from your computer. After it uploads, click on the file name in the list to select it.<br><b>Method 2 (Advanced)</b>: Use WinSCP to connect to the router and drag your files directly into <b>/www/uspot/</b>');
 		o.rawhtml = true;
 
 		// ZIP Upload

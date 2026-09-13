@@ -3,7 +3,17 @@
 		"description": "Grant access to Horus Spot hotspot app",
 		"read": {
 			"uci": [ "uspot" ],
-			"file": [ "/etc/uspot/*", "/tmp/uspot/*", "/www/uspot/*", "/usr/bin/uspot-clients.sh", "/usr/bin/uspot-maclist.sh", "/etc/config/uspot" ],
+			"file": {
+				"/etc/uspot/*": [ "read", "list", "stat" ],
+				"/tmp/uspot/*": [ "read", "list", "stat" ],
+				"/www/uspot/*": [ "read", "list", "stat" ],
+				"/usr/bin/uspot-clients.sh": [ "read", "exec", "list", "stat" ], "/usr/bin/uspot-all-hosts.sh": [ "read", "exec", "list", "stat" ], "/usr/bin/uspot-remove-host.sh": [ "read", "exec", "list", "stat" ],
+				"/usr/bin/uspot-maclist.sh": [ "read", "exec", "list", "stat" ],
+				"/etc/config/uspot": [ "read", "list", "stat" ],
+				"/sbin/uci": [ "read", "exec", "list", "stat" ],
+				"/etc/init.d/uspot": [ "read", "exec", "list", "stat" ],
+				"/usr/bin/uspot": [ "read", "exec", "list", "stat" ]
+			},
 			"ubus": {
 				"uspot": [ "clients", "status", "client_get", "state_get" ],
 				"uspotfilter": [ "client_list", "client_get" ],
@@ -13,7 +23,15 @@
 		},
 		"write": {
 			"uci": [ "uspot" ],
-			"file": [ "/etc/uspot/*", "/www/uspot/*", "/etc/config/uspot", "/usr/bin/uspot-maclist.sh", "/usr/bin/uspot" ],
+			"file": {
+				"/etc/uspot/*": [ "read", "write", "list", "stat" ],
+				"/www/uspot/*": [ "read", "write", "list", "stat" ],
+				"/etc/config/uspot": [ "read", "write", "list", "stat" ],
+				"/usr/bin/uspot-maclist.sh": [ "read", "write", "exec", "list", "stat" ],
+				"/usr/bin/uspot": [ "read", "write", "exec", "list", "stat" ],
+				"/etc/init.d/uspot": [ "read", "write", "exec", "list", "stat" ],
+				"/sbin/uci": [ "read", "write", "exec", "list", "stat" ]
+			},
 			"ubus": {
 				"uspot": [ "client_enable", "client_remove" ],
 				"uspotfilter": [ "client_set", "client_remove" ],
@@ -23,3 +41,5 @@
 		}
 	}
 }
+
+

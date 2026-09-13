@@ -4,13 +4,12 @@
 'require fs';
 'require ui';
 
-// Horus Spot — IP Bindings (MikroTik style)
 return view.extend({
 	render: function() {
 		var m, s, o;
 
 		m = new form.Map('uspot', _('Horus Spot — IP Bindings (MAC Bypass)'),
-			_('Local rules for MAC addresses. "Bypassed" gives unlimited internet without SAS. "Blocked" drops the MAC completely. For speed-limited MACs, add them in SAS Panel instead (MAC Auto-Login is enabled).'));
+			_('Local rules for MAC addresses. "Bypassed" gives unlimited internet without login. "Blocked" drops the MAC completely.'));
 
 		s = m.section(form.TableSection, 'whitelist', _('IP Bindings List'));
 		s.addremove = true;
@@ -40,11 +39,14 @@ return view.extend({
 
 	handleSaveApply: function(ev, mode) {
 		return this.super('handleSaveApply', [ev, mode]).then(function() {
-			return fs.exec('/usr/bin/uspot-maclist.sh', ['apply']).then(function() {
-				ui.addNotification(null, E('p', _('IP Bindings applied successfully.')), 'info');
-			}).catch(function() {
-				ui.addNotification(null, E('p', _('Saved. Could not apply live — will apply on next hotspot restart.')), 'warning');
-			});
+			// Wait 2 seconds for UCI commit to finish before applying firewall
+			return new Promise(function(resolve) { setTimeout(resolve, 2000); });
+		}).then(function() {
+			return fs.exec('/usr/bin/uspot-maclist.sh', ['apply']);
+		}).then(function() {
+			ui.addNotification(null, E('p', _('IP Bindings applied. Firewall updated.')), 'info');
+		}).catch(function() {
+			ui.addNotification(null, E('p', _('Saved but could not apply live.')), 'warning');
 		});
 	}
 });

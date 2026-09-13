@@ -48,15 +48,15 @@ countries = [
 with open('db.txt', 'w') as f:
     for c in countries:
         if c == 'S1':
-            f.write('country S1:\n\t(4880 - 5255 @ 160), (33)\n\n')
+            f.write('country XA:\n\t(4880 - 5255 @ 160), (33)\n\n')
         elif c == 'S2':
-            f.write('country S2:\n\t(5180 - 5555 @ 160), (33)\n\n')
+            f.write('country XB:\n\t(5180 - 5555 @ 160), (33)\n\n')
         elif c == 'S3':
-            f.write('country S3:\n\t(5480 - 5855 @ 160), (33)\n\n')
+            f.write('country XC:\n\t(5480 - 5855 @ 160), (33)\n\n')
         elif c == 'S4':
-            f.write('country S4:\n\t(5780 - 6140 @ 160), (33)\n\n')
+            f.write('country XD:\n\t(5780 - 6140 @ 160), (33)\n\n')
         elif c == 'S5':
-            f.write('country S5:\n\t(2180 - 2750 @ 40), (33)\n\n')
+            f.write('country XE:\n\t(2180 - 2750 @ 40), (33)\n\n')
         elif c == '00':
             f.write('country 00:\n')
         else:
