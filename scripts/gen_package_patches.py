@@ -716,6 +716,11 @@ def patch_ath10k(build_dir, pkg_dir):
         "%s} else {"
         % (bi, bi, bi, bi, bi, bi, bi, bi, bi, MIN_5G, bi, bi, bi, bi))
     new_wmic = old_wmic[:band_old.start()] + band_new + old_wmic[band_old.end():]
+    new_wmic = new_wmic.replace('ch->max_power = arg->max_power;', 'ch->max_power = arg->max_power ? arg->max_power : 60;')
+    new_wmic = new_wmic.replace('ch->max_power = arg.max_power;', 'ch->max_power = arg.max_power ? arg.max_power : 60;')
+    new_wmic = new_wmic.replace('ch->reg_power = arg->max_reg_power;', 'ch->reg_power = arg->max_reg_power ? arg->max_reg_power : 60;')
+    new_wmic = new_wmic.replace('ch->reg_power = arg.max_reg_power;', 'ch->reg_power = arg.max_reg_power ? arg.max_reg_power : 60;')
+
     print("  wmi.c               : mgmt-rx band now prioritizes phy_mode classification")
     print("  wmi.h               : channels[64] -> channels[%d]" % num_chans)
 
