@@ -27,6 +27,48 @@ for REGD in $(find . -path "*/drivers/net/wireless/ath/regd.c" 2>/dev/null); do
   sed -i 's/NL80211_RRF_NO_IR/0/g' "$REGD"
   sed -i 's/NL80211_RRF_NO_OFDM/0/g' "$REGD"
   echo "  -> ath/regd.c patched OK"
+
+  #############################################
+  # PATCH 1B: Force world domain regardless of EEPROM country code
+  #
+  # When EEPROM stores a non-world country (e.g. 0x3a = US), ath_regd_init()
+  # calls regulatory_hint(wiphy, "US") which locks the per-phy regulatory to
+  # US channels (5150-5895 MHz with DFS gaps + 5925-7125 MHz at 12 dBm),
+  # completely bypassing the PATCH 1 world domain expansion.
+  #
+  # Fix: make ath_is_world_regd() always return true so every EEPROM country
+  # code takes the wiphy_apply_custom_regulatory() path with our expanded table.
+  #############################################
+  echo "[PATCH 1B] Forcing world domain in: $REGD"
+  python3 - "$REGD" <<'PYEOF'
+import re, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8", errors="ignore") as fh:
+    src = fh.read()
+
+MARK = "Horus: always world domain"
+if MARK in src:
+    print("  -> already patched, skipping")
+    sys.exit(0)
+
+# ath_is_world_regd() returns true when EEPROM encodes a world regulatory
+# domain (COUNTRY_ERD_FLAG bit set). We want to force it to always return
+# true so wiphy_apply_custom_regulatory() is called for every EEPROM value.
+m = re.search(r"(static\s+bool\s+ath_is_world_regd\s*\([^)]*\)\s*\{)[^}]*\}", src)
+if not m:
+    print("!!!! ath_is_world_regd() not found in %s — cannot force world domain" % path)
+    sys.exit(1)
+
+new_fn = (m.group(1) +
+          "\n\treturn true; /* " + MARK +
+          ": EEPROM country code ignored, always use expanded world domain */\n}")
+src = src[:m.start()] + new_fn + src[m.end():]
+
+with open(path, "w", encoding="utf-8", newline="\n") as fh:
+    fh.write(src)
+print("  -> ath_is_world_regd() now always returns true (world domain forced)")
+PYEOF
+  echo "  -> ath/regd.c PATCH 1B (world domain forced) OK"
 done
 
 for REG in $(find . -path "*/net/wireless/reg.c" 2>/dev/null); do
@@ -302,6 +344,20 @@ done
 # VARIANT, hence a single build directory that in-place editing does reach.
 #############################################
 
-echo "PATCHES 1, 2, 2B, 2C and 3 applied (mac80211/backports)."
+echo "PATCHES 1, 1B, 2, 2B, 2C and 3 applied (mac80211/backports)."
 echo "PATCHES 4/5/5B are handled by 10-gen-package-patches.sh as real"
 echo "OpenWrt package patches - see the note above for why."
+
+#############################################
+# PATCH 6: Fix hostapd ucode crash on IPQ4019
+#
+# In OpenWrt 24.10, hostapd.uc wdev_create() expects valid info from iwinfo.
+# When iwinfo returns null for an uninitialized interface, hostapd crashes on
+# !data.software_iftypes.monitor, leaving the 5GHz radio disabled.
+# This patch makes __phy_is_fullmac() handle null data gracefully.
+#############################################
+HOSTAPD_UCODE="package/network/config/wifi-scripts/files/usr/share/hostap/common.uc"
+if [ -f "$HOSTAPD_UCODE" ]; then
+    echo "[PATCH 6] Patching hostapd.uc null dereference in $HOSTAPD_UCODE"
+    sed -i 's/return !data.software_iftypes.monitor;/return data \&\& data.software_iftypes \&\& !data.software_iftypes.monitor;/' "$HOSTAPD_UCODE"
+fi
