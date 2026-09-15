@@ -88,16 +88,6 @@ if os.path.exists(path):
     # 0 dBm; one in the driver but not here still works, just not shown.
     injection = """
             /* === HORUS SUPERCHANNEL ORDERED INJECTION START === */
-            /* === HORUS SUPERCHANNEL ORDERED INJECTION START === */
-            if (typeof L !== 'undefined' && L.env) {
-                if (typeof L.env.countrynames !== 'object') L.env.countrynames = {};
-                L.env.countrynames['AQ'] = 'SUPER 1 (4920 - 5215)';
-                L.env.countrynames['BV'] = 'SUPER 2 (5220 - 5515)';
-                L.env.countrynames['TF'] = 'SUPER 3 (5520 - 5815)';
-                L.env.countrynames['HM'] = 'SUPER 4 (5820 - 6100)';
-                L.env.countrynames['GS'] = 'SUPER 2G (2312 - 2732)';
-            }
-            /* === HORUS SUPERCHANNEL ORDERED INJECTION END === */
             /* 5 GHz SuperChannel Plan: 222 Channels (4920 - 6100 MHz, Strictly sorted by MHz ascending like Rocket AC) */
             if (this.channels && this.channels['5g'] && this.channels['5g'].length > 0) {
                 var has_auto_5g = (this.channels['5g'][0] === 'auto');
@@ -106,9 +96,7 @@ if os.path.exists(path):
                 for (var i = 0; i < horus_5g_plan.length; i++) {
                     var ch = horus_5g_plan[i][0];
                     var mhz = horus_5g_plan[i][1];
-                    if (String(this.channels['5g']).indexOf(mhz) !== -1) {
-                        new_5g.push(ch, mhz + ' MHz (Ch ' + ch + ')', {available: true});
-                    }
+                    new_5g.push(ch, mhz + ' MHz (Ch ' + ch + ')', {available: true});
                 }
                 this.channels['5g'] = new_5g;
             }
